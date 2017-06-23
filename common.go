@@ -7,12 +7,12 @@ package tls
 import (
 	"container/list"
 	"crypto"
-	"crypto/internal/cipherhw"
 	"crypto/rand"
 	"crypto/sha512"
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"github.com/Jigsaw-Code/utls/cipherhw"
 	"io"
 	"math/big"
 	"net"
