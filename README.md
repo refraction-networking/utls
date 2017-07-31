@@ -120,6 +120,8 @@ will prepare ClientHello with empty uconn.Extensions so you can fill it with TLS
 	* `utls.HelloAndroid_6_0_Browser`
 	* `utls.HelloAndroid_5_1_Browser`
 
+Note: it is *mandatory* to manually call ```tlsConn.Handshake()``` afterwards.
+Otherwise, eventual ```tls.Write()``` is going to call non-overridden version of handshake.
 ##### Customizing handshake
 
 Before doing `Handshake()` you can also set fake session ticket, set clientHello or change uconn in other ways:
