@@ -325,6 +325,11 @@ func (uconn *UConn) parrotChrome_58() error {
 	hello := uconn.HandshakeState.Hello
 	session := uconn.HandshakeState.Session
 
+	err := uconn.fillClientHelloHeader()
+	if err != nil {
+		return err
+	}
+
 	hello.CipherSuites = []uint16{
 		GetBoringGREASEValue(hello.Random, ssl_grease_cipher),
 		TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
@@ -340,10 +345,6 @@ func (uconn *UConn) parrotChrome_58() error {
 		TLS_RSA_WITH_AES_128_CBC_SHA,
 		TLS_RSA_WITH_AES_256_CBC_SHA,
 		TLS_RSA_WITH_3DES_EDE_CBC_SHA,
-	}
-	err := uconn.fillClientHelloHeader()
-	if err != nil {
-		return err
 	}
 
 	grease_ext1 := GetBoringGREASEValue(hello.Random, ssl_grease_extension1)
