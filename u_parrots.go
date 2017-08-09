@@ -365,6 +365,8 @@ func (uconn *UConn) parrotChrome_58() error {
 			hello.SessionId = sessionId[:]
 		}
 	}
+	appendToGlobalSigAlgs(disabledHashSHA512, signatureRSA)
+	appendToGlobalSigAlgs(disabledHashSHA512, signatureECDSA)
 	sigAndHash := SignatureAlgorithmsExtension{SignatureAndHashes: []SignatureAndHash{
 		{hashSHA256, signatureECDSA},
 		fakeRsaPssSha256,
