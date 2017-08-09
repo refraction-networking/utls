@@ -8,17 +8,18 @@ Golang's ClientHello has a very unique fingerprint, which especially sticks out 
 where Golang is not too popular yet.
 Some members of anti-censorship community are concerned that their tools could be trivially blocked based on
 ClientHello with relatively small collateral damage. There are multiple solutions to this issue.
-#### Randomized handshake
+### Randomized handshake
 This package can be used to generate randomized ClientHello.
 Provides a moving target without any compatibility or parrot-is-dead attack risks.  
 **Feedback about implementation details of randomized handshake is extremely appreciated.**
-#### Parroting
+### Parroting
 This package can be used to parrot ClientHello of popular browsers.
 There are some caveats to this parroting:
 * We are forced to offer ciphersuites and tls extensions that are not supported by crypto/tls.
 This is not a problem, if you fully control the server and turn unsupported things off on server side.
 * Parroting could be imperfect, and there is no parroting beyond ClientHello.
-##### Compatibility risks of available parrotsThis package allows ClientHello messages to parrot popular browsers. There are few caveats to this parroting:
+#### Compatibility risks of available parrots
+This package allows ClientHello messages to parrot popular browsers. There are few caveats to this parroting:
  * We are forced to offer ciphersuites and tls extensions setups that are not supported by crypto/tls.
  This is not a problem, if you fully control the server.
  * Parroting could be imperfect, and there is no parroting beyond ClientHello.\
@@ -33,13 +34,13 @@ This is not a problem, if you fully control the server and turn unsupported thin
 visibly breaking the connection.  
 \*\* New extensions such as EMS become popular quickly, so it's not recommended to use with servers you don't own.  
 As seen in table, many good parrots will become available once EMS is implemented in crypto/tls.
-##### Work-in-progress parrots
+#### Work-in-progress parrots
 Not finished yet!
 
 | Parrot        | Ciphers* | Signature* | Unsupported extensions            |
 | ------------- | -------- | ---------- | --------------------------------- |
 | Firefox 53    | low      | low        | Extended Master Secret** |
-##### Parrots FAQ
+#### Parrots FAQ
 > Does it really look like, say, Google Chrome with all the [GREASE](https://tools.ietf.org/html/draft-davidben-tls-grease-01) and stuff?
 
 It LGTM, but please open up Wireshark and check. If you see something — [say something](issues).
@@ -48,12 +49,12 @@ It LGTM, but please open up Wireshark and check. If you see something — [say s
 
 There sure are. If you found one that approaches practicality at line speed — [please tell us](issues).
 
-##### Things to implement in Golang to make parrots better
+#### Things to implement in Golang to make parrots better
  * Extended Master Secret and ChannelID extensions
  * Enable sha512 and sha224 hashes by default
  * Implement RSA PSS signature algorithms
  * In general, any modern crypto is likely to be useful going forward.
-#### Custom Handshake
+### Custom Handshake
 It is possible to create custom handshake by
 1) Use `HelloCustom` as an argument for `UClient()` to get empty config
 2) Fill tls header fields: UConn.Hello.{Random, CipherSuites, CompressionMethods}, if needed, or stick to defaults.
@@ -122,7 +123,7 @@ will prepare ClientHello with empty uconn.Extensions so you can fill it with TLS
 
 Note: it is *mandatory* to manually call ```tlsConn.Handshake()``` afterwards.
 Otherwise, eventual ```tls.Write()``` is going to call non-overridden version of handshake.
-##### Customizing handshake
+#### Customizing handshake
 
 Before doing `Handshake()` you can also set fake session ticket, set clientHello or change uconn in other ways:
 ```Golang
