@@ -58,3 +58,12 @@ Tests exist, but coverage is very limited. What's covered is a conjunction of
 
 plus we test some other minor things.
 Basically, current tests aim to provide a sanity check.
+
+# Merging upstream
+```Bash
+git remote add -f golang git@github.com:golang/go.git
+git checkout -b golang-upstream golang/master
+git subtree split -P src/crypto/tls/ -b golang-tls-upstream
+git checkout master
+git merge --no-commit golang-tls-upstream
+```
