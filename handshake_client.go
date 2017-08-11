@@ -30,9 +30,6 @@ type clientHandshakeState struct {
 }
 
 func makeClientHello(config *Config) (*clientHelloMsg, error) {
-	if config == nil {
-		config = defaultConfig()
-	}
 	if len(config.ServerName) == 0 && !config.InsecureSkipVerify {
 		return nil, errors.New("tls: either ServerName or InsecureSkipVerify must be specified in the tls.Config")
 	}
@@ -45,6 +42,7 @@ func makeClientHello(config *Config) (*clientHelloMsg, error) {
 			nextProtosLength += 1 + l
 		}
 	}
+
 	if nextProtosLength > 0xffff {
 		return nil, errors.New("tls: NextProtos values too large")
 	}
@@ -89,8 +87,8 @@ NextCipherSuite:
 	if hello.vers >= VersionTLS12 {
 		hello.signatureAndHashes = supportedSignatureAlgorithms
 	}
-	return hello, nil
 
+	return hello, nil
 }
 
 // c.out.Mutex <= L; c.handshakeMutex <= L.
@@ -171,41 +169,35 @@ func (c *Conn) clientHandshake() error {
 		return err
 	}
 
-	// If we had a successful handshake and hs.session is different from the one already cached - cache a new one
+	// If we had a successful handshake and hs.session is different from
+	// the one already cached - cache a new one
 	if sessionCache != nil && hs.session != nil && session != hs.session {
 		sessionCache.Put(cacheKey, hs.session)
 	}
+
 	return nil
 }
 
 // Does the handshake, either a full one or resumes old session.
 // Requires hs.c, hs.hello, and, optionally, hs.session to be set.
 func (hs *clientHandshakeState) handshake() error {
-	if hs.c == nil {
-		return errors.New("tls: corrupted clientHandshakeState: hs.c is unset")
-	}
 	c := hs.c
 
-	if hs.hello == nil {
-		return errors.New("tls: corrupted clientHandshakeState: hs.hello is unset")
-	}
-
 	// send ClientHello
-	if _, err := hs.c.writeRecord(recordTypeHandshake, hs.hello.marshal()); err != nil {
+	if _, err := c.writeRecord(recordTypeHandshake, hs.hello.marshal()); err != nil {
 		return err
 	}
 
-	msg, err := hs.c.readHandshake()
+	msg, err := c.readHandshake()
 	if err != nil {
 		return err
 	}
 
-	serverHello, ok := msg.(*serverHelloMsg)
-	if !ok {
-		hs.c.sendAlert(alertUnexpectedMessage)
-		return unexpectedMessageError(serverHello, msg)
+	var ok bool
+	if hs.serverHello, ok = msg.(*serverHelloMsg); !ok {
+		c.sendAlert(alertUnexpectedMessage)
+		return unexpectedMessageError(hs.serverHello, msg)
 	}
-	hs.serverHello = serverHello
 
 	if err = hs.pickTLSVersion(); err != nil {
 		return err
@@ -215,12 +207,13 @@ func (hs *clientHandshakeState) handshake() error {
 		return err
 	}
 
-	var isResume bool
-	if isResume, err = hs.processServerHello(); err != nil {
+	isResume, err := hs.processServerHello()
+	if err != nil {
 		return err
 	}
 
 	hs.finishedHash = newFinishedHash(c.vers, hs.suite)
+
 	// No signatures of the handshake are needed in a resumption.
 	// Otherwise, in a full handshake, if we don't have any certificates
 	// configured then we will never send a CertificateVerify message and
@@ -285,19 +278,20 @@ func (hs *clientHandshakeState) pickTLSVersion() error {
 		hs.c.sendAlert(alertProtocolVersion)
 		return fmt.Errorf("tls: server selected unsupported protocol version %x", hs.serverHello.vers)
 	}
+
 	hs.c.vers = vers
 	hs.c.haveVers = true
+
 	return nil
 }
 
 func (hs *clientHandshakeState) pickCipherSuite() error {
-	suite := mutualCipherSuite(hs.hello.cipherSuites, hs.serverHello.cipherSuite)
-	if suite == nil {
+	if hs.suite = mutualCipherSuite(hs.hello.cipherSuites, hs.serverHello.cipherSuite); hs.suite == nil {
 		hs.c.sendAlert(alertHandshakeFailure)
 		return errors.New("tls: server chose an unconfigured cipher suite")
 	}
-	hs.suite = suite
-	hs.c.cipherSuite = suite.id
+
+	hs.c.cipherSuite = hs.suite.id
 	return nil
 }
 
