@@ -91,7 +91,7 @@ var (
 
 	// The rest will will parrot given browser.
 	HelloFirefox_Auto   ClientHelloID = ClientHelloID{helloFirefox, helloAutoVers}
-	HelloFirefox_53_WIP               = ClientHelloID{helloFirefox, 53}
+	HelloFirefox_55 = ClientHelloID{helloFirefox, 55}
 
 	HelloChrome_Auto ClientHelloID = ClientHelloID{helloChrome, helloAutoVers}
 	HelloChrome_58   ClientHelloID = ClientHelloID{helloChrome, 58}

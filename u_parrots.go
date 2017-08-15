@@ -18,8 +18,8 @@ import (
 func (uconn *UConn) generateClientHelloConfig(id ClientHelloID) error {
 	uconn.clientHelloID = id
 	switch uconn.clientHelloID {
-	case HelloFirefox_53_WIP:
-		return uconn.parrotFirefox_53_WIP()
+	case HelloFirefox_55:
+		return uconn.parrotFirefox_55()
 
 	case HelloAndroid_6_0_Browser:
 		return uconn.parrotAndroid_6_0()
@@ -47,7 +47,7 @@ func (uconn *UConn) generateClientHelloConfig(id ClientHelloID) error {
 	case HelloAndroid_Auto:
 		return uconn.generateClientHelloConfig(HelloAndroid_6_0_Browser)
 	case HelloFirefox_Auto:
-		return uconn.generateClientHelloConfig(HelloFirefox_53_WIP)
+		return uconn.generateClientHelloConfig(HelloFirefox_55)
 	case HelloChrome_Auto:
 		return uconn.generateClientHelloConfig(HelloChrome_58)
 
@@ -85,12 +85,7 @@ func (uconn *UConn) fillClientHelloHeader() error {
 	return nil
 }
 
-func (uconn *UConn) parrotFirefox_53_WIP() error {
-	/*
-	 Work in progress!
-	 TODO: double check session id generation
-	 TODO: add firefox-style padding
-	*/
+func (uconn *UConn) parrotFirefox_55() error {
 	hello := uconn.HandshakeState.Hello
 	session := uconn.HandshakeState.Session
 	hello.CipherSuites = []uint16{
@@ -146,6 +141,7 @@ func (uconn *UConn) parrotFirefox_53_WIP() error {
 		{hashSHA1, signatureECDSA},
 		{hashSHA1, signatureRSA}},
 	}
+	padding := FakePaddingExtension{GetPaddingLen: boringPaddingStyle}
 	uconn.Extensions = []TLSExtension{
 		&sni,
 		&ems,
@@ -156,6 +152,7 @@ func (uconn *UConn) parrotFirefox_53_WIP() error {
 		&alpn,
 		&status,
 		&sigAndHash,
+		&padding,
 	}
 	return nil
 }
