@@ -101,16 +101,6 @@ var (
 	HelloAndroid_5_1_Browser ClientHelloID = ClientHelloID{helloAndroid, 22}
 )
 
-// Appends newCipher to cipherSuites, if not there already
-// Used to add old cipher ids
-func appendToGlobalCipherSuites(newCipher *cipherSuite) {
-	for _, c := range cipherSuites {
-		if c.id == newCipher.id {
-			return
-		}
-	}
-	cipherSuites = append(cipherSuites, newCipher)
-}
 
 // Appends {hash, sig} to supportedSignatureAlgorithms, if not there already
 // Used to enable already supported but disabled signatures
