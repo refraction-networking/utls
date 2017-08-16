@@ -350,7 +350,7 @@ func ecdheRSAKA(version uint16) keyAgreement {
 func mutualCipherSuite(have []uint16, want uint16) *cipherSuite {
 	for _, id := range have {
 		if id == want {
-			for _, suite := range cipherSuites {
+			for _, suite := range utlsSupportedCipherSuites { // [UTLS]
 				if suite.id == want {
 					return suite
 				}
