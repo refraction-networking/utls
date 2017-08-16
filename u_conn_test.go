@@ -210,9 +210,12 @@ func TestUTLSHandshakeClientParrotAndroid_5_1(t *testing.T) {
 
 	// As this package sometimes has to modify global vars cipherSuites and supportedSignatureAlgorithms,
 	// we'll back them up and restore after running the tests.
+	cipherSuitesBackup := make([]*cipherSuite, len(cipherSuites))
 	supportedSignatureAlgorithmsBackup := make([]signatureAndHash, len(supportedSignatureAlgorithms))
+	copy(cipherSuitesBackup, cipherSuites)
 	copy(supportedSignatureAlgorithmsBackup, supportedSignatureAlgorithms)
 	defer func() {
+		cipherSuites = cipherSuitesBackup
 		supportedSignatureAlgorithms = supportedSignatureAlgorithmsBackup
 	}()
 
@@ -235,9 +238,12 @@ func TestUTLSHandshakeClientParrotAndroid_6_0(t *testing.T) {
 
 	// As this package sometimes has to modify global vars cipherSuites and supportedSignatureAlgorithms,
 	// we'll back them up and restore after running the tests.
+	cipherSuitesBackup := make([]*cipherSuite, len(cipherSuites))
 	supportedSignatureAlgorithmsBackup := make([]signatureAndHash, len(supportedSignatureAlgorithms))
+	copy(cipherSuitesBackup, cipherSuites)
 	copy(supportedSignatureAlgorithmsBackup, supportedSignatureAlgorithms)
 	defer func() {
+		cipherSuites = cipherSuitesBackup
 		supportedSignatureAlgorithms = supportedSignatureAlgorithmsBackup
 	}()
 
@@ -260,9 +266,12 @@ func TestUTLSHandshakeClientParrotChrome_58(t *testing.T) {
 
 	// As this package sometimes has to modify global vars cipherSuites and supportedSignatureAlgorithms,
 	// we'll back them up and restore after running the tests.
+	cipherSuitesBackup := make([]*cipherSuite, len(cipherSuites))
 	supportedSignatureAlgorithmsBackup := make([]signatureAndHash, len(supportedSignatureAlgorithms))
+	copy(cipherSuitesBackup, cipherSuites)
 	copy(supportedSignatureAlgorithmsBackup, supportedSignatureAlgorithms)
 	defer func() {
+		cipherSuites = cipherSuitesBackup
 		supportedSignatureAlgorithms = supportedSignatureAlgorithmsBackup
 	}()
 

@@ -163,6 +163,10 @@ func (uconn *UConn) parrotAndroid_6_0() error {
 	hello := uconn.HandshakeState.Hello
 	session := uconn.HandshakeState.Session
 
+	appendToGlobalCipherSuites(&cipherSuite{OLD_TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256, 32, 0, 12,
+		ecdheRSAKA, suiteECDHE | suiteTLS12, nil, nil, aeadChaCha20Poly1305})
+	appendToGlobalCipherSuites(&cipherSuite{OLD_TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256, 32, 0, 12,
+		ecdheECDSAKA, suiteECDHE | suiteECDSA | suiteTLS12, nil, nil, aeadChaCha20Poly1305})
 	hello.CipherSuites = []uint16{
 		OLD_TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
 		OLD_TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
@@ -238,6 +242,10 @@ func (uconn *UConn) parrotAndroid_5_1() error {
 	hello := uconn.HandshakeState.Hello
 	session := uconn.HandshakeState.Session
 
+	appendToGlobalCipherSuites(&cipherSuite{OLD_TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256, 32, 0, 12,
+		ecdheRSAKA, suiteECDHE | suiteTLS12, nil, nil, aeadChaCha20Poly1305})
+	appendToGlobalCipherSuites(&cipherSuite{OLD_TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256, 32, 0, 12,
+		ecdheECDSAKA, suiteECDHE | suiteECDSA | suiteTLS12, nil, nil, aeadChaCha20Poly1305})
 	hello.CipherSuites = []uint16{
 		OLD_TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
 		OLD_TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
