@@ -67,6 +67,7 @@ type ServerHelloMsg struct {
 	NextProtos                   []string
 	OcspStapling                 bool
 	Scts                         [][]byte
+	Ems bool
 	TicketSupported              bool
 	SecureRenegotiation          []byte
 	SecureRenegotiationSupported bool
@@ -88,6 +89,7 @@ func (shm *ServerHelloMsg) getPrivatePtr() *serverHelloMsg {
 			nextProtos:                   shm.NextProtos,
 			ocspStapling:                 shm.OcspStapling,
 			scts:                         shm.Scts,
+			ems: shm.Ems,
 			ticketSupported:              shm.TicketSupported,
 			secureRenegotiation:          shm.SecureRenegotiation,
 			secureRenegotiationSupported: shm.SecureRenegotiationSupported,
@@ -111,6 +113,7 @@ func (shm *serverHelloMsg) getPublicPtr() *ServerHelloMsg {
 			NextProtos:                   shm.nextProtos,
 			OcspStapling:                 shm.ocspStapling,
 			Scts:                         shm.scts,
+			Ems: shm.ems,
 			TicketSupported:              shm.ticketSupported,
 			SecureRenegotiation:          shm.secureRenegotiation,
 			SecureRenegotiationSupported: shm.secureRenegotiationSupported,
@@ -130,6 +133,7 @@ type ClientHelloMsg struct {
 	ServerName                   string
 	OcspStapling                 bool
 	Scts                         bool
+	Ems                         bool
 	SupportedCurves              []CurveID
 	SupportedPoints              []uint8
 	TicketSupported              bool
@@ -155,6 +159,7 @@ func (chm *ClientHelloMsg) getPrivatePtr() *clientHelloMsg {
 			serverName:                   chm.ServerName,
 			ocspStapling:                 chm.OcspStapling,
 			scts:                         chm.Scts,
+			ems:                         chm.Ems,
 			supportedCurves:              chm.SupportedCurves,
 			supportedPoints:              chm.SupportedPoints,
 			ticketSupported:              chm.TicketSupported,
@@ -182,6 +187,7 @@ func (chm *clientHelloMsg) getPublicPtr() *ClientHelloMsg {
 			ServerName:                   chm.serverName,
 			OcspStapling:                 chm.ocspStapling,
 			Scts:                         chm.scts,
+			Ems: chm.ems,
 			SupportedCurves:              chm.supportedCurves,
 			SupportedPoints:              chm.supportedPoints,
 			TicketSupported:              chm.ticketSupported,

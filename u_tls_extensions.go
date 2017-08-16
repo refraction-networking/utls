@@ -378,28 +378,39 @@ func (e *FakeChannelIDExtension) Read(b []byte) (int, error) {
 	return e.Len(), io.EOF
 }
 
-type FakeExtendedMasterSecretExtension struct {
+type utlsExtendedMasterSecretExtension struct {
 }
 
-// TODO: update when Cloudflare upstreams this extension to crypto/tls
+// TODO: update when this extension is implemented in crypto/tls
 // but we probably won't have to enable it in Config
-func (e *FakeExtendedMasterSecretExtension) writeToUConn(uc *UConn) error {
+func (e *utlsExtendedMasterSecretExtension) writeToUConn(uc *UConn) error {
+	uc.HandshakeState.Hello.Ems = true
 	return nil
 }
 
-func (e *FakeExtendedMasterSecretExtension) Len() int {
+func (e *utlsExtendedMasterSecretExtension) Len() int {
 	return 4
 }
 
-func (e *FakeExtendedMasterSecretExtension) Read(b []byte) (int, error) {
+func (e *utlsExtendedMasterSecretExtension) Read(b []byte) (int, error) {
 	if len(b) < e.Len() {
 		return 0, io.ErrShortBuffer
 	}
 	// https://tools.ietf.org/html/rfc7627
-	b[0] = byte(fakeExtensionExtendedMasterSecret >> 8)
-	b[1] = byte(fakeExtensionExtendedMasterSecret)
+	b[0] = byte(utlsExtensionExtendedMasterSecret >> 8)
+	b[1] = byte(utlsExtensionExtendedMasterSecret)
 	// The length is 0
 	return e.Len(), io.EOF
+}
+
+var extendedMasterSecretLabel = []byte("extended master secret")
+// extendedMasterFromPreMasterSecret generates the master secret from the pre-master
+// secret and session hash. See https://tools.ietf.org/html/rfc7627#section-4
+func extendedMasterFromPreMasterSecret(version uint16, suite *cipherSuite, preMasterSecret []byte, fh finishedHash) []byte {
+       sessionHash := fh.Sum()
+       masterSecret := make([]byte, masterSecretLength)
+       prfForVersion(version, suite)(masterSecret, preMasterSecret, extendedMasterSecretLabel, sessionHash)
+       return masterSecret
 }
 
 // GREASE stinks with dead parrots, have to be super careful, and, if possible, not include GREASE
@@ -453,7 +464,7 @@ func (e *FakeGREASEExtension) Read(b []byte) (int, error) {
 }
 
 //
-type FakePaddingExtension struct {
+type utlsPaddingExtension struct {
 	PaddingLen int
 	WillPad    bool // set to false to disable extension
 
@@ -462,11 +473,11 @@ type FakePaddingExtension struct {
 	GetPaddingLen func(clientHelloUnpaddedLen int) (paddingLen int, willPad bool)
 }
 
-func (e *FakePaddingExtension) writeToUConn(uc *UConn) error {
+func (e *utlsPaddingExtension) writeToUConn(uc *UConn) error {
 	return nil
 }
 
-func (e *FakePaddingExtension) Len() int {
+func (e *utlsPaddingExtension) Len() int {
 	if e.WillPad {
 		return 4 + e.PaddingLen
 	} else {
@@ -474,13 +485,13 @@ func (e *FakePaddingExtension) Len() int {
 	}
 }
 
-func (e *FakePaddingExtension) Update(clientHelloUnpaddedLen int) {
+func (e *utlsPaddingExtension) Update(clientHelloUnpaddedLen int) {
 	if e.GetPaddingLen != nil {
 		e.PaddingLen, e.WillPad = e.GetPaddingLen(clientHelloUnpaddedLen)
 	}
 }
 
-func (e *FakePaddingExtension) Read(b []byte) (int, error) {
+func (e *utlsPaddingExtension) Read(b []byte) (int, error) {
 	if !e.WillPad {
 		return 0, io.EOF
 	}
@@ -488,8 +499,8 @@ func (e *FakePaddingExtension) Read(b []byte) (int, error) {
 		return 0, io.ErrShortBuffer
 	}
 	// https://tools.ietf.org/html/rfc7627
-	b[0] = byte(fakeExtensionPadding >> 8)
-	b[1] = byte(fakeExtensionPadding)
+	b[0] = byte(utlsExtensionPadding >> 8)
+	b[1] = byte(utlsExtensionPadding)
 	b[2] = byte(e.PaddingLen >> 8)
 	b[3] = byte(e.PaddingLen)
 	return e.Len(), io.EOF

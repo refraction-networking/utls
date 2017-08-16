@@ -306,9 +306,9 @@ func (uconn *UConn) marshalClientHello() error {
 		1 + len(hello.CompressionMethods)
 
 	extensionsLen := 0
-	var paddingExt *FakePaddingExtension
+	var paddingExt *utlsPaddingExtension
 	for _, ext := range uconn.Extensions {
-		if pe, ok := ext.(*FakePaddingExtension); !ok {
+		if pe, ok := ext.(*utlsPaddingExtension); !ok {
 			// If not padding - just add length of extension to total length
 			extensionsLen += ext.Len()
 		} else {

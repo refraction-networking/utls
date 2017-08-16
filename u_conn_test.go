@@ -230,8 +230,7 @@ func TestUTLSHandshakeClientParrotAndroid_5_1(t *testing.T) {
 	testUTLSHandshakeClientRSA_AES128_GCM_SHA256(t, helloID)
 }
 
-// Enable whenever EMS is implemented
-func disabledtestUTLSHandshakeClientParrotAndroid_6_0(t *testing.T) {
+func TestUTLSHandshakeClientParrotAndroid_6_0(t *testing.T) {
 	helloID := HelloAndroid_6_0_Browser
 
 	// As this package sometimes has to modify global vars cipherSuites and supportedSignatureAlgorithms,
@@ -256,8 +255,7 @@ func disabledtestUTLSHandshakeClientParrotAndroid_6_0(t *testing.T) {
 	testUTLSHandshakeClientRSA_AES128_GCM_SHA256(t, helloID)
 }
 
-// Enable whenever EMS is implemented
-func disabledtestUTLSHandshakeClientParrotChrome_58(t *testing.T) {
+func TestUTLSHandshakeClientParrotChrome_58(t *testing.T) {
 	helloID := HelloChrome_58
 
 	// As this package sometimes has to modify global vars cipherSuites and supportedSignatureAlgorithms,
@@ -278,6 +276,36 @@ func disabledtestUTLSHandshakeClientParrotChrome_58(t *testing.T) {
 
 	testUTLSHandshakeClientECDHE_RSA_AES128_CBC_SHA(t, helloID)
 	testUTLSHandshakeClientECDHE_RSA_AES256_CBC_SHA(t, helloID)
+
+	testUTLSHandshakeClientRSA_AES128_GCM_SHA256(t, helloID)
+}
+
+
+func TestUTLSHandshakeClientParrotFirefox_55(t *testing.T) {
+	helloID := HelloFirefox_55
+
+	// As this package sometimes has to modify global vars cipherSuites and supportedSignatureAlgorithms,
+	// we'll back them up and restore after running the tests.
+	supportedSignatureAlgorithmsBackup := make([]signatureAndHash, len(supportedSignatureAlgorithms))
+	copy(supportedSignatureAlgorithmsBackup, supportedSignatureAlgorithms)
+	defer func() {
+		supportedSignatureAlgorithms = supportedSignatureAlgorithmsBackup
+	}()
+
+	testUTLSHandshakeClientECDHE_ECDSA_AES128_GCM_SHA256(t, helloID)
+	testUTLSHandshakeClientECDHE_RSA_AES128_GCM_SHA256(t, helloID)
+
+	testUTLSHandshakeClientECDHE_ECDSA_WITH_CHACHA20_POLY1305(t, helloID)
+	testUTLSHandshakeClientECDHE_RSA_WITH_CHACHA20_POLY1305(t, helloID)
+
+	testUTLSHandshakeClientECDHE_ECDSA_AES256_GCM_SHA256(t, helloID)
+	testUTLSHandshakeClientECDHE_RSA_AES256_GCM_SHA256(t, helloID)
+
+	testUTLSHandshakeClientECDHE_ECDSA_AES256_CBC_SHA(t, helloID)
+	testUTLSHandshakeClientECDHE_ECDSA_AES128_CBC_SHA(t, helloID)
+
+	testUTLSHandshakeClientECDHE_RSA_AES256_CBC_SHA(t, helloID)
+	testUTLSHandshakeClientECDHE_RSA_AES128_CBC_SHA(t, helloID)
 
 	testUTLSHandshakeClientRSA_AES128_GCM_SHA256(t, helloID)
 }

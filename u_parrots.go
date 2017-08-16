@@ -111,7 +111,7 @@ func (uconn *UConn) parrotFirefox_55() error {
 	}
 
 	sni := SNIExtension{uconn.config.ServerName}
-	ems := FakeExtendedMasterSecretExtension{}
+	ems := utlsExtendedMasterSecretExtension{}
 	reneg := RenegotiationInfoExtension{renegotiation: RenegotiateOnceAsClient}
 	curves := SupportedCurvesExtension{[]CurveID{X25519, CurveP256, CurveP384, CurveP521}}
 	points := SupportedPointsExtension{SupportedPoints: []byte{pointFormatUncompressed}}
@@ -128,6 +128,8 @@ func (uconn *UConn) parrotFirefox_55() error {
 	}
 	alpn := ALPNExtension{AlpnProtocols: []string{"h2", "http/1.1"}}
 	status := StatusRequestExtension{}
+	appendToGlobalSigAlgs(disabledHashSHA512, signatureRSA)
+	appendToGlobalSigAlgs(disabledHashSHA512, signatureECDSA)
 	sigAndHash := SignatureAlgorithmsExtension{SignatureAndHashes: []SignatureAndHash{
 		{hashSHA256, signatureECDSA},
 		{hashSHA384, signatureECDSA},
@@ -141,7 +143,7 @@ func (uconn *UConn) parrotFirefox_55() error {
 		{hashSHA1, signatureECDSA},
 		{hashSHA1, signatureRSA}},
 	}
-	padding := FakePaddingExtension{GetPaddingLen: boringPaddingStyle}
+	padding := utlsPaddingExtension{GetPaddingLen: boringPaddingStyle}
 	uconn.Extensions = []TLSExtension{
 		&sni,
 		&ems,
@@ -186,7 +188,7 @@ func (uconn *UConn) parrotAndroid_6_0() error {
 	}
 
 	sni := SNIExtension{uconn.config.ServerName}
-	ems := FakeExtendedMasterSecretExtension{}
+	ems := utlsExtendedMasterSecretExtension{}
 	sessionTicket := SessionTicketExtension{Session: session}
 	if session != nil {
 		sessionTicket.Session = session
@@ -215,7 +217,7 @@ func (uconn *UConn) parrotAndroid_6_0() error {
 	alpn := ALPNExtension{AlpnProtocols: []string{"http/1.1", "spdy/8.1"}}
 	points := SupportedPointsExtension{SupportedPoints: []byte{pointFormatUncompressed}}
 	curves := SupportedCurvesExtension{[]CurveID{CurveP256, CurveP384}}
-	padding := FakePaddingExtension{GetPaddingLen: boringPaddingStyle}
+	padding := utlsPaddingExtension{GetPaddingLen: boringPaddingStyle}
 
 	uconn.Extensions = []TLSExtension{
 		&sni,
@@ -293,7 +295,7 @@ func (uconn *UConn) parrotAndroid_5_1() error {
 	alpn := ALPNExtension{AlpnProtocols: []string{"http/1.1", "spdy/3", "spdy/3.1"}}
 	points := SupportedPointsExtension{SupportedPoints: []byte{pointFormatUncompressed}}
 	curves := SupportedCurvesExtension{[]CurveID{CurveP256, CurveP384, CurveP521}}
-	padding := FakePaddingExtension{GetPaddingLen: boringPaddingStyle}
+	padding := utlsPaddingExtension{GetPaddingLen: boringPaddingStyle}
 
 	uconn.Extensions = []TLSExtension{
 		&sni,
@@ -345,7 +347,7 @@ func (uconn *UConn) parrotChrome_58() error {
 	grease1 := FakeGREASEExtension{Value: grease_ext1}
 	reneg := RenegotiationInfoExtension{renegotiation: RenegotiateOnceAsClient}
 	sni := SNIExtension{uconn.config.ServerName}
-	ems := FakeExtendedMasterSecretExtension{}
+	ems := utlsExtendedMasterSecretExtension{}
 	sessionTicket := SessionTicketExtension{Session: session}
 	if session != nil {
 		sessionTicket.Session = session
@@ -375,7 +377,7 @@ func (uconn *UConn) parrotChrome_58() error {
 	curves := SupportedCurvesExtension{[]CurveID{CurveID(GetBoringGREASEValue(hello.Random, ssl_grease_group)),
 		X25519, CurveP256, CurveP384}}
 	grease2 := FakeGREASEExtension{Value: grease_ext2, Body: []byte{0}}
-	padding := FakePaddingExtension{GetPaddingLen: boringPaddingStyle}
+	padding := utlsPaddingExtension{GetPaddingLen: boringPaddingStyle}
 
 	uconn.Extensions = []TLSExtension{
 		&grease1,
@@ -470,7 +472,7 @@ func (uconn *UConn) parrotRandomizedNoALPN() error {
 	}
 	curves := SupportedCurvesExtension{curveIDs}
 
-	padding := FakePaddingExtension{GetPaddingLen: boringPaddingStyle}
+	padding := utlsPaddingExtension{GetPaddingLen: boringPaddingStyle}
 	reneg := RenegotiationInfoExtension{renegotiation: RenegotiateOnceAsClient}
 
 	uconn.Extensions = []TLSExtension{

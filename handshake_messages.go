@@ -20,6 +20,7 @@ type clientHelloMsg struct {
 	serverName                   string
 	ocspStapling                 bool
 	scts                         bool
+	ems                          bool
 	supportedCurves              []CurveID
 	supportedPoints              []uint8
 	ticketSupported              bool
@@ -515,6 +516,7 @@ type serverHelloMsg struct {
 	nextProtos                   []string
 	ocspStapling                 bool
 	scts                         [][]byte
+	ems                          bool
 	ticketSupported              bool
 	secureRenegotiation          []byte
 	secureRenegotiationSupported bool
@@ -545,6 +547,7 @@ func (m *serverHelloMsg) equal(i interface{}) bool {
 		m.nextProtoNeg == m1.nextProtoNeg &&
 		eqStrings(m.nextProtos, m1.nextProtos) &&
 		m.ocspStapling == m1.ocspStapling &&
+		m.ems == m1.ems &&
 		m.ticketSupported == m1.ticketSupported &&
 		m.secureRenegotiationSupported == m1.secureRenegotiationSupported &&
 		bytes.Equal(m.secureRenegotiation, m1.secureRenegotiation) &&
@@ -770,6 +773,12 @@ func (m *serverHelloMsg) unmarshal(data []byte) bool {
 				return false
 			}
 			m.ticketSupported = true
+		case utlsExtensionExtendedMasterSecret:
+			// No sanity check for this extension: pretending not to know it.
+			// if length > 0 {
+			// 	return false
+			// }
+			m.ems = true
 		case extensionRenegotiationInfo:
 			if length == 0 {
 				return false
