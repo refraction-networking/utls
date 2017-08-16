@@ -404,13 +404,14 @@ func (e *utlsExtendedMasterSecretExtension) Read(b []byte) (int, error) {
 }
 
 var extendedMasterSecretLabel = []byte("extended master secret")
+
 // extendedMasterFromPreMasterSecret generates the master secret from the pre-master
 // secret and session hash. See https://tools.ietf.org/html/rfc7627#section-4
 func extendedMasterFromPreMasterSecret(version uint16, suite *cipherSuite, preMasterSecret []byte, fh finishedHash) []byte {
-       sessionHash := fh.Sum()
-       masterSecret := make([]byte, masterSecretLength)
-       prfForVersion(version, suite)(masterSecret, preMasterSecret, extendedMasterSecretLabel, sessionHash)
-       return masterSecret
+	sessionHash := fh.Sum()
+	masterSecret := make([]byte, masterSecretLength)
+	prfForVersion(version, suite)(masterSecret, preMasterSecret, extendedMasterSecretLabel, sessionHash)
+	return masterSecret
 }
 
 // GREASE stinks with dead parrots, have to be super careful, and, if possible, not include GREASE

@@ -208,17 +208,6 @@ func (test *clientTest) runUTLS(t *testing.T, write bool, helloID ClientHelloID)
 func TestUTLSHandshakeClientParrotAndroid_5_1(t *testing.T) {
 	helloID := HelloAndroid_5_1_Browser
 
-	// As this package sometimes has to modify global vars cipherSuites and supportedSignatureAlgorithms,
-	// we'll back them up and restore after running the tests.
-	cipherSuitesBackup := make([]*cipherSuite, len(cipherSuites))
-	supportedSignatureAlgorithmsBackup := make([]signatureAndHash, len(supportedSignatureAlgorithms))
-	copy(cipherSuitesBackup, cipherSuites)
-	copy(supportedSignatureAlgorithmsBackup, supportedSignatureAlgorithms)
-	defer func() {
-		cipherSuites = cipherSuitesBackup
-		supportedSignatureAlgorithms = supportedSignatureAlgorithmsBackup
-	}()
-
 	// Android 5.1 offers old cipher ids for these, but current versions of OpenSSL no longer recognize old ids
 	// testUTLSHandshakeClientECDHE_ECDSA_WITH_CHACHA20_POLY1305(t, helloID)
 	// testUTLSHandshakeClientECDHE_RSA_WITH_CHACHA20_POLY1305(t, helloID)
@@ -238,21 +227,9 @@ func TestUTLSHandshakeClientParrotAndroid_6_0(t *testing.T) {
 	// TODO: EC tests below are disabled because latest version of reference OpenSSL doesn't support p256 nor p384
 	// and I can't find configuration flag to enable it. Therefore I can't record replays.
 
-	// As this package sometimes has to modify global vars cipherSuites and supportedSignatureAlgorithms,
-	// we'll back them up and restore after running the tests.
-	cipherSuitesBackup := make([]*cipherSuite, len(cipherSuites))
-	supportedSignatureAlgorithmsBackup := make([]signatureAndHash, len(supportedSignatureAlgorithms))
-	copy(cipherSuitesBackup, cipherSuites)
-	copy(supportedSignatureAlgorithmsBackup, supportedSignatureAlgorithms)
-	defer func() {
-		cipherSuites = cipherSuitesBackup
-		supportedSignatureAlgorithms = supportedSignatureAlgorithmsBackup
-	}()
-
 	// Android 6.0 offers old cipher ids for these, but current versions of OpenSSL no longer recognize old ids
 	// testUTLSHandshakeClientECDHE_ECDSA_WITH_CHACHA20_POLY1305(t, helloID)
 	// testUTLSHandshakeClientECDHE_RSA_WITH_CHACHA20_POLY1305(t, helloID)
-
 
 	//testUTLSHandshakeClientECDHE_ECDSA_AES128_GCM_SHA256(t, helloID)
 	testUTLSHandshakeClientECDHE_RSA_AES128_GCM_SHA256(t, helloID)
@@ -269,17 +246,6 @@ func TestUTLSHandshakeClientParrotChrome_58(t *testing.T) {
 	// TODO: EC tests below are disabled because latest version of reference OpenSSL doesn't support p256 nor p384
 	// nor X25519 and I can't find configuration flag to enable it. Therefore I can't record replays.
 
-	// As this package sometimes has to modify global vars cipherSuites and supportedSignatureAlgorithms,
-	// we'll back them up and restore after running the tests.
-	cipherSuitesBackup := make([]*cipherSuite, len(cipherSuites))
-	supportedSignatureAlgorithmsBackup := make([]signatureAndHash, len(supportedSignatureAlgorithms))
-	copy(cipherSuitesBackup, cipherSuites)
-	copy(supportedSignatureAlgorithmsBackup, supportedSignatureAlgorithms)
-	defer func() {
-		cipherSuites = cipherSuitesBackup
-		supportedSignatureAlgorithms = supportedSignatureAlgorithmsBackup
-	}()
-
 	//testUTLSHandshakeClientECDHE_ECDSA_AES128_GCM_SHA256(t, helloID)
 	testUTLSHandshakeClientECDHE_RSA_AES128_GCM_SHA256(t, helloID)
 	//testUTLSHandshakeClientECDHE_ECDSA_AES256_GCM_SHA256(t, helloID)
@@ -294,20 +260,8 @@ func TestUTLSHandshakeClientParrotChrome_58(t *testing.T) {
 	testUTLSHandshakeClientRSA_AES128_GCM_SHA256(t, helloID)
 }
 
-
 func TestUTLSHandshakeClientParrotFirefox_55(t *testing.T) {
 	helloID := HelloFirefox_55
-
-	// As this package sometimes has to modify global vars cipherSuites and supportedSignatureAlgorithms,
-	// we'll back them up and restore after running the tests.
-	cipherSuitesBackup := make([]*cipherSuite, len(cipherSuites))
-	supportedSignatureAlgorithmsBackup := make([]signatureAndHash, len(supportedSignatureAlgorithms))
-	copy(cipherSuitesBackup, cipherSuites)
-	copy(supportedSignatureAlgorithmsBackup, supportedSignatureAlgorithms)
-	defer func() {
-		cipherSuites = cipherSuitesBackup
-		supportedSignatureAlgorithms = supportedSignatureAlgorithmsBackup
-	}()
 
 	testUTLSHandshakeClientECDHE_ECDSA_AES128_GCM_SHA256(t, helloID)
 	testUTLSHandshakeClientECDHE_RSA_AES128_GCM_SHA256(t, helloID)

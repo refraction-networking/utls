@@ -4,7 +4,9 @@
 
 package tls
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // Naming convention:
 // Unsupported things are prefixed with "Fake"
@@ -99,25 +101,15 @@ var (
 	HelloAndroid_5_1_Browser ClientHelloID = ClientHelloID{helloAndroid, 22}
 )
 
-// Appends newCipher to cipherSuites, if not there already
-// Used to add old cipher ids
-func appendToGlobalCipherSuites(newCipher *cipherSuite) {
-	for _, c := range cipherSuites {
-		if c.id == newCipher.id {
-			return
-		}
-	}
-	cipherSuites = append(cipherSuites, newCipher)
-}
+var utlsSupportedSignatureAlgorithms []signatureAndHash
+var utlsSupportedCipherSuites []*cipherSuite
 
-// Appends {hash, sig} to supportedSignatureAlgorithms, if not there already
-// Used to enable already supported but disabled signatures
-func appendToGlobalSigAlgs(hash uint8, sig uint8) {
-	s := signatureAndHash{hash, sig}
-	for _, c := range supportedSignatureAlgorithms {
-		if c.hash == s.hash && c.signature == s.signature {
-			return
-		}
-	}
-	supportedSignatureAlgorithms = append(supportedSignatureAlgorithms, s)
+func init() {
+	utlsSupportedSignatureAlgorithms = append(supportedSignatureAlgorithms,
+		[]signatureAndHash{{disabledHashSHA512, signatureRSA}, {disabledHashSHA512, signatureECDSA}}...)
+	utlsSupportedCipherSuites = append(cipherSuites, []*cipherSuite{
+		{OLD_TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256, 32, 0, 12, ecdheRSAKA,
+			suiteECDHE | suiteTLS12 | suiteDefaultOff, nil, nil, aeadChaCha20Poly1305},
+		{OLD_TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256, 32, 0, 12, ecdheECDSAKA,
+			suiteECDHE | suiteECDSA | suiteTLS12 | suiteDefaultOff, nil, nil, aeadChaCha20Poly1305}}...)
 }

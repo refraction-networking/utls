@@ -114,7 +114,7 @@ func md5SHA1Hash(slices [][]byte) []byte {
 // only used for >= TLS 1.2 and precisely identifies the hash function to use.
 func hashForServerKeyExchange(sigAndHash signatureAndHash, version uint16, slices ...[]byte) ([]byte, crypto.Hash, error) {
 	if version >= VersionTLS12 {
-		if !isSupportedSignatureAndHash(sigAndHash, supportedSignatureAlgorithms) {
+		if !isSupportedSignatureAndHash(sigAndHash, utlsSupportedSignatureAlgorithms) { // [UTLS]
 			return nil, crypto.Hash(0), errors.New("tls: unsupported hash function used by peer")
 		}
 		hashFunc, err := lookupTLSHash(sigAndHash.hash)

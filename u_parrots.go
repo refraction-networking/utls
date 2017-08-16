@@ -128,8 +128,6 @@ func (uconn *UConn) parrotFirefox_55() error {
 	}
 	alpn := ALPNExtension{AlpnProtocols: []string{"h2", "http/1.1"}}
 	status := StatusRequestExtension{}
-	appendToGlobalSigAlgs(disabledHashSHA512, signatureRSA)
-	appendToGlobalSigAlgs(disabledHashSHA512, signatureECDSA)
 	sigAndHash := SignatureAlgorithmsExtension{SignatureAndHashes: []SignatureAndHash{
 		{hashSHA256, signatureECDSA},
 		{hashSHA384, signatureECDSA},
@@ -163,10 +161,6 @@ func (uconn *UConn) parrotAndroid_6_0() error {
 	hello := uconn.HandshakeState.Hello
 	session := uconn.HandshakeState.Session
 
-	appendToGlobalCipherSuites(&cipherSuite{OLD_TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256, 32, 0, 12,
-		ecdheRSAKA, suiteECDHE | suiteTLS12 | suiteDefaultOff, nil, nil, aeadChaCha20Poly1305})
-	appendToGlobalCipherSuites(&cipherSuite{OLD_TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256, 32, 0, 12,
-		ecdheECDSAKA, suiteECDHE | suiteECDSA | suiteTLS12 | suiteDefaultOff, nil, nil, aeadChaCha20Poly1305})
 	hello.CipherSuites = []uint16{
 		OLD_TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
 		OLD_TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
@@ -201,8 +195,6 @@ func (uconn *UConn) parrotAndroid_6_0() error {
 			hello.SessionId = sessionId[:]
 		}
 	}
-	appendToGlobalSigAlgs(disabledHashSHA512, signatureRSA)
-	appendToGlobalSigAlgs(disabledHashSHA512, signatureECDSA)
 	sigAndHash := SignatureAlgorithmsExtension{SignatureAndHashes: []SignatureAndHash{
 		{disabledHashSHA512, signatureRSA},
 		{disabledHashSHA512, signatureECDSA},
@@ -242,10 +234,6 @@ func (uconn *UConn) parrotAndroid_5_1() error {
 	hello := uconn.HandshakeState.Hello
 	session := uconn.HandshakeState.Session
 
-	appendToGlobalCipherSuites(&cipherSuite{OLD_TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256, 32, 0, 12,
-		ecdheRSAKA, suiteECDHE | suiteTLS12 | suiteDefaultOff, nil, nil, aeadChaCha20Poly1305})
-	appendToGlobalCipherSuites(&cipherSuite{OLD_TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256, 32, 0, 12,
-		ecdheECDSAKA, suiteECDHE | suiteECDSA | suiteTLS12 | suiteDefaultOff, nil, nil, aeadChaCha20Poly1305})
 	hello.CipherSuites = []uint16{
 		OLD_TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
 		OLD_TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
@@ -283,8 +271,6 @@ func (uconn *UConn) parrotAndroid_5_1() error {
 			hello.SessionId = sessionId[:]
 		}
 	}
-	appendToGlobalSigAlgs(disabledHashSHA512, signatureRSA)
-	appendToGlobalSigAlgs(disabledHashSHA512, signatureECDSA)
 	sigAndHash := SignatureAlgorithmsExtension{SignatureAndHashes: []SignatureAndHash{
 		{disabledHashSHA512, signatureRSA},
 		{disabledHashSHA512, signatureECDSA},
@@ -364,8 +350,6 @@ func (uconn *UConn) parrotChrome_58() error {
 			hello.SessionId = sessionId[:]
 		}
 	}
-	appendToGlobalSigAlgs(disabledHashSHA512, signatureRSA)
-	appendToGlobalSigAlgs(disabledHashSHA512, signatureECDSA)
 	sigAndHash := SignatureAlgorithmsExtension{SignatureAndHashes: []SignatureAndHash{
 		{hashSHA256, signatureECDSA},
 		fakeRsaPssSha256,
@@ -451,11 +435,9 @@ func (uconn *UConn) parrotRandomizedNoALPN() error {
 	}
 	if tossBiasedCoin(0.5) {
 		sigAndHashAlgos = append(sigAndHashAlgos, SignatureAndHash{disabledHashSHA512, signatureECDSA})
-		appendToGlobalSigAlgs(disabledHashSHA512, signatureECDSA)
 	}
 	if tossBiasedCoin(0.5) {
 		sigAndHashAlgos = append(sigAndHashAlgos, SignatureAndHash{disabledHashSHA512, signatureRSA})
-		appendToGlobalSigAlgs(disabledHashSHA512, signatureRSA)
 	}
 	if tossBiasedCoin(0.5) {
 		sigAndHashAlgos = append(sigAndHashAlgos, SignatureAndHash{hashSHA1, signatureECDSA})
