@@ -13,6 +13,8 @@ import (
 	"net"
 	"strconv"
 	"sync"
+	"sync/atomic"
+	"crypto/cipher"
 )
 
 type UConn struct {
@@ -206,6 +208,65 @@ func (c *UConn) Handshake() error {
 
 	return c.handshakeErr
 }
+
+// Copy-pasted from tls.Conn in its entirety. But c.Handshake() is now utls' one, not tls.
+// Write writes data to the connection.
+func (c *UConn) Write(b []byte) (int, error) {
+	// interlock with Close below
+	for {
+		x := atomic.LoadInt32(&c.activeCall)
+		if x&1 != 0 {
+			return 0, errClosed
+		}
+		if atomic.CompareAndSwapInt32(&c.activeCall, x, x+2) {
+			defer atomic.AddInt32(&c.activeCall, -2)
+			break
+		}
+	}
+
+	if err := c.Handshake(); err != nil {
+		return 0, err
+	}
+
+	c.out.Lock()
+	defer c.out.Unlock()
+
+	if err := c.out.err; err != nil {
+		return 0, err
+	}
+
+	if !c.handshakeComplete {
+		return 0, alertInternalError
+	}
+
+	if c.closeNotifySent {
+		return 0, errShutdown
+	}
+
+	// SSL 3.0 and TLS 1.0 are susceptible to a chosen-plaintext
+	// attack when using block mode ciphers due to predictable IVs.
+	// This can be prevented by splitting each Application Data
+	// record into two records, effectively randomizing the IV.
+	//
+	// http://www.openssl.org/~bodo/tls-cbc.txt
+	// https://bugzilla.mozilla.org/show_bug.cgi?id=665814
+	// http://www.imperialviolet.org/2012/01/15/beastfollowup.html
+
+	var m int
+	if len(b) > 1 && c.vers <= VersionTLS10 {
+		if _, ok := c.out.cipher.(cipher.BlockMode); ok {
+			n, err := c.writeRecordLocked(recordTypeApplicationData, b[:1])
+			if err != nil {
+				return n, c.out.setErrorLocked(err)
+			}
+			m, b = 1, b[1:]
+		}
+	}
+
+	n, err := c.writeRecordLocked(recordTypeApplicationData, b)
+	return n + m, c.out.setErrorLocked(err)
+}
+
 
 // c.out.Mutex <= L; c.handshakeMutex <= L.
 func (c *UConn) clientHandshakeWithState(hs *clientHandshakeState) error {
