@@ -24,22 +24,17 @@ This package allows ClientHello messages to parrot popular browsers. There are f
  This is not a problem, if you fully control the server.
  * Parroting could be imperfect, and there is no parroting beyond ClientHello.\
 
-| Parrot        | Ciphers* | Signature* | Unsupported extensions            |
-| ------------- | -------- | ---------- | --------------------------------- |
-| Android 5.1   | low      | very low   | None                              |
-| Android 6.0   | low      | very low   | Extended Master Secret**          |
-| Chrome 58     | no       | low        | Extended Master Secret**, ChannelID |
+| Parrot        | Ciphers* | Signature* | Unsupported extensions |
+| ------------- | -------- | ---------- | ---------------------- |
+| Android 5.1   | low      | very low   | None                   |
+| Android 6.0   | low      | very low   | None                   |
+| Chrome 58     | no       | low        | ChannelID              |
+| Firefox 55    | very low | low        | None                   |
 
 \* Denotes very rough guesstimate of likelihood that unsupported things will get echoed back by the server in the wild,
-visibly breaking the connection.  
-\*\* New extensions such as EMS become popular quickly, so it's not recommended to use with servers you don't own.  
-As seen in table, many good parrots will become available once EMS is implemented in crypto/tls.
-#### Work-in-progress parrots
-Not finished yet!
+*visibly breaking the connection*.  
 
-| Parrot        | Ciphers* | Signature* | Unsupported extensions            |
-| ------------- | -------- | ---------- | --------------------------------- |
-| Firefox 53    | low      | low        | Extended Master Secret** |
+
 #### Parrots FAQ
 > Does it really look like, say, Google Chrome with all the [GREASE](https://tools.ietf.org/html/draft-davidben-tls-grease-01) and stuff?
 
@@ -50,7 +45,7 @@ It LGTM, but please open up Wireshark and check. If you see something — [say s
 There sure are. If you found one that approaches practicality at line speed — [please tell us](issues).
 
 #### Things to implement in Golang to make parrots better
- * Extended Master Secret and ChannelID extensions
+ * Extended ChannelID extensions
  * Enable sha512 and sha224 hashes by default
  * Implement RSA PSS signature algorithms
  * In general, any modern crypto is likely to be useful going forward.
@@ -116,7 +111,7 @@ will prepare ClientHello with empty uconn.Extensions so you can fill it with TLS
 	* `utls.HelloChrome_Auto`- parrots recommended(latest) Google Chrome version
 	* `utls.HelloChrome_58` - parrots Google Chrome 58
 	* `utls.HelloFirefox_Auto` - parrots recommended(latest) Firefox version
-	* `utls.HelloFirefox_53_WIP` - parrots Firefox 53 (Work in progress!)
+	* `utls.HelloFirefox_5` - parrots Firefox 55
 	* `utls.HelloAndroid_Auto`
 	* `utls.HelloAndroid_6_0_Browser`
 	* `utls.HelloAndroid_5_1_Browser`
