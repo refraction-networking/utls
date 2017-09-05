@@ -137,3 +137,5 @@ Before doing `Handshake()` you can also set fake session ticket, set clientHello
         nil, nil)
     tlsConn.SetSessionState(sessionState)
 ```
+
+This is not an official Google product.
