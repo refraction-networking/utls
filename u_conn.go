@@ -7,6 +7,7 @@ package tls
 import (
 	"bufio"
 	"bytes"
+	"crypto/cipher"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -14,7 +15,6 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
-	"crypto/cipher"
 )
 
 type UConn struct {
@@ -60,11 +60,11 @@ func (uconn *UConn) BuildHandshakeState() error {
 		if err != nil {
 			return err
 		}
-		err = uconn.applyConfig()
+		err = uconn.ApplyConfig()
 		if err != nil {
 			return err
 		}
-		err = uconn.marshalClientHello()
+		err = uconn.MarshalClientHello()
 		if err != nil {
 			return err
 		}
@@ -267,7 +267,6 @@ func (c *UConn) Write(b []byte) (int, error) {
 	return n + m, c.out.setErrorLocked(err)
 }
 
-
 // c.out.Mutex <= L; c.handshakeMutex <= L.
 func (c *UConn) clientHandshakeWithState(hs *clientHandshakeState) error {
 	// This code was copied almost as is from tls/handshake_client.go
@@ -350,7 +349,7 @@ func (c *UConn) clientHandshakeWithState(hs *clientHandshakeState) error {
 	return nil
 }
 
-func (uconn *UConn) applyConfig() error {
+func (uconn *UConn) ApplyConfig() error {
 	for _, ext := range uconn.Extensions {
 		err := ext.writeToUConn(uconn)
 		if err != nil {
@@ -360,7 +359,7 @@ func (uconn *UConn) applyConfig() error {
 	return nil
 }
 
-func (uconn *UConn) marshalClientHello() error {
+func (uconn *UConn) MarshalClientHello() error {
 	hello := uconn.HandshakeState.Hello
 	headerLength := 2 + 32 + 1 + len(hello.SessionId) +
 		2 + len(hello.CipherSuites)*2 +
