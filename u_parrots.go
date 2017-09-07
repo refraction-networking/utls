@@ -407,11 +407,11 @@ func (uconn *UConn) parrotRandomizedNoALPN() error {
 
 	hello.CipherSuites = make([]uint16, len(defaultCipherSuites()))
 	copy(hello.CipherSuites, defaultCipherSuites())
-	hello.CipherSuites = removeRandomCiphers(hello.CipherSuites, 0.4)
-	err := shuffleCiphers(hello.CipherSuites)
+	shuffledSuites, err := shuffledCiphers()
 	if err != nil {
 		return err
 	}
+	hello.CipherSuites = removeRandomCiphers(shuffledSuites, 0.4)
 	err = uconn.fillClientHelloHeader()
 	if err != nil {
 		return err
@@ -554,12 +554,11 @@ func getRandPerm(n int) ([]int, error) {
 	return permArray, nil
 }
 
-func shuffleCiphers(s []uint16) error {
-	// shuffles array in place
+func shuffledCiphers() ([]uint16, error) {
 	ciphers := make(sortableCiphers, len(cipherSuites))
 	perm, err := getRandPerm(len(cipherSuites))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	for i, suite := range cipherSuites {
 		ciphers[i] = sortableCipher{suite: suite.id,
@@ -567,8 +566,7 @@ func shuffleCiphers(s []uint16) error {
 			randomTag:  perm[i]}
 	}
 	sort.Sort(ciphers)
-	s = ciphers.GetCiphers()
-	return nil
+	return ciphers.GetCiphers(), nil
 }
 
 type sortableCipher struct {
