@@ -435,3 +435,14 @@ func (uconn *UConn) MarshalClientHello() error {
 	hello.Raw = helloBuffer.Bytes()
 	return nil
 }
+
+// get current state of cipher and encrypt zeros to get keystream
+func (uconn *UConn) GetOutKeystream(length int) ([]byte, error) {
+	zeros := make([]byte, length)
+
+	if outCipher, ok := uconn.out.cipher.(cipher.AEAD); ok {
+		// AEAD.Seal() does not mutate internal state, other ciphers might
+		return outCipher.Seal(nil, uconn.out.seq[:], zeros, nil), nil
+	}
+	return nil,  errors.New("Could not convert OutCipher to cipher.AEAD")
+}

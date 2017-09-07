@@ -3,6 +3,7 @@
 ## Low-level access to handshake
 * Read/write access to all bits of client hello message.  
 * Read access to fields of ClientHandshakeState, which, among other things, includes ServerHello and MasterSecret.
+* Read keystream. Can be used to "write" something in ciphertext.
 ## ClientHello fingerprinting resistance
 Golang's ClientHello has a very unique fingerprint, which especially sticks out on mobile clients,
 where Golang is not too popular yet.
