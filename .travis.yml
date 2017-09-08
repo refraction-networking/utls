@@ -1,0 +1,20 @@
+language: go
+
+go:
+ - 1.8.x
+ - 1.9
+
+sudo: required
+dist: trusty
+
+install:
+  - go get -t ./...
+  - go get github.com/golang/lint/golint
+  # Install gometalinter and certain linters
+  - go get github.com/alecthomas/gometalinter
+  - go get github.com/client9/misspell/cmd/misspell
+  - go get github.com/gordonklaus/ineffassign
+
+script:
+ - go test -race -v .
+ - gometalinter --disable-all -E vet -E gofmt -E misspell -E ineffassign --tests .
