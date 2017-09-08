@@ -54,7 +54,6 @@ func (uconn *UConn) generateClientHelloConfig(id ClientHelloID) error {
 	default:
 		return errors.New("Unknown ParrotID: " + id.Str())
 	}
-	return nil
 }
 
 // Fills clientHello header(everything but extensions) fields, which are not set explicitly yet, with defaults

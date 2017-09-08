@@ -444,5 +444,5 @@ func (uconn *UConn) GetOutKeystream(length int) ([]byte, error) {
 		// AEAD.Seal() does not mutate internal state, other ciphers might
 		return outCipher.Seal(nil, uconn.out.seq[:], zeros, nil), nil
 	}
-	return nil,  errors.New("Could not convert OutCipher to cipher.AEAD")
+	return nil, errors.New("Could not convert OutCipher to cipher.AEAD")
 }
