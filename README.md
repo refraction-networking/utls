@@ -1,5 +1,5 @@
 # uTLS
-
+[![godoc](https://img.shields.io/badge/godoc-reference-blue.svg)](https://godoc.org/github.com/refraction-networking/utls#UConn)
 ## Low-level access to handshake
 * Read/write access to all bits of client hello message.  
 * Read access to fields of ClientHandshakeState, which, among other things, includes ServerHello and MasterSecret.
@@ -20,10 +20,6 @@ There are some caveats to this parroting:
 This is not a problem, if you fully control the server and turn unsupported things off on server side.
 * Parroting could be imperfect, and there is no parroting beyond ClientHello.
 #### Compatibility risks of available parrots
-This package allows ClientHello messages to parrot popular browsers. There are few caveats to this parroting:
- * We are forced to offer ciphersuites and tls extensions setups that are not supported by crypto/tls.
- This is not a problem, if you fully control the server.
- * Parroting could be imperfect, and there is no parroting beyond ClientHello.\
 
 | Parrot        | Ciphers* | Signature* | Unsupported extensions |
 | ------------- | -------- | ---------- | ---------------------- |
@@ -65,14 +61,16 @@ Set of provided functions is likely to change, as use-cases aren't fully worked 
 Currently, there is a simple function to set session ticket to any desired state:
 
 ```Golang
-func (c *ExtendedConfig) SetSessionState(session *ClientSessionState)
+// If you want you session tickets to be reused - use same cache on following connections
+func (uconn *UConn) SetSessionState(session *ClientSessionState)
 ```
 
 Note that session tickets (fake ones or otherwise) are not reused.  
 To reuse tickets, create a shared cache and set it on current and further configs:
 
 ```Golang
-func (c *ExtendedConfig) SetSessionCache(cache ClientSessionCache)
+// If you want you session tickets to be reused - use same cache on following connections
+func (uconn *UConn) SetSessionCache(cache ClientSessionCache)
 ```
 
 ## Usage
@@ -112,13 +110,11 @@ will prepare ClientHello with empty uconn.Extensions so you can fill it with TLS
 	* `utls.HelloChrome_Auto`- parrots recommended(latest) Google Chrome version
 	* `utls.HelloChrome_58` - parrots Google Chrome 58
 	* `utls.HelloFirefox_Auto` - parrots recommended(latest) Firefox version
-	* `utls.HelloFirefox_5` - parrots Firefox 55
-	* `utls.HelloAndroid_Auto`
+	* `utls.HelloFirefox_55` - parrots Firefox 55
+	* `utls.HelloAndroid_Auto` 
 	* `utls.HelloAndroid_6_0_Browser`
 	* `utls.HelloAndroid_5_1_Browser`
-
-Note: it is *mandatory* to manually call ```tlsConn.Handshake()``` afterwards.
-Otherwise, eventual ```tls.Write()``` is going to call non-overridden version of handshake.
+	
 #### Customizing handshake
 
 Before doing `Handshake()` you can also set fake session ticket, set clientHello or change uconn in other ways:
@@ -139,4 +135,7 @@ Before doing `Handshake()` you can also set fake session ticket, set clientHello
     tlsConn.SetSessionState(sessionState)
 ```
 
+Here's an [example](https://github.com/sergeyfrolov/gotapdance/blob/db4336aceafe7a971e171f7cd913a0eed6a5ff50/tapdance/conn_raw.go#L275-L292) of how one could generate randomized ClientHello, modify generated ciphersuites a bit, and proceed with the handshake.
+
+#### Disclamer
 This is not an official Google product.
