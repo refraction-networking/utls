@@ -1,4 +1,5 @@
 # uTLS
+[![Build Status](https://travis-ci.org/refraction-networking/utls.svg?branch=master)](https://travis-ci.org/refraction-networking/utls)
 [![godoc](https://img.shields.io/badge/godoc-reference-blue.svg)](https://godoc.org/github.com/refraction-networking/utls#UConn)
 ## Low-level access to handshake
 * Read/write access to all bits of client hello message.  
