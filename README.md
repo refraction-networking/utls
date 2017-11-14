@@ -1,19 +1,23 @@
 # uTLS
 [![Build Status](https://travis-ci.org/refraction-networking/utls.svg?branch=master)](https://travis-ci.org/refraction-networking/utls)
 [![godoc](https://img.shields.io/badge/godoc-reference-blue.svg)](https://godoc.org/github.com/refraction-networking/utls#UConn)
+---
+uTLS is a fork of "crypto/tls", which provides ClientHello fingerprinting resistance, low-level access to handshake, fake session tickets and some other features. Handshake is still performed by "crypto/tls", this library merely changes ClientHello part of it and provides low-level access.  
+If you have any questions, bug reports or contributions, you are welcome to publish those on GitHub. If you want to do so in private, you can contact one of developers personally via sergey.frolov@colorado.edu
+# Features
 ## Low-level access to handshake
 * Read/write access to all bits of client hello message.  
 * Read access to fields of ClientHandshakeState, which, among other things, includes ServerHello and MasterSecret.
-* Read keystream. Can be used to "write" something in ciphertext.
+* Read keystream. Can be used, for example, to "write" something in ciphertext.
 ## ClientHello fingerprinting resistance
 Golang's ClientHello has a very unique fingerprint, which especially sticks out on mobile clients,
 where Golang is not too popular yet.
 Some members of anti-censorship community are concerned that their tools could be trivially blocked based on
 ClientHello with relatively small collateral damage. There are multiple solutions to this issue.
 ### Randomized handshake
-This package can be used to generate randomized ClientHello.
-Provides a moving target without any compatibility or parrot-is-dead attack risks.  
-**Feedback about implementation details of randomized handshake is extremely appreciated.**
+This package can generate randomized ClientHello using only extensions and cipherSuites "crypto/tls" already supports.
+This provides a solid moving target without any compatibility or parrot-is-dead attack risks.  
+**Feedback about opinionated implementation details of randomized handshake is appreciated.**
 ### Parroting
 This package can be used to parrot ClientHello of popular browsers.
 There are some caveats to this parroting:
@@ -43,7 +47,8 @@ It LGTM, but please open up Wireshark and check. If you see something — [say s
 There sure are. If you found one that approaches practicality at line speed — [please tell us](issues).
 
 #### Things to implement in Golang to make parrots better
- * Extended ChannelID extensions
+uTLS is fundamentially limited in parroting, because Golang's "crypto/tls" doesn't support many things. Would be nice to have:
+ * ChannelID extension
  * Enable sha512 and sha224 hashes by default
  * Implement RSA PSS signature algorithms
  * In general, any modern crypto is likely to be useful going forward.
@@ -56,9 +61,10 @@ It is possible to create custom handshake by
 
 If you need to manually control all the bytes on the wire(certainly not recommended!),
 you can set UConn.HandshakeStateBuilt = true, and marshal clientHello into UConn.HandshakeState.Hello.raw yourself.
-In this case you will be responsible for modifying other parts of Config and ClientHelloMsg to reflect your setup.
+In this case you will be responsible for modifying other parts of Config and ClientHelloMsg to reflect your setup
+and not confuse "crypto/tls", which will be processing response from server.
 ## Fake Session Tickets
-Set of provided functions is likely to change, as use-cases aren't fully worked out yet.
+Fake session tickets is a very nifty trick that allows power users to hide parts of handshake, which may have some very fingerprintable features of handshake, and saves 1 RTT.
 Currently, there is a simple function to set session ticket to any desired state:
 
 ```Golang
@@ -74,28 +80,9 @@ To reuse tickets, create a shared cache and set it on current and further config
 func (uconn *UConn) SetSessionCache(cache ClientSessionCache)
 ```
 
-## Usage
-
-Find other examples [here](examples/examples.go). 
-
-For a reference, here's how default "crypto/tls" is used:
-```Golang
-    config := tls.Config{ServerName: "www.google.com"}
-    dialConn, err := net.Dial("tcp", "172.217.11.46:443")
-    if err != nil {
-        fmt.Printf("net.Dial() failed: %+v\n", err)
-        return
-    }
-    tlsConn := tls.Client(dialConn, &config)
-    err = tlsConn.Handshake()
-    if err != nil {
-    fmt.Printf("tlsConn.Handshake() error: %+v", err)
-        return
-    }
-```
-Now, if you want to use uTLS, simply substitute `tlsConn := tls.Client(dialConn, &config)`
-with `tlsConn := utls.UClient(dialConn, &config, clientHelloID)`
-where clientHelloID is one of the following:
+# Client Hello IDs
+See full list of `clientHelloID` values [here](https://godoc.org/github.com/refraction-networking/utls#ClientHelloID).  
+There are different behaviors you can get, depending  on your `clientHelloID`:
 
 1. ```utls.HelloRandomized``` adds/reorders extensions, ciphersuites, etc. randomly.  
 `HelloRandomized` adds ALPN in 50% of cases, you may want to use `HelloRandomizedALPN` or
@@ -107,18 +94,38 @@ where clientHelloID is one of the following:
     UConn.Extensions will be completely ignored.
 3. ```utls.HelloCustom```
 will prepare ClientHello with empty uconn.Extensions so you can fill it with TLSExtension's manually.
-4. The rest will will parrot given browser.
+4. The rest will will parrot given browser. Such parrots include, for example:
 	* `utls.HelloChrome_Auto`- parrots recommended(latest) Google Chrome version
 	* `utls.HelloChrome_58` - parrots Google Chrome 58
 	* `utls.HelloFirefox_Auto` - parrots recommended(latest) Firefox version
 	* `utls.HelloFirefox_55` - parrots Firefox 55
-	* `utls.HelloAndroid_Auto` 
-	* `utls.HelloAndroid_6_0_Browser`
-	* `utls.HelloAndroid_5_1_Browser`
 	
-#### Customizing handshake
+# Usage
+## Examples
+Find basic examples [here](examples/examples.go).  
+Here's a more [advanced example](https://github.com/sergeyfrolov/gotapdance/blob//9a777f35a04b0c4c5dacd30bca0e9224eb737b5e/tapdance/conn_raw.go#L275-L292) showing how to generate randomized ClientHello, modify generated ciphersuites a bit, and proceed with the handshake.
+### Migrating from "crypto/tls"
+Here's how default "crypto/tls" is typically used:
+```Golang
+    dialConn, err := net.Dial("tcp", "172.217.11.46:443")
+    if err != nil {
+        fmt.Printf("net.Dial() failed: %+v\n", err)
+        return
+    }
 
-Before doing `Handshake()` you can also set fake session ticket, set clientHello or change uconn in other ways:
+    config := tls.Config{ServerName: "www.google.com"}
+    tlsConn := tls.Client(dialConn, &config)
+    n, err = tlsConn.Write("Hello, World!")
+    //...
+```
+To start using using uTLS:
+1. Import this library (e.g. `import tls "github.com/Jigsaw-Code/utls"`)
+2. Pick the [Client Hello ID](#client-hello-ids)
+3. Simply substitute `tlsConn := tls.Client(dialConn, &config)`
+with `tlsConn := tls.UClient(dialConn, &config, tls.clientHelloID)`  
+
+### Customizing handshake
+Some customizations(such as setting session ticket/clientHello) have easy-to-use functions for them. The idea is to make common manipulations easy:
 ```Golang
     cRandom := []byte{100, 101, 102, 103, 104, 105, 106, 107, 108, 109,
         110, 111, 112, 113, 114, 115, 116, 117, 118, 119,
@@ -136,7 +143,19 @@ Before doing `Handshake()` you can also set fake session ticket, set clientHello
     tlsConn.SetSessionState(sessionState)
 ```
 
-Here's an [example](https://github.com/sergeyfrolov/gotapdance/blob/db4336aceafe7a971e171f7cd913a0eed6a5ff50/tapdance/conn_raw.go#L275-L292) of how one could generate randomized ClientHello, modify generated ciphersuites a bit, and proceed with the handshake.
+For other customizations there are following functions
+```
+// you can use this to build the state manually and change it
+// for example use Randomized ClientHello, and add more extensions
+func (uconn *UConn) BuildHandshakeState() error
+```
+```
+// Then apply the changes and marshal final bytes, which will be sent
+func (uconn *UConn) MarshalClientHello() error
+```
 
-#### Disclamer
+## Contributors' guide
+Please refer to [this document](./CONTRIBUTORS_GUIDE.md) if you're interested in internals
+
+## Disclamer
 This is not an official Google product.
