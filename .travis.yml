@@ -10,11 +10,10 @@ dist: trusty
 install:
   - go get -t ./...
   - go get github.com/golang/lint/golint
-  # Install gometalinter and certain linters
+  # Install gometalinter
   - go get github.com/alecthomas/gometalinter
-  - go get github.com/client9/misspell/cmd/misspell
-  - go get github.com/gordonklaus/ineffassign
 
 script:
  - go test -race -v .
+ - gometalinter --install
  - gometalinter --disable-all -E vet -E gofmt -E misspell -E ineffassign --tests .
