@@ -18,6 +18,8 @@ import (
 func (uconn *UConn) generateClientHelloConfig(id ClientHelloID) error {
 	uconn.clientHelloID = id
 	switch uconn.clientHelloID {
+	case HelloFirefox_56:
+		fallthrough
 	case HelloFirefox_55:
 		return uconn.parrotFirefox_55()
 
@@ -26,6 +28,8 @@ func (uconn *UConn) generateClientHelloConfig(id ClientHelloID) error {
 	case HelloAndroid_5_1_Browser:
 		return uconn.parrotAndroid_5_1()
 
+	case HelloChrome_62:
+		fallthrough
 	case HelloChrome_58:
 		return uconn.parrotChrome_58()
 
@@ -47,9 +51,9 @@ func (uconn *UConn) generateClientHelloConfig(id ClientHelloID) error {
 	case HelloAndroid_Auto:
 		return uconn.generateClientHelloConfig(HelloAndroid_6_0_Browser)
 	case HelloFirefox_Auto:
-		return uconn.generateClientHelloConfig(HelloFirefox_55)
+		return uconn.generateClientHelloConfig(HelloFirefox_56)
 	case HelloChrome_Auto:
-		return uconn.generateClientHelloConfig(HelloChrome_58)
+		return uconn.generateClientHelloConfig(HelloChrome_62)
 
 	default:
 		return errors.New("Unknown ParrotID: " + id.Str())
