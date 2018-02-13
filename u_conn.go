@@ -26,6 +26,11 @@ type UConn struct {
 	HandshakeState ClientHandshakeState
 
 	HandshakeStateBuilt bool
+
+	// OmitSNI allows to evade simple SNI-based censorship and may be used with any fingerprint,
+	// except helloGolang(for which you can just set InsecureSkipVerify). Certificate still
+	// will be verified using provided SNI, unless uconn.config.InsecureSkipVerify is set.
+	OmitSNI bool
 }
 
 // UClient returns a new uTLS client, with behavior depending on clientHelloID.
@@ -360,6 +365,19 @@ func (uconn *UConn) ApplyConfig() error {
 }
 
 func (uconn *UConn) MarshalClientHello() error {
+	if uconn.OmitSNI {
+		extNum := len(uconn.Extensions)
+		for i := 0; i < extNum; {
+			if _, isSNI := uconn.Extensions[i].(*SNIExtension); isSNI {
+				uconn.Extensions = append(uconn.Extensions[:i],
+					uconn.Extensions[i+1:]...)
+				extNum -= 1
+				continue
+			}
+			i += 1
+		}
+	}
+
 	hello := uconn.HandshakeState.Hello
 	headerLength := 2 + 32 + 1 + len(hello.SessionId) +
 		2 + len(hello.CipherSuites)*2 +
