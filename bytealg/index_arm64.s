@@ -1,0 +1,149 @@
+// Copyright 2018 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+#include "go_asm.h"
+#include "textflag.h"
+
+TEXT ·Index(SB),NOSPLIT,$0-56
+	MOVD	a_base+0(FP), R0
+	MOVD	a_len+8(FP), R1
+	MOVD	b_base+24(FP), R2
+	MOVD	b_len+32(FP), R3
+	MOVD	$ret+48(FP), R9
+	B	indexbody<>(SB)
+
+TEXT ·IndexString(SB),NOSPLIT,$0-40
+	MOVD	a_base+0(FP), R0
+	MOVD	a_len+8(FP), R1
+	MOVD	b_base+16(FP), R2
+	MOVD	b_len+24(FP), R3
+	MOVD	$ret+32(FP), R9
+	B	indexbody<>(SB)
+
+// input:
+//   R0: haystack
+//   R1: length of haystack
+//   R2: needle
+//   R3: length of needle (2 <= len <= 8)
+//   R9: address to put result
+TEXT indexbody<>(SB),NOSPLIT,$0-56
+	// main idea is to load 'sep' into separate register(s)
+	// to avoid repeatedly re-load it again and again
+	// for sebsequent substring comparisons
+	MOVD	a_base+0(FP), R0
+	MOVD	a_len+8(FP), R1
+	MOVD	b_base+24(FP), R2
+	MOVD	b_len+32(FP), R3
+	SUB	R3, R1, R4
+	// R4 contains the start of last substring for comparsion
+	ADD	R0, R4, R4
+	ADD	$1, R0, R8
+	TBZ	$3, R3, len_2_7
+len_8:
+	// R5 contains 8-byte sep
+	MOVD	(R2), R5
+loop_8:
+	// R6 contains substring for comparison
+	MOVD.P	1(R0), R6
+	CMP	R5, R6
+	BEQ	found
+	CMP	R4, R0
+	BLS	loop_8
+	JMP	not_found
+len_2_7:
+	TBZ	$2, R3, len_2_3
+	TBZ	$1, R3, len_4_5
+	TBZ	$0, R3, len_6
+len_7:
+	// R5 and R6 contain 7-byte sep
+	MOVWU	(R2), R5
+	// 1-byte overlap with R5
+	MOVWU	3(R2), R6
+loop_7:
+	MOVWU.P	1(R0), R3
+	CMP	R5, R3
+	BNE	not_equal_7
+	MOVWU	2(R0), R3
+	CMP	R6, R3
+	BEQ	found
+not_equal_7:
+	CMP	R4, R0
+	BLS	loop_7
+	JMP	not_found
+len_6:
+	// R5 and R6 contain 6-byte sep
+	MOVWU	(R2), R5
+	MOVHU	4(R2), R6
+loop_6:
+	MOVWU.P	1(R0), R3
+	CMP	R5, R3
+	BNE	not_equal_6
+	MOVHU	3(R0), R3
+	CMP	R6, R3
+	BEQ	found
+not_equal_6:
+	CMP	R4, R0
+	BLS	loop_6
+	JMP	not_found
+len_4_5:
+	TBZ	$0, R3, len_4
+len_5:
+	// R5 and R7 contain 5-byte sep
+	MOVWU	(R2), R5
+	MOVBU	4(R2), R7
+loop_5:
+	MOVWU.P	1(R0), R3
+	CMP	R5, R3
+	BNE	not_equal_5
+	MOVBU	3(R0), R3
+	CMP	R7, R3
+	BEQ	found
+not_equal_5:
+	CMP	R4, R0
+	BLS	loop_5
+	JMP	not_found
+len_4:
+	// R5 contains 4-byte sep
+	MOVWU	(R2), R5
+loop_4:
+	MOVWU.P	1(R0), R6
+	CMP	R5, R6
+	BEQ	found
+	CMP	R4, R0
+	BLS	loop_4
+	JMP	not_found
+len_2_3:
+	TBZ	$0, R3, len_2
+len_3:
+	// R6 and R7 contain 3-byte sep
+	MOVHU	(R2), R6
+	MOVBU	2(R2), R7
+loop_3:
+	MOVHU.P	1(R0), R3
+	CMP	R6, R3
+	BNE	not_equal_3
+	MOVBU	1(R0), R3
+	CMP	R7, R3
+	BEQ	found
+not_equal_3:
+	CMP	R4, R0
+	BLS	loop_3
+	JMP	not_found
+len_2:
+	// R5 contains 2-byte sep
+	MOVHU	(R2), R5
+loop_2:
+	MOVHU.P	1(R0), R6
+	CMP	R5, R6
+	BEQ	found
+	CMP	R4, R0
+	BLS	loop_2
+not_found:
+	MOVD	$-1, R0
+	MOVD	R0, (R9)
+	RET
+found:
+	SUB	R8, R0, R0
+	MOVD	R0, (R9)
+	RET
