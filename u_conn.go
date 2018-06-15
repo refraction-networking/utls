@@ -13,7 +13,6 @@ import (
 	"io"
 	"net"
 	"strconv"
-	"sync"
 	"sync/atomic"
 )
 
@@ -145,51 +144,30 @@ func (c *UConn) Handshake() error {
 	c.handshakeMutex.Lock()
 	defer c.handshakeMutex.Unlock()
 
-	for {
-		if err := c.handshakeErr; err != nil {
-			return err
-		}
-		if c.handshakeComplete {
-			return nil
-		}
-		if c.handshakeCond == nil {
-			break
-		}
-
-		c.handshakeCond.Wait()
+	if err := c.handshakeErr; err != nil {
+		return err
 	}
-
-	// Set handshakeCond to indicate that this goroutine is committing to
-	// running the handshake.
-	c.handshakeCond = sync.NewCond(&c.handshakeMutex)
-	c.handshakeMutex.Unlock()
+	if c.handshakeComplete {
+		return nil
+	}
 
 	c.in.Lock()
 	defer c.in.Unlock()
 
-	c.handshakeMutex.Lock()
-
-	// The handshake cannot have completed when handshakeMutex was unlocked
-	// because this goroutine set handshakeCond.
-	if c.handshakeErr != nil || c.handshakeComplete {
-		panic("handshake should not have been able to complete after handshakeCond was set")
-	}
-
-	if !c.isClient {
-		panic("Servers should not call ClientHandshakeWithState()")
-	}
-
-	if !c.HandshakeStateBuilt {
-		err := c.BuildHandshakeState()
-		if err != nil {
-			return err
+	if c.isClient {
+		if !c.HandshakeStateBuilt {
+			err := c.BuildHandshakeState()
+			if err != nil {
+				return err
+			}
 		}
+
+		privateState := c.HandshakeState.getPrivatePtr()
+		c.handshakeErr = c.clientHandshakeWithState(privateState)
+		c.HandshakeState = *privateState.getPublicPtr()
+	} else {
+		c.handshakeErr = c.serverHandshake()
 	}
-
-	privateState := c.HandshakeState.getPrivatePtr()
-	c.handshakeErr = c.clientHandshakeWithState(privateState)
-	c.HandshakeState = *privateState.getPublicPtr()
-
 	if c.handshakeErr == nil {
 		c.handshakes++
 	} else {
@@ -201,10 +179,6 @@ func (c *UConn) Handshake() error {
 	if c.handshakeErr == nil && !c.handshakeComplete {
 		panic("handshake should have had a result.")
 	}
-
-	// Wake any other goroutines that are waiting for this handshake to complete.
-	c.handshakeCond.Broadcast()
-	c.handshakeCond = nil
 
 	return c.handshakeErr
 }
@@ -268,16 +242,18 @@ func (c *UConn) Write(b []byte) (int, error) {
 }
 
 // c.out.Mutex <= L; c.handshakeMutex <= L.
-func (c *UConn) clientHandshakeWithState(hs *clientHandshakeState) error {
-	// This code was copied almost as is from tls/handshake_client.go
+func (c *Conn) clientHandshakeWithState(hs *clientHandshakeState) error {
 	if c.config == nil {
-		c.config = &Config{}
+		c.config = defaultConfig()
 	}
 
 	// This may be a renegotiation handshake, in which case some fields
 	// need to be reset.
 	c.didResume = false
 
+	// UTLS: don't make new ClientHello, use hs.hello
+
+	// UTLS: preserve the check from makeClientHello [start]
 	if len(c.config.ServerName) == 0 && !c.config.InsecureSkipVerify {
 		return errors.New("tls: either ServerName or InsecureSkipVerify must be specified in the tls.Config")
 	}
@@ -290,51 +266,67 @@ func (c *UConn) clientHandshakeWithState(hs *clientHandshakeState) error {
 			nextProtosLength += 1 + l
 		}
 	}
+
 	if nextProtosLength > 0xffff {
 		return errors.New("tls: NextProtos values too large")
 	}
+	//  UTLS: preserve the check from makeClientHello [end]
+
+	if c.handshakes > 0 {
+		hs.hello.secureRenegotiation = c.clientFinished[:]
+	}
 
 	var session *ClientSessionState
+	var cacheKey string
 	sessionCache := c.config.ClientSessionCache
-	cacheKey := clientSessionCacheKey(c.conn.RemoteAddr(), c.config)
 
-	// If sessionCache is set but session itself isn't - try to retrieve session from cache
-	if sessionCache != nil && hs.session != nil {
+	if c.config.SessionTicketsDisabled {
+		sessionCache = nil
+	}
+
+	if sessionCache != nil {
 		hs.hello.ticketSupported = true
-		// Session resumption is not allowed if renegotiating because
-		// renegotiation is primarily used to allow a client to send a client
-		// certificate, which would be skipped if session resumption occurred.
-		if c.handshakes == 0 {
-			// Try to resume a previously negotiated TLS session, if
-			// available.
-			candidateSession, ok := sessionCache.Get(cacheKey)
-			if ok {
-				// Check that the ciphersuite/version used for the
-				// previous session are still valid.
-				cipherSuiteOk := false
-				for _, id := range hs.hello.cipherSuites {
-					if id == candidateSession.cipherSuite {
-						cipherSuiteOk = true
-						break
-					}
-				}
+	}
 
-				versOk := candidateSession.vers >= c.config.minVersion() &&
-					candidateSession.vers <= c.config.maxVersion()
-				if versOk && cipherSuiteOk {
-					session = candidateSession
+	// Session resumption is not allowed if renegotiating because
+	// renegotiation is primarily used to allow a client to send a client
+	// certificate, which would be skipped if session resumption occurred.
+	if sessionCache != nil && c.handshakes == 0 {
+		// Try to resume a previously negotiated TLS session, if
+		// available.
+		cacheKey = clientSessionCacheKey(c.conn.RemoteAddr(), c.config)
+		candidateSession, ok := sessionCache.Get(cacheKey)
+		if ok {
+			// Check that the ciphersuite/version used for the
+			// previous session are still valid.
+			cipherSuiteOk := false
+			for _, id := range hs.hello.cipherSuites {
+				if id == candidateSession.cipherSuite {
+					cipherSuiteOk = true
+					break
 				}
-				if session != nil {
-					hs.hello.sessionTicket = session.sessionTicket
-					// A random session ID is used to detect when the
-					// server accepted the ticket and is resuming a session
-					// (see RFC 5077).
-					hs.hello.sessionId = make([]byte, 16)
-					if _, err := io.ReadFull(c.config.rand(), hs.hello.sessionId); err != nil {
-						return errors.New("tls: short read from Rand: " + err.Error())
-					}
-				}
-				hs.session = session
+			}
+
+			versOk := candidateSession.vers >= c.config.minVersion() &&
+				candidateSession.vers <= c.config.maxVersion()
+			if versOk && cipherSuiteOk {
+				session = candidateSession
+			}
+		}
+	}
+
+	if session != nil {
+		if hs.hello.sessionTicket == nil { // [UTLS] check
+			hs.hello.sessionTicket = session.sessionTicket
+		}
+		// A random session ID is used to detect when the
+		// server accepted the ticket and is resuming a session
+		// (see RFC 5077).
+
+		if hs.hello.sessionId == nil { // [UTLS] check
+			hs.hello.sessionId = make([]byte, 16)
+			if _, err := io.ReadFull(c.config.rand(), hs.hello.sessionId); err != nil {
+				return errors.New("tls: short read from Rand: " + err.Error())
 			}
 		}
 	}
@@ -342,10 +334,13 @@ func (c *UConn) clientHandshakeWithState(hs *clientHandshakeState) error {
 	if err := hs.handshake(); err != nil {
 		return err
 	}
-	// If we had a successful handshake and hs.session is different from the one already cached - cache a new one
-	if sessionCache != nil && hs.session != nil && hs.session != session {
+
+	// If we had a successful handshake and hs.session is different from
+	// the one already cached - cache a new one
+	if sessionCache != nil && hs.session != nil && session != hs.session {
 		sessionCache.Put(cacheKey, hs.session)
 	}
+
 	return nil
 }
 

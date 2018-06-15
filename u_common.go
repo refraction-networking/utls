@@ -42,17 +42,11 @@ const (
 
 // newest signatures
 var (
-	fakeRsaPssSha256 = SignatureAndHash{0x08, 0x04} // also declared in common.go as type SignatureScheme,
-	fakeRsaPssSha384 = SignatureAndHash{0x08, 0x05} // but not used by default and not implemented
-	fakeRsaPssSha512 = SignatureAndHash{0x08, 0x06}
+	FakePKCS1WithSHA224 SignatureScheme = 0x0301
+	FakeECDSAWithSHA224 SignatureScheme = 0x0303
+
 	// fakeEd25519 = SignatureAndHash{0x08, 0x07}
 	// fakeEd448 = SignatureAndHash{0x08, 0x08}
-)
-
-// IDs of hash functions in signatures
-const (
-	disabledHashSHA512 uint8 = 6 // Supported, but disabled by default. Will be enabled, as needed
-	fakeHashSHA224     uint8 = 3 // Supported, but we won't enable it: sounds esoteric and fishy
 )
 
 type ClientHelloID struct {
@@ -114,12 +108,9 @@ func utlsMacSHA384(version uint16, key []byte) macFunction {
 	return tls10MAC{hmac.New(sha512.New384, key)}
 }
 
-var utlsSupportedSignatureAlgorithms []signatureAndHash
 var utlsSupportedCipherSuites []*cipherSuite
 
 func init() {
-	utlsSupportedSignatureAlgorithms = append(supportedSignatureAlgorithms,
-		[]signatureAndHash{{disabledHashSHA512, signatureRSA}, {disabledHashSHA512, signatureECDSA}}...)
 	utlsSupportedCipherSuites = append(cipherSuites, []*cipherSuite{
 		{OLD_TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256, 32, 0, 12, ecdheRSAKA,
 			suiteECDHE | suiteTLS12 | suiteDefaultOff, nil, nil, aeadChaCha20Poly1305},

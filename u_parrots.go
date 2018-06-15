@@ -131,18 +131,18 @@ func (uconn *UConn) parrotFirefox_55() error {
 	}
 	alpn := ALPNExtension{AlpnProtocols: []string{"h2", "http/1.1"}}
 	status := StatusRequestExtension{}
-	sigAndHash := SignatureAlgorithmsExtension{SignatureAndHashes: []SignatureAndHash{
-		{hashSHA256, signatureECDSA},
-		{hashSHA384, signatureECDSA},
-		{disabledHashSHA512, signatureECDSA},
-		fakeRsaPssSha256,
-		fakeRsaPssSha384,
-		fakeRsaPssSha512,
-		{hashSHA256, signatureRSA},
-		{hashSHA384, signatureRSA},
-		{disabledHashSHA512, signatureRSA},
-		{hashSHA1, signatureECDSA},
-		{hashSHA1, signatureRSA}},
+	sigAndHash := SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []SignatureScheme{
+		ECDSAWithP256AndSHA256,
+		ECDSAWithP384AndSHA384,
+		ECDSAWithP521AndSHA512,
+		PSSWithSHA256,
+		PSSWithSHA384,
+		PSSWithSHA512,
+		PKCS1WithSHA256,
+		PKCS1WithSHA384,
+		PKCS1WithSHA512,
+		ECDSAWithSHA1,
+		PKCS1WithSHA1},
 	}
 	padding := utlsPaddingExtension{GetPaddingLen: boringPaddingStyle}
 	uconn.Extensions = []TLSExtension{
@@ -155,155 +155,6 @@ func (uconn *UConn) parrotFirefox_55() error {
 		&alpn,
 		&status,
 		&sigAndHash,
-		&padding,
-	}
-	return nil
-}
-
-func (uconn *UConn) parrotAndroid_6_0() error {
-	hello := uconn.HandshakeState.Hello
-	session := uconn.HandshakeState.Session
-
-	hello.CipherSuites = []uint16{
-		OLD_TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
-		OLD_TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
-		FAKE_OLD_TLS_DHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
-		TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-		TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-		FAKE_TLS_DHE_RSA_WITH_AES_128_GCM_SHA256,
-		TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
-		TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
-		FAKE_TLS_DHE_RSA_WITH_AES_256_CBC_SHA,
-		TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
-		TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
-		FAKE_TLS_DHE_RSA_WITH_AES_128_CBC_SHA,
-		TLS_RSA_WITH_AES_128_GCM_SHA256,
-		TLS_RSA_WITH_AES_256_CBC_SHA,
-		TLS_RSA_WITH_AES_128_CBC_SHA,
-		TLS_RSA_WITH_3DES_EDE_CBC_SHA,
-		FAKE_TLS_EMPTY_RENEGOTIATION_INFO_SCSV,
-	}
-	err := uconn.fillClientHelloHeader()
-	if err != nil {
-		return err
-	}
-
-	sni := SNIExtension{uconn.config.ServerName}
-	ems := utlsExtendedMasterSecretExtension{}
-	sessionTicket := SessionTicketExtension{Session: session}
-	if session != nil {
-		sessionTicket.Session = session
-		if len(session.SessionTicket()) > 0 {
-			sessionId := sha256.Sum256(session.SessionTicket())
-			hello.SessionId = sessionId[:]
-		}
-	}
-	sigAndHash := SignatureAlgorithmsExtension{SignatureAndHashes: []SignatureAndHash{
-		{disabledHashSHA512, signatureRSA},
-		{disabledHashSHA512, signatureECDSA},
-		{hashSHA384, signatureRSA},
-		{hashSHA384, signatureECDSA},
-		{hashSHA256, signatureRSA},
-		{hashSHA256, signatureECDSA},
-		{fakeHashSHA224, signatureRSA},
-		{fakeHashSHA224, signatureECDSA},
-		{hashSHA1, signatureRSA},
-		{hashSHA1, signatureECDSA}},
-	}
-	status := StatusRequestExtension{}
-	npn := NPNExtension{}
-	sct := SCTExtension{}
-	alpn := ALPNExtension{AlpnProtocols: []string{"http/1.1", "spdy/8.1"}}
-	points := SupportedPointsExtension{SupportedPoints: []byte{pointFormatUncompressed}}
-	curves := SupportedCurvesExtension{[]CurveID{CurveP256, CurveP384}}
-	padding := utlsPaddingExtension{GetPaddingLen: boringPaddingStyle}
-
-	uconn.Extensions = []TLSExtension{
-		&sni,
-		&ems,
-		&sessionTicket,
-		&sigAndHash,
-		&status,
-		&npn,
-		&sct,
-		&alpn,
-		&points,
-		&curves,
-		&padding,
-	}
-	return nil
-}
-func (uconn *UConn) parrotAndroid_5_1() error {
-	hello := uconn.HandshakeState.Hello
-	session := uconn.HandshakeState.Session
-
-	hello.CipherSuites = []uint16{
-		OLD_TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
-		OLD_TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
-		FAKE_OLD_TLS_DHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
-		TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-		TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-		FAKE_TLS_DHE_RSA_WITH_AES_128_GCM_SHA256,
-		TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
-		TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
-		FAKE_TLS_DHE_RSA_WITH_AES_256_CBC_SHA,
-		TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
-		TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
-		FAKE_TLS_DHE_RSA_WITH_AES_128_CBC_SHA,
-		TLS_ECDHE_RSA_WITH_RC4_128_SHA,
-		TLS_ECDHE_ECDSA_WITH_RC4_128_SHA,
-		TLS_RSA_WITH_AES_128_GCM_SHA256,
-		TLS_RSA_WITH_AES_256_CBC_SHA,
-		TLS_RSA_WITH_AES_128_CBC_SHA,
-		TLS_RSA_WITH_RC4_128_SHA,
-		FAKE_TLS_RSA_WITH_RC4_128_MD5,
-		TLS_RSA_WITH_3DES_EDE_CBC_SHA,
-		FAKE_TLS_EMPTY_RENEGOTIATION_INFO_SCSV,
-	}
-	err := uconn.fillClientHelloHeader()
-	if err != nil {
-		return err
-	}
-
-	sni := SNIExtension{uconn.config.ServerName}
-	sessionTicket := SessionTicketExtension{Session: session}
-	if session != nil {
-		sessionTicket.Session = session
-		if len(session.SessionTicket()) > 0 {
-			sessionId := sha256.Sum256(session.SessionTicket())
-			hello.SessionId = sessionId[:]
-		}
-	}
-	sigAndHash := SignatureAlgorithmsExtension{SignatureAndHashes: []SignatureAndHash{
-		{disabledHashSHA512, signatureRSA},
-		{disabledHashSHA512, signatureECDSA},
-		{hashSHA384, signatureRSA},
-		{hashSHA384, signatureECDSA},
-		{hashSHA256, signatureRSA},
-		{hashSHA256, signatureECDSA},
-		{fakeHashSHA224, signatureRSA},
-		{fakeHashSHA224, signatureECDSA},
-		{hashSHA1, signatureRSA},
-		{hashSHA1, signatureECDSA}},
-	}
-	status := StatusRequestExtension{}
-	npn := NPNExtension{}
-	sct := SCTExtension{}
-	alpn := ALPNExtension{AlpnProtocols: []string{"http/1.1", "spdy/3", "spdy/3.1"}}
-	points := SupportedPointsExtension{SupportedPoints: []byte{pointFormatUncompressed}}
-	curves := SupportedCurvesExtension{[]CurveID{CurveP256, CurveP384, CurveP521}}
-	padding := utlsPaddingExtension{GetPaddingLen: boringPaddingStyle}
-
-	uconn.Extensions = []TLSExtension{
-		&sni,
-		&sessionTicket,
-		&sigAndHash,
-		&status,
-		&npn,
-		&sct,
-		&alpn,
-		&points,
-		&curves,
 		&padding,
 	}
 	return nil
@@ -353,16 +204,17 @@ func (uconn *UConn) parrotChrome_58() error {
 			hello.SessionId = sessionId[:]
 		}
 	}
-	sigAndHash := SignatureAlgorithmsExtension{SignatureAndHashes: []SignatureAndHash{
-		{hashSHA256, signatureECDSA},
-		fakeRsaPssSha256,
-		{hashSHA256, signatureRSA},
-		{hashSHA384, signatureECDSA},
-		fakeRsaPssSha384,
-		{hashSHA384, signatureRSA},
-		fakeRsaPssSha512,
-		{disabledHashSHA512, signatureRSA},
-		{hashSHA1, signatureRSA}},
+
+	sigAndHash := SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []SignatureScheme{
+		ECDSAWithP256AndSHA256,
+		PSSWithSHA256,
+		PKCS1WithSHA256,
+		ECDSAWithP384AndSHA384,
+		PSSWithSHA384,
+		PKCS1WithSHA384,
+		PSSWithSHA512,
+		PKCS1WithSHA512,
+		PKCS1WithSHA1},
 	}
 	status := StatusRequestExtension{}
 	sct := SCTExtension{}
@@ -429,27 +281,38 @@ func (uconn *UConn) parrotRandomizedNoALPN() error {
 			hello.SessionId = sessionId[:]
 		}
 	}
-	sigAndHashAlgos := []SignatureAndHash{
-		{hashSHA256, signatureECDSA},
-		{hashSHA256, signatureRSA},
-		{hashSHA384, signatureECDSA},
-		{hashSHA384, signatureRSA},
-		{hashSHA1, signatureRSA},
+	sigAndHashAlgos := []SignatureScheme{
+		ECDSAWithP256AndSHA256,
+		PKCS1WithSHA256,
+		ECDSAWithP384AndSHA384,
+		PKCS1WithSHA384,
+		PKCS1WithSHA1,
+	}
+
+	if tossBiasedCoin(0.5) {
+		sigAndHashAlgos = append(sigAndHashAlgos, ECDSAWithSHA1)
 	}
 	if tossBiasedCoin(0.5) {
-		sigAndHashAlgos = append(sigAndHashAlgos, SignatureAndHash{disabledHashSHA512, signatureECDSA})
+		sigAndHashAlgos = append(sigAndHashAlgos, ECDSAWithP521AndSHA512)
 	}
 	if tossBiasedCoin(0.5) {
-		sigAndHashAlgos = append(sigAndHashAlgos, SignatureAndHash{disabledHashSHA512, signatureRSA})
+		sigAndHashAlgos = append(sigAndHashAlgos, PKCS1WithSHA512)
 	}
 	if tossBiasedCoin(0.5) {
-		sigAndHashAlgos = append(sigAndHashAlgos, SignatureAndHash{hashSHA1, signatureECDSA})
+		sigAndHashAlgos = append(sigAndHashAlgos, PSSWithSHA256)
 	}
+	if tossBiasedCoin(0.5) {
+		sigAndHashAlgos = append(sigAndHashAlgos, PSSWithSHA384)
+	}
+	if tossBiasedCoin(0.5) {
+		sigAndHashAlgos = append(sigAndHashAlgos, PSSWithSHA512)
+	}
+
 	err = shuffleSignatures(sigAndHashAlgos)
 	if err != nil {
 		return err
 	}
-	sigAndHash := SignatureAlgorithmsExtension{SignatureAndHashes: sigAndHashAlgos}
+	sigAndHash := SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: sigAndHashAlgos}
 
 	status := StatusRequestExtension{}
 	sct := SCTExtension{}
@@ -620,7 +483,7 @@ func shuffleTLSExtensions(s []TLSExtension) error {
 }
 
 // so much for generics
-func shuffleSignatures(s []SignatureAndHash) error {
+func shuffleSignatures(s []SignatureScheme) error {
 	// shuffles array in place
 	perm, err := getRandPerm(len(s))
 	if err != nil {

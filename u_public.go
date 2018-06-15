@@ -138,7 +138,7 @@ type ClientHelloMsg struct {
 	SupportedPoints              []uint8
 	TicketSupported              bool
 	SessionTicket                []uint8
-	SignatureAndHashes           []SignatureAndHash
+	SupportedSignatureAlgorithms []SignatureScheme
 	SecureRenegotiation          []byte
 	SecureRenegotiationSupported bool
 	AlpnProtocols                []string
@@ -164,7 +164,7 @@ func (chm *ClientHelloMsg) getPrivatePtr() *clientHelloMsg {
 			supportedPoints:              chm.SupportedPoints,
 			ticketSupported:              chm.TicketSupported,
 			sessionTicket:                chm.SessionTicket,
-			signatureAndHashes:           sigAndHashGetMakePrivate(chm.SignatureAndHashes),
+			supportedSignatureAlgorithms: chm.SupportedSignatureAlgorithms,
 			secureRenegotiation:          chm.SecureRenegotiation,
 			secureRenegotiationSupported: chm.SecureRenegotiationSupported,
 			alpnProtocols:                chm.AlpnProtocols,
@@ -192,36 +192,12 @@ func (chm *clientHelloMsg) getPublicPtr() *ClientHelloMsg {
 			SupportedPoints:              chm.supportedPoints,
 			TicketSupported:              chm.ticketSupported,
 			SessionTicket:                chm.sessionTicket,
-			SignatureAndHashes:           sigAndHashMakePublic(chm.signatureAndHashes),
+			SupportedSignatureAlgorithms: chm.supportedSignatureAlgorithms,
 			SecureRenegotiation:          chm.secureRenegotiation,
 			SecureRenegotiationSupported: chm.secureRenegotiationSupported,
 			AlpnProtocols:                chm.alpnProtocols,
 		}
 	}
-}
-
-// SignatureAndHash mirrors the TLS 1.2, SignatureAndHashAlgorithm struct. See
-// RFC 5246, section A.4.1.
-type SignatureAndHash struct {
-	Hash, Signature uint8
-}
-
-func sigAndHashGetMakePrivate(sahSlice []SignatureAndHash) []signatureAndHash {
-	res := []signatureAndHash{}
-	for _, sah := range sahSlice {
-		res = append(res, signatureAndHash{hash: sah.Hash,
-			signature: sah.Signature})
-	}
-	return res
-}
-
-func sigAndHashMakePublic(sahSlice []signatureAndHash) []SignatureAndHash {
-	res := []SignatureAndHash{}
-	for _, sah := range sahSlice {
-		res = append(res, SignatureAndHash{Hash: sah.hash,
-			Signature: sah.signature})
-	}
-	return res
 }
 
 // A CipherSuite is a specific combination of key agreement, cipher and MAC

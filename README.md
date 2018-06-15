@@ -26,12 +26,10 @@ This is not a problem, if you fully control the server and turn unsupported thin
 * Parroting could be imperfect, and there is no parroting beyond ClientHello.
 #### Compatibility risks of available parrots
 
-| Parrot        | Ciphers* | Signature* | Unsupported extensions |
-| ------------- | -------- | ---------- | ---------------------- |
-| Android 5.1   | low      | very low   | None                   |
-| Android 6.0   | low      | very low   | None                   |
-| Chrome 58     | no       | low        | ChannelID              |
-| Firefox 55    | very low | low        | None                   |
+| Parrot        | Ciphers* | Signature* | Unsupported extensions | TLS Fingerprint ID              |
+| ------------- | -------- | ---------- | ---------------------- | --------------------------------------------- |
+| Chrome 58     | no       | no         | ChannelID              | [06e3579010335639](https://tlsfingerprint.io/id/06e3579010335639) |
+| Firefox 55    | very low | no         | None                   | [c8561687d9ecd83f](https://tlsfingerprint.io/id/c8561687d9ecd83f) |
 
 \* Denotes very rough guesstimate of likelihood that unsupported things will get echoed back by the server in the wild,
 *visibly breaking the connection*.  
@@ -49,8 +47,6 @@ There sure are. If you found one that approaches practicality at line speed — 
 #### Things to implement in Golang to make parrots better
 uTLS is fundamentially limited in parroting, because Golang's "crypto/tls" doesn't support many things. Would be nice to have:
  * ChannelID extension
- * Enable sha512 and sha224 hashes by default
- * Implement RSA PSS signature algorithms
  * In general, any modern crypto is likely to be useful going forward.
 ### Custom Handshake
 It is possible to create custom handshake by
@@ -95,9 +91,9 @@ There are different behaviors you can get, depending  on your `clientHelloID`:
 3. ```utls.HelloCustom```
 will prepare ClientHello with empty uconn.Extensions so you can fill it with TLSExtension's manually.
 4. The rest will will parrot given browser. Such parrots include, for example:
-	* `utls.HelloChrome_Auto`- parrots recommended(latest) Google Chrome version
+	* `utls.HelloChrome_Auto`- parrots recommended(usually latest) Google Chrome version
 	* `utls.HelloChrome_58` - parrots Google Chrome 58
-	* `utls.HelloFirefox_Auto` - parrots recommended(latest) Firefox version
+	* `utls.HelloFirefox_Auto` - parrots recommended(usually latest) Firefox version
 	* `utls.HelloFirefox_55` - parrots Firefox 55
 	
 # Usage
@@ -119,7 +115,7 @@ Here's how default "crypto/tls" is typically used:
     //...
 ```
 To start using using uTLS:
-1. Import this library (e.g. `import tls "github.com/Jigsaw-Code/utls"`)
+1. Import this library (e.g. `import tls "github.com/refraction-networking/utls"`)
 2. Pick the [Client Hello ID](#client-hello-ids)
 3. Simply substitute `tlsConn := tls.Client(dialConn, &config)`
 with `tlsConn := tls.UClient(dialConn, &config, tls.clientHelloID)`  
