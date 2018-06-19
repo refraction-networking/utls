@@ -13,56 +13,149 @@ import (
 	"sort"
 	"strconv"
 	"time"
+	"encoding/binary"
 )
 
-func (uconn *UConn) generateClientHelloConfig(id ClientHelloID) error {
-	uconn.clientHelloID = id
-	switch uconn.clientHelloID {
-	case HelloFirefox_56:
-		fallthrough
-	case HelloFirefox_55:
-		return uconn.parrotFirefox_55()
-
-	case HelloAndroid_6_0_Browser:
-		return uconn.parrotAndroid_6_0()
-	case HelloAndroid_5_1_Browser:
-		return uconn.parrotAndroid_5_1()
-
-	case HelloChrome_62:
-		fallthrough
-	case HelloChrome_58:
-		return uconn.parrotChrome_58()
-
-	case HelloRandomizedALPN:
-		return uconn.parrotRandomizedALPN()
-	case HelloRandomizedNoALPN:
-		return uconn.parrotRandomizedNoALPN()
-
-	case HelloCustom:
-		return uconn.parrotCustom()
-
-	// following ClientHello's are aliases, so we call generateClientHelloConfig() again to set the correct id
-	case HelloRandomized:
-		if tossBiasedCoin(0.5) {
-			return uconn.generateClientHelloConfig(HelloRandomizedALPN)
-		} else {
-			return uconn.generateClientHelloConfig(HelloRandomizedNoALPN)
-		}
-	case HelloAndroid_Auto:
-		return uconn.generateClientHelloConfig(HelloAndroid_6_0_Browser)
-	case HelloFirefox_Auto:
-		return uconn.generateClientHelloConfig(HelloFirefox_56)
-	case HelloChrome_Auto:
-		return uconn.generateClientHelloConfig(HelloChrome_62)
-
-	default:
-		return errors.New("Unknown ParrotID: " + id.Str())
+func initParrots() {
+	// TODO: auto
+	utlsIdToSpec[HelloChrome_58] = ClientHelloSpec{
+		CipherSuites: []uint16{
+			GREASE_PLACEHOLDER,
+			TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+			TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+			TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+			TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+			TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
+			TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
+			TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+			TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+			TLS_RSA_WITH_AES_128_GCM_SHA256,
+			TLS_RSA_WITH_AES_256_GCM_SHA384,
+			TLS_RSA_WITH_AES_128_CBC_SHA,
+			TLS_RSA_WITH_AES_256_CBC_SHA,
+			TLS_RSA_WITH_3DES_EDE_CBC_SHA,
+		},
+		CompressionMethods: []byte{compressionNone},
+		Extensions: []TLSExtension{
+			&FakeGREASEExtension{},
+			&RenegotiationInfoExtension{renegotiation: RenegotiateOnceAsClient},
+			&SNIExtension{},
+			&UtlsExtendedMasterSecretExtension{},
+			&SessionTicketExtension{},
+			&SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []SignatureScheme{
+				ECDSAWithP256AndSHA256,
+				PSSWithSHA256,
+				PKCS1WithSHA256,
+				ECDSAWithP384AndSHA384,
+				PSSWithSHA384,
+				PKCS1WithSHA384,
+				PSSWithSHA512,
+				PKCS1WithSHA512,
+				PKCS1WithSHA1},
+			},
+			&StatusRequestExtension{},
+			&SCTExtension{},
+			&ALPNExtension{AlpnProtocols: []string{"h2", "http/1.1"}},
+			&FakeChannelIDExtension{},
+			&SupportedPointsExtension{SupportedPoints: []byte{pointFormatUncompressed}},
+			&SupportedCurvesExtension{[]CurveID{CurveID(GREASE_PLACEHOLDER),
+				X25519, CurveP256, CurveP384}},
+			&FakeGREASEExtension{},
+			&UtlsPaddingExtension{GetPaddingLen: BoringPaddingStyle},
+		},
+		GetSessionID: sha256.Sum256,
 	}
+	utlsIdToSpec[HelloChrome_62] = utlsIdToSpec[HelloChrome_58]
+
+	utlsIdToSpec[HelloFirefox_55] = ClientHelloSpec{
+		CipherSuites: []uint16{
+			TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+			TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+			TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
+			TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
+			TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+			TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+			TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
+			TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
+			TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+			TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+			FAKE_TLS_DHE_RSA_WITH_AES_128_CBC_SHA,
+			FAKE_TLS_DHE_RSA_WITH_AES_256_CBC_SHA,
+			TLS_RSA_WITH_AES_128_CBC_SHA,
+			TLS_RSA_WITH_AES_256_CBC_SHA,
+			TLS_RSA_WITH_3DES_EDE_CBC_SHA,
+		},
+		CompressionMethods: []byte{compressionNone},
+		Extensions: []TLSExtension{
+			&SNIExtension{},
+			&UtlsExtendedMasterSecretExtension{},
+			&RenegotiationInfoExtension{renegotiation: RenegotiateOnceAsClient},
+			&SupportedCurvesExtension{[]CurveID{X25519, CurveP256, CurveP384, CurveP521}},
+			&SupportedPointsExtension{SupportedPoints: []byte{pointFormatUncompressed}},
+			&SessionTicketExtension{},
+			&ALPNExtension{AlpnProtocols: []string{"h2", "http/1.1"}},
+			&StatusRequestExtension{},
+			&SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []SignatureScheme{
+				ECDSAWithP256AndSHA256,
+				ECDSAWithP384AndSHA384,
+				ECDSAWithP521AndSHA512,
+				PSSWithSHA256,
+				PSSWithSHA384,
+				PSSWithSHA512,
+				PKCS1WithSHA256,
+				PKCS1WithSHA384,
+				PKCS1WithSHA512,
+				ECDSAWithSHA1,
+				PKCS1WithSHA1},
+			},
+			&UtlsPaddingExtension{GetPaddingLen: BoringPaddingStyle},
+		},
+		GetSessionID: nil,
+	}
+	utlsIdToSpec[HelloFirefox_56] = utlsIdToSpec[HelloFirefox_55]
 }
 
-// Fills clientHello header(everything but extensions) fields, which are not set explicitly yet, with defaults
-func (uconn *UConn) fillClientHelloHeader() error {
+func (uconn *UConn) applyPresetByID(id ClientHelloID) (err error) {
+	var spec ClientHelloSpec
+	// choose/generate the spec
+	switch uconn.clientHelloID {
+	case HelloRandomized:
+		if tossBiasedCoin(0.5) {
+			return uconn.applyPresetByID(HelloRandomizedALPN)
+		} else {
+			return uconn.applyPresetByID(HelloRandomizedNoALPN)
+		}
+	case HelloRandomizedALPN:
+		spec, err = uconn.generateRandomizedSpec(true)
+		if err != nil {
+			return err
+		}
+	case HelloRandomizedNoALPN:
+		spec, err = uconn.generateRandomizedSpec(false)
+		if err != nil {
+			return err
+		}
+	case HelloCustom:
+		return nil
+
+	default:
+		var specFound bool
+		spec, specFound = utlsIdToSpec[id]
+		if !specFound {
+			return errors.New("Unknown ClientHelloID: " + id.Str())
+		}
+	}
+
+	uconn.clientHelloID = id
+	return uconn.ApplyPreset(&spec)
+}
+
+// ApplyPreset should only be used in conjunction with HelloCustom to apply custom specs.
+// Also used internally.
+func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 	hello := uconn.HandshakeState.Hello
+	session := uconn.HandshakeState.Session
+
 	if hello.Vers == 0 {
 		hello.Vers = VersionTLS12
 	}
@@ -74,7 +167,7 @@ func (uconn *UConn) fillClientHelloHeader() error {
 			return errors.New("tls: short read from Rand: " + err.Error())
 		}
 	case 32:
-		// carry on
+	// carry on
 	default:
 		return errors.New("ClientHello expected length: 32 bytes. Got: " +
 			strconv.Itoa(len(hello.Random)) + " bytes")
@@ -85,202 +178,78 @@ func (uconn *UConn) fillClientHelloHeader() error {
 	if len(hello.CompressionMethods) == 0 {
 		hello.CompressionMethods = []uint8{compressionNone}
 	}
-	return nil
-}
 
-func (uconn *UConn) parrotFirefox_55() error {
-	hello := uconn.HandshakeState.Hello
-	session := uconn.HandshakeState.Session
-	hello.CipherSuites = []uint16{
-		TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-		TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-		TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
-		TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
-		TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-		TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-		TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
-		TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
-		TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
-		TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
-		FAKE_TLS_DHE_RSA_WITH_AES_128_CBC_SHA,
-		FAKE_TLS_DHE_RSA_WITH_AES_256_CBC_SHA,
-		TLS_RSA_WITH_AES_128_CBC_SHA,
-		TLS_RSA_WITH_AES_256_CBC_SHA,
-		TLS_RSA_WITH_3DES_EDE_CBC_SHA,
-	}
-	err := uconn.fillClientHelloHeader()
+	// Currently, GREASE is assumed to come from BoringSSL
+	grease_bytes := make([]byte, 2*ssl_grease_last_index)
+	grease_extensions_seen := 0
+	_, err := io.ReadFull(uconn.config.rand(), grease_bytes)
 	if err != nil {
-		return err
+		return errors.New("tls: short read from Rand: " + err.Error())
+	}
+	for i := range uconn.greaseSeed {
+		uconn.greaseSeed[i] = binary.LittleEndian.Uint16(grease_bytes[2*i:2*i +2])
+	}
+	if (uconn.greaseSeed[ssl_grease_extension1] == uconn.greaseSeed[ssl_grease_extension2]) {
+		uconn.greaseSeed[ssl_grease_extension2] ^= 0x1010;
 	}
 
-	sni := SNIExtension{uconn.config.ServerName}
-	ems := utlsExtendedMasterSecretExtension{}
-	reneg := RenegotiationInfoExtension{renegotiation: RenegotiateOnceAsClient}
-	curves := SupportedCurvesExtension{[]CurveID{X25519, CurveP256, CurveP384, CurveP521}}
-	points := SupportedPointsExtension{SupportedPoints: []byte{pointFormatUncompressed}}
-	sessionTicket := SessionTicketExtension{Session: session}
-	if session != nil {
-		sessionTicket.Session = session
-		if len(session.SessionTicket()) > 0 {
-			hello.SessionId = make([]byte, 32)
-			_, err := io.ReadFull(uconn.config.rand(), hello.SessionId)
+	hello.CipherSuites = p.CipherSuites
+	for i := range hello.CipherSuites {
+		if hello.CipherSuites[i] == GREASE_PLACEHOLDER {
+			hello.CipherSuites[i] = GetBoringGREASEValue(uconn.greaseSeed, ssl_grease_cipher)
+		}
+	}
+	uconn.GetSessionID = p.GetSessionID
+
+	uconn.Extensions = p.Extensions
+
+	for _, e := range uconn.Extensions {
+		switch ext := e.(type) {
+		case *SNIExtension:
+			if ext.ServerName == "" {
+				ext.ServerName = uconn.config.ServerName
+			}
+		case *FakeGREASEExtension:
+			switch grease_extensions_seen {
+			case 0:
+				ext.Value = GetBoringGREASEValue(uconn.greaseSeed, ssl_grease_extension1)
+			case 1:
+				ext.Value = GetBoringGREASEValue(uconn.greaseSeed, ssl_grease_extension2)
+				ext.Body = []byte{0}
+			default:
+				return errors.New("at most 2 grease extensions are supported")
+			}
+			grease_extensions_seen += 1
+		case *SessionTicketExtension:
+			err := uconn.SetSessionState(session)
 			if err != nil {
-				return errors.New("tls: short read from Rand: " + err.Error())
+				return err
+			}
+		case *SupportedCurvesExtension:
+			for i := range ext.Curves {
+				if ext.Curves[i] == GREASE_PLACEHOLDER {
+					ext.Curves[i] = CurveID(GetBoringGREASEValue(uconn.greaseSeed, ssl_grease_group))
+				}
 			}
 		}
 	}
-	alpn := ALPNExtension{AlpnProtocols: []string{"h2", "http/1.1"}}
-	status := StatusRequestExtension{}
-	sigAndHash := SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []SignatureScheme{
-		ECDSAWithP256AndSHA256,
-		ECDSAWithP384AndSHA384,
-		ECDSAWithP521AndSHA512,
-		PSSWithSHA256,
-		PSSWithSHA384,
-		PSSWithSHA512,
-		PKCS1WithSHA256,
-		PKCS1WithSHA384,
-		PKCS1WithSHA512,
-		ECDSAWithSHA1,
-		PKCS1WithSHA1},
-	}
-	padding := utlsPaddingExtension{GetPaddingLen: boringPaddingStyle}
-	uconn.Extensions = []TLSExtension{
-		&sni,
-		&ems,
-		&reneg,
-		&curves,
-		&points,
-		&sessionTicket,
-		&alpn,
-		&status,
-		&sigAndHash,
-		&padding,
-	}
 	return nil
 }
 
-func (uconn *UConn) parrotChrome_58() error {
-	hello := uconn.HandshakeState.Hello
-	session := uconn.HandshakeState.Session
+func (uconn *UConn) generateRandomizedSpec(WithALPN bool) (ClientHelloSpec, error) {
+	p := ClientHelloSpec{}
 
-	err := uconn.fillClientHelloHeader()
-	if err != nil {
-		return err
-	}
-
-	hello.CipherSuites = []uint16{
-		GetBoringGREASEValue(hello.Random, ssl_grease_cipher),
-		TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-		TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-		TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-		TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-		TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
-		TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
-		TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
-		TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
-		TLS_RSA_WITH_AES_128_GCM_SHA256,
-		TLS_RSA_WITH_AES_256_GCM_SHA384,
-		TLS_RSA_WITH_AES_128_CBC_SHA,
-		TLS_RSA_WITH_AES_256_CBC_SHA,
-		TLS_RSA_WITH_3DES_EDE_CBC_SHA,
-	}
-
-	grease_ext1 := GetBoringGREASEValue(hello.Random, ssl_grease_extension1)
-	grease_ext2 := GetBoringGREASEValue(hello.Random, ssl_grease_extension2)
-	if grease_ext1 == grease_ext2 {
-		grease_ext2 ^= 0x1010
-	}
-
-	grease1 := FakeGREASEExtension{Value: grease_ext1}
-	reneg := RenegotiationInfoExtension{renegotiation: RenegotiateOnceAsClient}
-	sni := SNIExtension{uconn.config.ServerName}
-	ems := utlsExtendedMasterSecretExtension{}
-	sessionTicket := SessionTicketExtension{Session: session}
-	if session != nil {
-		sessionTicket.Session = session
-		if len(session.SessionTicket()) > 0 {
-			sessionId := sha256.Sum256(session.SessionTicket())
-			hello.SessionId = sessionId[:]
-		}
-	}
-
-	sigAndHash := SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []SignatureScheme{
-		ECDSAWithP256AndSHA256,
-		PSSWithSHA256,
-		PKCS1WithSHA256,
-		ECDSAWithP384AndSHA384,
-		PSSWithSHA384,
-		PKCS1WithSHA384,
-		PSSWithSHA512,
-		PKCS1WithSHA512,
-		PKCS1WithSHA1},
-	}
-	status := StatusRequestExtension{}
-	sct := SCTExtension{}
-	alpn := ALPNExtension{AlpnProtocols: []string{"h2", "http/1.1"}}
-	channelId := FakeChannelIDExtension{}
-	points := SupportedPointsExtension{SupportedPoints: []byte{pointFormatUncompressed}}
-	curves := SupportedCurvesExtension{[]CurveID{CurveID(GetBoringGREASEValue(hello.Random, ssl_grease_group)),
-		X25519, CurveP256, CurveP384}}
-	grease2 := FakeGREASEExtension{Value: grease_ext2, Body: []byte{0}}
-	padding := utlsPaddingExtension{GetPaddingLen: boringPaddingStyle}
-
-	uconn.Extensions = []TLSExtension{
-		&grease1,
-		&reneg,
-		&sni,
-		&ems,
-		&sessionTicket,
-		&sigAndHash,
-		&status,
-		&sct,
-		&alpn,
-		&channelId,
-		&points,
-		&curves,
-		&grease2,
-		&padding,
-	}
-	return nil
-}
-
-func (uconn *UConn) parrotRandomizedALPN() error {
-	err := uconn.parrotRandomizedNoALPN()
-	if len(uconn.config.NextProtos) == 0 {
-		// if user didn't specify alpn, choose something popular
-		uconn.config.NextProtos = []string{"h2", "http/1.1"}
-	}
-	alpn := ALPNExtension{AlpnProtocols: uconn.config.NextProtos}
-	uconn.Extensions = append(uconn.Extensions, &alpn)
-	return err
-}
-
-func (uconn *UConn) parrotRandomizedNoALPN() error {
-	hello := uconn.HandshakeState.Hello
-	session := uconn.HandshakeState.Session
-
-	hello.CipherSuites = make([]uint16, len(defaultCipherSuites()))
-	copy(hello.CipherSuites, defaultCipherSuites())
+	p.CipherSuites = make([]uint16, len(defaultCipherSuites()))
+	copy(p.CipherSuites, defaultCipherSuites())
 	shuffledSuites, err := shuffledCiphers()
 	if err != nil {
-		return err
+		return p, err
 	}
-	hello.CipherSuites = removeRandomCiphers(shuffledSuites, 0.4)
-	err = uconn.fillClientHelloHeader()
-	if err != nil {
-		return err
-	}
+	p.CipherSuites = removeRandomCiphers(shuffledSuites, 0.4)
 
 	sni := SNIExtension{uconn.config.ServerName}
-	sessionTicket := SessionTicketExtension{Session: session}
-	if session != nil {
-		sessionTicket.Session = session
-		if len(session.SessionTicket()) > 0 {
-			sessionId := sha256.Sum256(session.SessionTicket())
-			hello.SessionId = sessionId[:]
-		}
-	}
+	sessionTicket := SessionTicketExtension{Session: uconn.HandshakeState.Session}
+
 	sigAndHashAlgos := []SignatureScheme{
 		ECDSAWithP256AndSHA256,
 		PKCS1WithSHA256,
@@ -310,7 +279,7 @@ func (uconn *UConn) parrotRandomizedNoALPN() error {
 
 	err = shuffleSignatures(sigAndHashAlgos)
 	if err != nil {
-		return err
+		return p, err
 	}
 	sigAndHash := SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: sigAndHashAlgos}
 
@@ -328,10 +297,10 @@ func (uconn *UConn) parrotRandomizedNoALPN() error {
 	}
 	curves := SupportedCurvesExtension{curveIDs}
 
-	padding := utlsPaddingExtension{GetPaddingLen: boringPaddingStyle}
+	padding := UtlsPaddingExtension{GetPaddingLen: BoringPaddingStyle}
 	reneg := RenegotiationInfoExtension{renegotiation: RenegotiateOnceAsClient}
 
-	uconn.Extensions = []TLSExtension{
+	p.Extensions = []TLSExtension{
 		&sni,
 		&sessionTicket,
 		&sigAndHash,
@@ -339,27 +308,33 @@ func (uconn *UConn) parrotRandomizedNoALPN() error {
 		&curves,
 	}
 
+	if WithALPN {
+		if len(uconn.config.NextProtos) == 0 {
+			// if user didn't specify alpn yet, choose something popular
+			uconn.config.NextProtos = []string{"h2", "http/1.1"}
+		}
+		alpn := ALPNExtension{AlpnProtocols: uconn.config.NextProtos}
+		p.Extensions = append(p.Extensions, &alpn)
+	}
+
 	if tossBiasedCoin(0.66) {
-		uconn.Extensions = append(uconn.Extensions, &padding)
+		p.Extensions = append(p.Extensions, &padding)
 	}
 	if tossBiasedCoin(0.66) {
-		uconn.Extensions = append(uconn.Extensions, &status)
+		p.Extensions = append(p.Extensions, &status)
 	}
 	if tossBiasedCoin(0.55) {
-		uconn.Extensions = append(uconn.Extensions, &sct)
+		p.Extensions = append(p.Extensions, &sct)
 	}
 	if tossBiasedCoin(0.44) {
-		uconn.Extensions = append(uconn.Extensions, &reneg)
+		p.Extensions = append(p.Extensions, &reneg)
 	}
-	err = shuffleTLSExtensions(uconn.Extensions)
+	err = shuffleTLSExtensions(p.Extensions)
 	if err != nil {
-		return err
+		return p, err
 	}
-	return nil
-}
 
-func (uconn *UConn) parrotCustom() error {
-	return uconn.fillClientHelloHeader()
+	return p, nil
 }
 
 func tossBiasedCoin(probability float32) bool {

@@ -163,11 +163,69 @@ func HttpGetTicketHelloID(hostname string, addr string, helloID tls.ClientHelloI
 	return string(buf), nil
 }
 
+func HttpGetCustom(hostname string, addr string) (string, error) {
+	config := tls.Config{ServerName: hostname}
+	dialConn, err := net.DialTimeout("tcp", addr, dialTimeout)
+	if err != nil {
+		return "", fmt.Errorf("net.DialTimeout error: %+v", err)
+	}
+	uTlsConn := tls.UClient(dialConn, &config, tls.HelloCustom)
+	defer uTlsConn.Close()
+
+	spec := tls.ClientHelloSpec{
+		CipherSuites: []uint16{
+			tls.GREASE_PLACEHOLDER,
+			tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
+			tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+			tls.FAKE_TLS_DHE_RSA_WITH_AES_256_CBC_SHA,
+			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_RSA_WITH_AES_256_CBC_SHA,
+		},
+		Extensions: []tls.TLSExtension{
+			&tls.SNIExtension{},
+			&tls.SupportedCurvesExtension{[]tls.CurveID{tls.X25519, tls.CurveP256}},
+			&tls.SupportedPointsExtension{SupportedPoints: []byte{0}},
+			&tls.SessionTicketExtension{},
+			&tls.ALPNExtension{AlpnProtocols: []string{"myFancyProtocol", "h2", "http/1.1"}},
+			&tls.SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []tls.SignatureScheme{
+				tls.ECDSAWithP256AndSHA256,
+				tls.ECDSAWithP384AndSHA384,
+				tls.ECDSAWithP521AndSHA512,
+				tls.PSSWithSHA256,
+				tls.PSSWithSHA384,
+				tls.PSSWithSHA512,
+				tls.PKCS1WithSHA256,
+				tls.PKCS1WithSHA384,
+				tls.PKCS1WithSHA512,
+				tls.ECDSAWithSHA1,
+				tls.PKCS1WithSHA1},
+			},
+		},
+		GetSessionID: nil,
+	}
+	err = uTlsConn.ApplyPreset(&spec)
+
+	if err != nil {
+		return "", fmt.Errorf("uTlsConn.Handshake() error: %+v", err)
+	}
+
+	err = uTlsConn.Handshake()
+	if err != nil {
+		return "", fmt.Errorf("uTlsConn.Handshake() error: %+v", err)
+	}
+	uTlsConn.Write([]byte("GET / HTTP/1.1\r\nHost: " + hostname + "\r\n\r\n"))
+	buf := make([]byte, 14096)
+	uTlsConn.Read(buf)
+	return string(buf), nil
+}
+
 func main() {
 	var response string
 	var err error
-	requestHostname := "www.google.com"
-	requestAddr := "172.217.11.46:443"
+	requestHostname := "tlsfingerprint.io"
+	requestAddr := "54.145.209.94:443"
 
 	response, err = HttpGetDefault(requestHostname, requestAddr)
 	if err != nil {
@@ -176,11 +234,11 @@ func main() {
 		fmt.Printf("#> HttpGetDefault response: %+s\n", getFirstLine(response))
 	}
 
-	response, err = HttpGetByHelloID(requestHostname, requestAddr, tls.HelloAndroid_5_1_Browser)
+	response, err = HttpGetByHelloID(requestHostname, requestAddr, tls.HelloChrome_62)
 	if err != nil {
-		fmt.Printf("#> HttpGetByHelloID(Android_5_1) failed: %+v\n", err)
+		fmt.Printf("#> HttpGetByHelloID(HelloChrome_62) failed: %+v\n", err)
 	} else {
-		fmt.Printf("#> HttpGetByHelloID(Android_5_1) response: %+s\n", getFirstLine(response))
+		fmt.Printf("#> HttpGetByHelloID(HelloChrome_62) response: %+s\n", getFirstLine(response))
 	}
 
 	response, err = HttpGetByHelloID(requestHostname, requestAddr, tls.HelloRandomizedNoALPN)
@@ -204,11 +262,18 @@ func main() {
 		fmt.Printf("#> HttpGetTicket response: %+s\n", getFirstLine(response))
 	}
 
-	response, err = HttpGetTicketHelloID(requestHostname, requestAddr, tls.HelloAndroid_5_1_Browser)
+	response, err = HttpGetTicketHelloID(requestHostname, requestAddr, tls.HelloFirefox_56)
 	if err != nil {
-		fmt.Printf("#> HttpGetTicketHelloID(Android_5_1) failed: %+v\n", err)
+		fmt.Printf("#> HttpGetTicketHelloID(HelloFirefox_56) failed: %+v\n", err)
 	} else {
-		fmt.Printf("#> HttpGetTicketHelloID(Android_5_1) response: %+s\n", getFirstLine(response))
+		fmt.Printf("#> HttpGetTicketHelloID(HelloFirefox_56) response: %+s\n", getFirstLine(response))
+	}
+
+	response, err = HttpGetCustom(requestHostname, requestAddr)
+	if err != nil {
+		fmt.Printf("#> HttpGetCustom() failed: %+v\n", err)
+	} else {
+		fmt.Printf("#> HttpGetCustom() response: %+s\n", getFirstLine(response))
 	}
 
 	return

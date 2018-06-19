@@ -30,23 +30,6 @@ func TestUTLSMarshalNoOp(t *testing.T) {
 	}
 }
 
-func TestUTLSHandshakeClientParrotAndroid_5_1(t *testing.T) {
-	helloID := HelloAndroid_5_1_Browser
-
-	// Android 5.1 offers old cipher ids for these, but current versions of OpenSSL no longer recognize old ids
-	// testUTLSHandshakeClientECDHE_ECDSA_WITH_CHACHA20_POLY1305(t, helloID)
-	// testUTLSHandshakeClientECDHE_RSA_WITH_CHACHA20_POLY1305(t, helloID)
-
-	testUTLSHandshakeClientECDHE_RSA_AES128_GCM_SHA256(t, helloID)
-	testUTLSHandshakeClientECDHE_ECDSA_AES128_GCM_SHA256(t, helloID)
-	testUTLSHandshakeClientECDHE_RSA_AES256_CBC_SHA(t, helloID)
-	testUTLSHandshakeClientECDHE_ECDSA_AES256_CBC_SHA(t, helloID)
-	testUTLSHandshakeClientECDHE_RSA_AES128_CBC_SHA(t, helloID)
-	testUTLSHandshakeClientECDHE_ECDSA_AES128_CBC_SHA(t, helloID)
-
-	testUTLSHandshakeClientRSA_AES128_GCM_SHA256(t, helloID)
-}
-
 func TestUTLSHandshakeClientParrotGolang(t *testing.T) {
 	helloID := HelloGolang
 
@@ -59,25 +42,6 @@ func TestUTLSHandshakeClientParrotGolang(t *testing.T) {
 	testUTLSHandshakeClientECDHE_ECDSA_AES256_CBC_SHA(t, helloID)
 	testUTLSHandshakeClientECDHE_RSA_AES128_CBC_SHA(t, helloID)
 	testUTLSHandshakeClientECDHE_ECDSA_AES128_CBC_SHA(t, helloID)
-
-	testUTLSHandshakeClientRSA_AES128_GCM_SHA256(t, helloID)
-}
-
-func TestUTLSHandshakeClientParrotAndroid_6_0(t *testing.T) {
-	helloID := HelloAndroid_6_0_Browser
-	// TODO: EC tests below are disabled because latest version of reference OpenSSL doesn't support p256 nor p384
-	// and I can't find configuration flag to enable it. Therefore I can't record replays.
-
-	// Android 6.0 offers old cipher ids for these, but current versions of OpenSSL no longer recognize old ids
-	// testUTLSHandshakeClientECDHE_ECDSA_WITH_CHACHA20_POLY1305(t, helloID)
-	// testUTLSHandshakeClientECDHE_RSA_WITH_CHACHA20_POLY1305(t, helloID)
-
-	//testUTLSHandshakeClientECDHE_ECDSA_AES128_GCM_SHA256(t, helloID)
-	testUTLSHandshakeClientECDHE_RSA_AES128_GCM_SHA256(t, helloID)
-	//testUTLSHandshakeClientECDHE_ECDSA_AES256_CBC_SHA(t, helloID)
-	testUTLSHandshakeClientECDHE_RSA_AES256_CBC_SHA(t, helloID)
-	//testUTLSHandshakeClientECDHE_ECDSA_AES128_CBC_SHA(t, helloID)
-	testUTLSHandshakeClientECDHE_RSA_AES128_CBC_SHA(t, helloID)
 
 	testUTLSHandshakeClientRSA_AES128_GCM_SHA256(t, helloID)
 }

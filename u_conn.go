@@ -25,6 +25,11 @@ type UConn struct {
 	HandshakeState ClientHandshakeState
 
 	HandshakeStateBuilt bool
+
+	// sessionID may or may not depend on ticket; nil => random
+	GetSessionID func(ticket []byte) [32]byte
+
+	greaseSeed [ssl_grease_last_index]uint16
 }
 
 // UClient returns a new uTLS client, with behavior depending on clientHelloID.
@@ -55,7 +60,8 @@ func (uconn *UConn) BuildHandshakeState() error {
 		}
 		uconn.HandshakeState.Hello = hello.getPublicPtr()
 	} else {
-		err := uconn.generateClientHelloConfig(uconn.clientHelloID)
+		var err error
+		err = uconn.applyPresetByID(uconn.clientHelloID)
 		if err != nil {
 			return err
 		}
@@ -72,22 +78,42 @@ func (uconn *UConn) BuildHandshakeState() error {
 	return nil
 }
 
-// If you want you session tickets to be reused - use same cache on following connections
-func (uconn *UConn) SetSessionState(session *ClientSessionState) {
+// If you want session tickets to be reused - use same cache on following connections
+func (uconn *UConn) SetSessionState(session *ClientSessionState) error {
 	uconn.HandshakeState.Session = session
+	var sessionTicket []uint8
 	if session != nil {
-		uconn.HandshakeState.Hello.SessionTicket = session.sessionTicket
+		sessionTicket = session.sessionTicket
 	}
 	uconn.HandshakeState.Hello.TicketSupported = true
+	uconn.HandshakeState.Hello.SessionTicket = sessionTicket
 	for _, ext := range uconn.Extensions {
 		st, ok := ext.(*SessionTicketExtension)
-		if ok {
-			st.Session = session
+		if !ok {
+			continue
 		}
+		st.Session = session
+		if session != nil {
+			if len(session.SessionTicket()) > 0 {
+				if uconn.GetSessionID != nil {
+					sid := uconn.GetSessionID(session.SessionTicket())
+					uconn.HandshakeState.Hello.SessionId = sid[:]
+					return nil
+				}
+			}
+			var sessionID [32]byte
+			_, err := io.ReadFull(uconn.config.rand(), uconn.HandshakeState.Hello.SessionId)
+			if err != nil {
+				return err
+			}
+			uconn.HandshakeState.Hello.SessionId = sessionID[:]
+		}
+		return nil
 	}
+	return errors.New("SessionTicketExtension is not part of current spec and won't be sent")
 }
 
-// If you want you session tickets to be reused - use same cache on following connections
+// If you want session tickets to be reused - use same cache on following connections
 func (uconn *UConn) SetSessionCache(cache ClientSessionCache) {
 	uconn.config.ClientSessionCache = cache
 	uconn.HandshakeState.Hello.TicketSupported = true
@@ -291,7 +317,7 @@ func (c *Conn) clientHandshakeWithState(hs *clientHandshakeState) error {
 	// Session resumption is not allowed if renegotiating because
 	// renegotiation is primarily used to allow a client to send a client
 	// certificate, which would be skipped if session resumption occurred.
-	if sessionCache != nil && c.handshakes == 0 {
+	if sessionCache != nil && c.handshakes == 0 && hs.session == nil { // [UTLS] hs.session == nil
 		// Try to resume a previously negotiated TLS session, if
 		// available.
 		cacheKey = clientSessionCacheKey(c.conn.RemoteAddr(), c.config)
@@ -361,9 +387,9 @@ func (uconn *UConn) MarshalClientHello() error {
 		1 + len(hello.CompressionMethods)
 
 	extensionsLen := 0
-	var paddingExt *utlsPaddingExtension
+	var paddingExt *UtlsPaddingExtension
 	for _, ext := range uconn.Extensions {
-		if pe, ok := ext.(*utlsPaddingExtension); !ok {
+		if pe, ok := ext.(*UtlsPaddingExtension); !ok {
 			// If not padding - just add length of extension to total length
 			extensionsLen += ext.Len()
 		} else {

@@ -352,6 +352,34 @@ func (e *SessionTicketExtension) Read(b []byte) (int, error) {
 	return e.Len(), io.EOF
 }
 
+type GenericExtension struct {
+	id   uint16
+	data []byte
+}
+
+func (e *GenericExtension) writeToUConn(uc *UConn) error {
+	return nil
+}
+
+func (e *GenericExtension) Len() int {
+	return 4 + len(e.data)
+}
+
+func (e *GenericExtension) Read(b []byte) (int, error) {
+	if len(b) < e.Len() {
+		return 0, io.ErrShortBuffer
+	}
+
+	b[0] = byte(e.id >> 8)
+	b[1] = byte(e.id)
+	b[2] = byte(len(e.data) >> 8)
+	b[3] = byte(len(e.data))
+	if len(e.data) > 0 {
+		copy(b[4:], e.data)
+	}
+	return e.Len(), io.EOF
+}
+
 /*
 FAKE EXTENSIONS
 */
@@ -378,21 +406,21 @@ func (e *FakeChannelIDExtension) Read(b []byte) (int, error) {
 	return e.Len(), io.EOF
 }
 
-type utlsExtendedMasterSecretExtension struct {
+type UtlsExtendedMasterSecretExtension struct {
 }
 
 // TODO: update when this extension is implemented in crypto/tls
 // but we probably won't have to enable it in Config
-func (e *utlsExtendedMasterSecretExtension) writeToUConn(uc *UConn) error {
+func (e *UtlsExtendedMasterSecretExtension) writeToUConn(uc *UConn) error {
 	uc.HandshakeState.Hello.Ems = true
 	return nil
 }
 
-func (e *utlsExtendedMasterSecretExtension) Len() int {
+func (e *UtlsExtendedMasterSecretExtension) Len() int {
 	return 4
 }
 
-func (e *utlsExtendedMasterSecretExtension) Read(b []byte) (int, error) {
+func (e *UtlsExtendedMasterSecretExtension) Read(b []byte) (int, error) {
 	if len(b) < e.Len() {
 		return 0, io.ErrShortBuffer
 	}
@@ -415,6 +443,7 @@ func extendedMasterFromPreMasterSecret(version uint16, suite *cipherSuite, preMa
 }
 
 // GREASE stinks with dead parrots, have to be super careful, and, if possible, not include GREASE
+// https://github.com/google/boringssl/blob/1c68fa2350936ca5897a66b430ebaf333a0e43f5/ssl/internal.h
 const (
 	ssl_grease_cipher = iota
 	ssl_grease_group
@@ -422,6 +451,7 @@ const (
 	ssl_grease_extension2
 	ssl_grease_version
 	ssl_grease_ticket_extension
+	ssl_grease_last_index = ssl_grease_ticket_extension
 )
 
 // it is responsibility of user not to generate multiple grease extensions with same value
@@ -434,11 +464,11 @@ func (e *FakeGREASEExtension) writeToUConn(uc *UConn) error {
 	return nil
 }
 
-// will panic if clientRandom[index] is out of bounds.
-func GetBoringGREASEValue(clientRandom []byte, index int) uint16 {
-	// Get GREASE value BoringSSL-style. Unfortunately, this value isn't really boring and is quite interesting :(
+// will panic if ssl_grease_last_index[index] is out of bounds.
+func GetBoringGREASEValue(greaseSeed [ssl_grease_last_index]uint16, index int) uint16 {
+	// GREASE value is back from deterministic to random.
 	// https://github.com/google/boringssl/blob/a365138ac60f38b64bfc608b493e0f879845cb88/ssl/handshake_client.c#L530
-	ret := uint16(clientRandom[index])
+	ret := uint16(greaseSeed[index])
 	/* This generates a random value of the form 0xωaωa, for all 0 ≤ ω < 16. */
 	ret = (ret & 0xf0) | 0x0a
 	ret |= ret << 8
@@ -464,8 +494,7 @@ func (e *FakeGREASEExtension) Read(b []byte) (int, error) {
 	return e.Len(), io.EOF
 }
 
-//
-type utlsPaddingExtension struct {
+type UtlsPaddingExtension struct {
 	PaddingLen int
 	WillPad    bool // set to false to disable extension
 
@@ -474,11 +503,11 @@ type utlsPaddingExtension struct {
 	GetPaddingLen func(clientHelloUnpaddedLen int) (paddingLen int, willPad bool)
 }
 
-func (e *utlsPaddingExtension) writeToUConn(uc *UConn) error {
+func (e *UtlsPaddingExtension) writeToUConn(uc *UConn) error {
 	return nil
 }
 
-func (e *utlsPaddingExtension) Len() int {
+func (e *UtlsPaddingExtension) Len() int {
 	if e.WillPad {
 		return 4 + e.PaddingLen
 	} else {
@@ -486,13 +515,13 @@ func (e *utlsPaddingExtension) Len() int {
 	}
 }
 
-func (e *utlsPaddingExtension) Update(clientHelloUnpaddedLen int) {
+func (e *UtlsPaddingExtension) Update(clientHelloUnpaddedLen int) {
 	if e.GetPaddingLen != nil {
 		e.PaddingLen, e.WillPad = e.GetPaddingLen(clientHelloUnpaddedLen)
 	}
 }
 
-func (e *utlsPaddingExtension) Read(b []byte) (int, error) {
+func (e *UtlsPaddingExtension) Read(b []byte) (int, error) {
 	if !e.WillPad {
 		return 0, io.EOF
 	}
@@ -508,7 +537,7 @@ func (e *utlsPaddingExtension) Read(b []byte) (int, error) {
 }
 
 // https://github.com/google/boringssl/blob/7d7554b6b3c79e707e25521e61e066ce2b996e4c/ssl/t1_lib.c#L2803
-func boringPaddingStyle(unpaddedLen int) (int, bool) {
+func BoringPaddingStyle(unpaddedLen int) (int, bool) {
 	if unpaddedLen > 0xff && unpaddedLen < 0x200 {
 		paddingLen := 0x200 - unpaddedLen
 		if paddingLen >= 4+1 {
