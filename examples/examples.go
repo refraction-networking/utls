@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/hex"
 	"fmt"
-	tls "github.com/Jigsaw-Code/utls"
+	tls "github.com/refraction-networking/utls"
 	"net"
 	"strings"
 	"time"

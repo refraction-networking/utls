@@ -162,16 +162,16 @@ func (e *SupportedPointsExtension) Read(b []byte) (int, error) {
 }
 
 type SignatureAlgorithmsExtension struct {
-	SignatureAndHashes []SignatureAndHash
+	SupportedSignatureAlgorithms []SignatureScheme
 }
 
 func (e *SignatureAlgorithmsExtension) writeToUConn(uc *UConn) error {
-	uc.HandshakeState.Hello.SignatureAndHashes = e.SignatureAndHashes
+	uc.HandshakeState.Hello.SupportedSignatureAlgorithms = e.SupportedSignatureAlgorithms
 	return nil
 }
 
 func (e *SignatureAlgorithmsExtension) Len() int {
-	return 6 + 2*len(e.SignatureAndHashes)
+	return 6 + 2*len(e.SupportedSignatureAlgorithms)
 }
 
 func (e *SignatureAlgorithmsExtension) Read(b []byte) (int, error) {
@@ -181,13 +181,13 @@ func (e *SignatureAlgorithmsExtension) Read(b []byte) (int, error) {
 	// https://tools.ietf.org/html/rfc5246#section-7.4.1.4.1
 	b[0] = byte(extensionSignatureAlgorithms >> 8)
 	b[1] = byte(extensionSignatureAlgorithms)
-	b[2] = byte((2 + 2*len(e.SignatureAndHashes)) >> 8)
-	b[3] = byte((2 + 2*len(e.SignatureAndHashes)))
-	b[4] = byte((2 * len(e.SignatureAndHashes)) >> 8)
-	b[5] = byte((2 * len(e.SignatureAndHashes)))
-	for i, sigAndHash := range e.SignatureAndHashes {
-		b[6+2*i] = byte(sigAndHash.Hash)
-		b[7+2*i] = byte(sigAndHash.Signature)
+	b[2] = byte((2 + 2*len(e.SupportedSignatureAlgorithms)) >> 8)
+	b[3] = byte((2 + 2*len(e.SupportedSignatureAlgorithms)))
+	b[4] = byte((2 * len(e.SupportedSignatureAlgorithms)) >> 8)
+	b[5] = byte((2 * len(e.SupportedSignatureAlgorithms)))
+	for i, sigAndHash := range e.SupportedSignatureAlgorithms {
+		b[6+2*i] = byte(sigAndHash >> 8)
+		b[7+2*i] = byte(sigAndHash)
 	}
 	return e.Len(), io.EOF
 }

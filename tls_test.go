@@ -9,7 +9,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"github.com/Jigsaw-Code/utls/testenv"
+	"github.com/refraction-networking/utls/testenv"
 	"io"
 	"io/ioutil"
 	"math"
@@ -563,6 +563,58 @@ func TestConnCloseWrite(t *testing.T) {
 		if err := conn.CloseWrite(); err != errEarlyCloseWrite {
 			t.Errorf("CloseWrite error = %v; want errEarlyCloseWrite", err)
 		}
+	}
+}
+
+func TestWarningAlertFlood(t *testing.T) {
+	ln := newLocalListener(t)
+	defer ln.Close()
+
+	server := func() error {
+		sconn, err := ln.Accept()
+		if err != nil {
+			return fmt.Errorf("accept: %v", err)
+		}
+		defer sconn.Close()
+
+		serverConfig := testConfig.Clone()
+		srv := Server(sconn, serverConfig)
+		if err := srv.Handshake(); err != nil {
+			return fmt.Errorf("handshake: %v", err)
+		}
+		defer srv.Close()
+
+		_, err = ioutil.ReadAll(srv)
+		if err == nil {
+			return errors.New("unexpected lack of error from server")
+		}
+		const expected = "too many warn"
+		if str := err.Error(); !strings.Contains(str, expected) {
+			return fmt.Errorf("expected error containing %q, but saw: %s", expected, str)
+		}
+
+		return nil
+	}
+
+	errChan := make(chan error, 1)
+	go func() { errChan <- server() }()
+
+	clientConfig := testConfig.Clone()
+	conn, err := Dial("tcp", ln.Addr().String(), clientConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if err := conn.Handshake(); err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 0; i < maxWarnAlertCount+1; i++ {
+		conn.sendAlert(alertNoRenegotiation)
+	}
+
+	if err := <-errChan; err != nil {
+		t.Fatal(err)
 	}
 }
 
