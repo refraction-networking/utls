@@ -74,34 +74,47 @@ const (
 	helloRandomizedNoALPN
 )
 
+type ClientHelloSpec struct {
+	CipherSuites       []uint16       // nil => default
+	CompressionMethods []uint8        // nil => no compression
+	Extensions         []TLSExtension // nil => no extensions
+
+	// GreaseStyle: currently only random
+
+	// sessionID may or may not depend on ticket; nil => random
+	GetSessionID func(ticket []byte) [32]byte
+
+	// TLSFingerprintLink string // ?? link to tlsfingerprint.io for informational purposes
+}
+
 var (
 	// HelloGolang will use default "crypto/tls" handshake marshaling codepath, which WILL
 	// overwrite your changes to Hello(Config, Session are fine).
 	// You might want to call BuildHandshakeState() before applying any changes.
 	// UConn.Extensions will be completely ignored.
-	HelloGolang ClientHelloID = ClientHelloID{helloGolang, helloAutoVers}
+	HelloGolang = ClientHelloID{helloGolang, helloAutoVers}
 
-	// HelloCustom will prepare ClientHello with empty uconn.Extensions so you can fill it with TLSExtension's manually
-	HelloCustom ClientHelloID = ClientHelloID{helloCustom, helloAutoVers}
+	// HelloCustom will prepare ClientHello with empty uconn.Extensions so you can fill it with
+	// TLSExtensions manually or use ApplyPreset function
+	HelloCustom = ClientHelloID{helloCustom, helloAutoVers}
 
 	// HelloRandomized* randomly adds/reorders extensions, ciphersuites, etc.
-	HelloRandomized       ClientHelloID = ClientHelloID{helloRandomized, helloAutoVers}
-	HelloRandomizedALPN   ClientHelloID = ClientHelloID{helloRandomized, helloRandomizedALPN}
-	HelloRandomizedNoALPN ClientHelloID = ClientHelloID{helloRandomized, helloRandomizedNoALPN}
+	HelloRandomized       = ClientHelloID{helloRandomized, helloAutoVers}
+	HelloRandomizedALPN   = ClientHelloID{helloRandomized, helloRandomizedALPN}
+	HelloRandomizedNoALPN = ClientHelloID{helloRandomized, helloRandomizedNoALPN}
 
 	// The rest will will parrot given browser.
-	HelloFirefox_Auto ClientHelloID = ClientHelloID{helloFirefox, helloAutoVers}
-	HelloFirefox_55                 = ClientHelloID{helloFirefox, 55}
-	HelloFirefox_56                 = ClientHelloID{helloFirefox, 56}
+	HelloFirefox_Auto = HelloFirefox_56
+	HelloFirefox_55   = ClientHelloID{helloFirefox, 55}
+	HelloFirefox_56   = ClientHelloID{helloFirefox, 56}
 
-	HelloChrome_Auto ClientHelloID = ClientHelloID{helloChrome, helloAutoVers}
-	HelloChrome_58   ClientHelloID = ClientHelloID{helloChrome, 58}
-	HelloChrome_62   ClientHelloID = ClientHelloID{helloChrome, 62}
-
-	HelloAndroid_Auto        ClientHelloID = ClientHelloID{helloAndroid, helloAutoVers}
-	HelloAndroid_6_0_Browser ClientHelloID = ClientHelloID{helloAndroid, 23}
-	HelloAndroid_5_1_Browser ClientHelloID = ClientHelloID{helloAndroid, 22}
+	HelloChrome_Auto = HelloChrome_62
+	HelloChrome_58   = ClientHelloID{helloChrome, 58}
+	HelloChrome_62   = ClientHelloID{helloChrome, 62}
 )
+
+// based on spec's GreaseStyle, GREASE_PLACEHOLDER may be replaced by another GREASE value
+const GREASE_PLACEHOLDER = 0x0a0a
 
 // utlsMacSHA384 returns a SHA-384.
 func utlsMacSHA384(version uint16, key []byte) macFunction {
@@ -110,6 +123,8 @@ func utlsMacSHA384(version uint16, key []byte) macFunction {
 
 var utlsSupportedCipherSuites []*cipherSuite
 
+var utlsIdToSpec map[ClientHelloID]ClientHelloSpec
+
 func init() {
 	utlsSupportedCipherSuites = append(cipherSuites, []*cipherSuite{
 		{OLD_TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256, 32, 0, 12, ecdheRSAKA,
@@ -117,6 +132,9 @@ func init() {
 		{OLD_TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256, 32, 0, 12, ecdheECDSAKA,
 			suiteECDHE | suiteECDSA | suiteTLS12 | suiteDefaultOff, nil, nil, aeadChaCha20Poly1305},
 	}...)
+
+	utlsIdToSpec = make(map[ClientHelloID]ClientHelloSpec)
+	initParrots()
 }
 
 // EnableWeakCiphers allows utls connections to continue in some cases, when weak cipher was chosen.
