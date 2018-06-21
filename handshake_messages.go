@@ -20,7 +20,7 @@ type clientHelloMsg struct {
 	serverName                   string
 	ocspStapling                 bool
 	scts                         bool
-	ems                          bool // [UTLS]
+	ems                          bool // [UTLS] actually implemented due to its prevalence
 	supportedCurves              []CurveID
 	supportedPoints              []uint8
 	ticketSupported              bool
