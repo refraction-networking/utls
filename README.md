@@ -3,6 +3,7 @@
 [![godoc](https://img.shields.io/badge/godoc-reference-blue.svg)](https://godoc.org/github.com/refraction-networking/utls#UConn)
 ---
 uTLS is a fork of "crypto/tls", which provides ClientHello fingerprinting resistance, low-level access to handshake, fake session tickets and some other features. Handshake is still performed by "crypto/tls", this library merely changes ClientHello part of it and provides low-level access.  
+Golang 1.9+ is required.  
 If you have any questions, bug reports or contributions, you are welcome to publish those on GitHub. If you want to do so in private, you can contact one of developers personally via sergey.frolov@colorado.edu
 # Features
 ## Low-level access to handshake

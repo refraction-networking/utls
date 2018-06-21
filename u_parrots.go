@@ -7,13 +7,13 @@ package tls
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/binary"
 	"errors"
 	"io"
 	"math/big"
 	"sort"
 	"strconv"
 	"time"
-	"encoding/binary"
 )
 
 func initParrots() {
@@ -187,10 +187,10 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 		return errors.New("tls: short read from Rand: " + err.Error())
 	}
 	for i := range uconn.greaseSeed {
-		uconn.greaseSeed[i] = binary.LittleEndian.Uint16(grease_bytes[2*i:2*i +2])
+		uconn.greaseSeed[i] = binary.LittleEndian.Uint16(grease_bytes[2*i : 2*i+2])
 	}
-	if (uconn.greaseSeed[ssl_grease_extension1] == uconn.greaseSeed[ssl_grease_extension2]) {
-		uconn.greaseSeed[ssl_grease_extension2] ^= 0x1010;
+	if uconn.greaseSeed[ssl_grease_extension1] == uconn.greaseSeed[ssl_grease_extension2] {
+		uconn.greaseSeed[ssl_grease_extension2] ^= 0x1010
 	}
 
 	hello.CipherSuites = p.CipherSuites
