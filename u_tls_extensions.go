@@ -455,12 +455,12 @@ const (
 )
 
 // it is responsibility of user not to generate multiple grease extensions with same value
-type FakeGREASEExtension struct {
+type UtlsGREASEExtension struct {
 	Value uint16
 	Body  []byte // in Chrome first grease has empty body, second grease has a single zero byte
 }
 
-func (e *FakeGREASEExtension) writeToUConn(uc *UConn) error {
+func (e *UtlsGREASEExtension) writeToUConn(uc *UConn) error {
 	return nil
 }
 
@@ -475,11 +475,11 @@ func GetBoringGREASEValue(greaseSeed [ssl_grease_last_index]uint16, index int) u
 	return ret
 }
 
-func (e *FakeGREASEExtension) Len() int {
+func (e *UtlsGREASEExtension) Len() int {
 	return 4 + len(e.Body)
 }
 
-func (e *FakeGREASEExtension) Read(b []byte) (int, error) {
+func (e *UtlsGREASEExtension) Read(b []byte) (int, error) {
 	if len(b) < e.Len() {
 		return 0, io.ErrShortBuffer
 	}

@@ -37,7 +37,7 @@ func initParrots() {
 		},
 		CompressionMethods: []byte{compressionNone},
 		Extensions: []TLSExtension{
-			&FakeGREASEExtension{},
+			&UtlsGREASEExtension{},
 			&RenegotiationInfoExtension{renegotiation: RenegotiateOnceAsClient},
 			&SNIExtension{},
 			&UtlsExtendedMasterSecretExtension{},
@@ -60,7 +60,7 @@ func initParrots() {
 			&SupportedPointsExtension{SupportedPoints: []byte{pointFormatUncompressed}},
 			&SupportedCurvesExtension{[]CurveID{CurveID(GREASE_PLACEHOLDER),
 				X25519, CurveP256, CurveP384}},
-			&FakeGREASEExtension{},
+			&UtlsGREASEExtension{},
 			&UtlsPaddingExtension{GetPaddingLen: BoringPaddingStyle},
 		},
 		GetSessionID: sha256.Sum256,
@@ -209,7 +209,7 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 			if ext.ServerName == "" {
 				ext.ServerName = uconn.config.ServerName
 			}
-		case *FakeGREASEExtension:
+		case *UtlsGREASEExtension:
 			switch grease_extensions_seen {
 			case 0:
 				ext.Value = GetBoringGREASEValue(uconn.greaseSeed, ssl_grease_extension1)
