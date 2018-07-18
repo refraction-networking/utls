@@ -113,6 +113,63 @@ func initParrots() {
 		GetSessionID: nil,
 	}
 	utlsIdToSpec[HelloFirefox_56] = utlsIdToSpec[HelloFirefox_55]
+
+	utlsIdToSpec[HelloIOS_11_1] = ClientHelloSpec{
+		CipherSuites: []uint16{
+			TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+			TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+			DISABLED_TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384,
+			TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,
+			TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
+			TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
+			TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
+			TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+			TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+			DISABLED_TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384,
+			TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,
+			TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+			TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+			TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
+			TLS_RSA_WITH_AES_256_GCM_SHA384,
+			TLS_RSA_WITH_AES_128_GCM_SHA256,
+			DISABLED_TLS_RSA_WITH_AES_256_CBC_SHA256,
+			TLS_RSA_WITH_AES_128_CBC_SHA256,
+			TLS_RSA_WITH_AES_256_CBC_SHA,
+			TLS_RSA_WITH_AES_128_CBC_SHA,
+		},
+		CompressionMethods: []byte{
+			compressionNone,
+		},
+		Extensions: []TLSExtension{
+			&RenegotiationInfoExtension{renegotiation: RenegotiateOnceAsClient},
+			&SNIExtension{},
+			&UtlsExtendedMasterSecretExtension{},
+			&SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []SignatureScheme{
+				ECDSAWithP256AndSHA256,
+				PSSWithSHA256,
+				PKCS1WithSHA256,
+				ECDSAWithP384AndSHA384,
+				PSSWithSHA384,
+				PKCS1WithSHA384,
+				PSSWithSHA512,
+				PKCS1WithSHA512,
+				PKCS1WithSHA1,
+			}},
+			&StatusRequestExtension{},
+			&NPNExtension{},
+			&SCTExtension{},
+			&ALPNExtension{AlpnProtocols: []string{"h2", "h2-16", "h2-15", "h2-14", "spdy/3.1", "spdy/3", "http/1.1"}},
+			&SupportedPointsExtension{SupportedPoints: []byte{
+				pointFormatUncompressed,
+			}},
+			&SupportedCurvesExtension{Curves: []CurveID{
+				X25519,
+				CurveP256,
+				CurveP384,
+				CurveP521,
+			}},
+		},
+	}
 }
 
 func (uconn *UConn) applyPresetByID(id ClientHelloID) (err error) {
