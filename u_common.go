@@ -65,6 +65,7 @@ const (
 	helloCustom     = "Custom"
 	helloFirefox    = "Firefox"
 	helloChrome     = "Chrome"
+	helloIOS        = "iOS"
 	helloAndroid    = "Android"
 )
 
@@ -111,6 +112,9 @@ var (
 	HelloChrome_Auto = HelloChrome_62
 	HelloChrome_58   = ClientHelloID{helloChrome, 58}
 	HelloChrome_62   = ClientHelloID{helloChrome, 62}
+
+	HelloIOS_Auto = HelloIOS_11_1
+	HelloIOS_11_1 = ClientHelloID{helloIOS, 111}
 )
 
 // based on spec's GreaseStyle, GREASE_PLACEHOLDER may be replaced by another GREASE value
@@ -141,6 +145,7 @@ func init() {
 // This provides better compatibility with servers on the web, but weakens security. Feel free
 // to use this option if you establish additional secure connection inside of utls connection.
 // This option does not change the shape of parrots (i.e. same ciphers will be offered either way).
+// Must be called before establishing any connections.
 func EnableWeakCiphers() {
 	utlsSupportedCipherSuites = append(cipherSuites, []*cipherSuite{
 		{DISABLED_TLS_RSA_WITH_AES_256_CBC_SHA256, 32, 32, 16, rsaKA,
