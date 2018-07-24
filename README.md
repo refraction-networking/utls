@@ -31,10 +31,11 @@ This is not a problem, if you fully control the server and turn unsupported thin
 | ------------- | -------- | ---------- | ---------------------- | --------------------------------------------- |
 | Chrome 58     | no       | no         | ChannelID              | [06e3579010335639](https://tlsfingerprint.io/id/06e3579010335639) |
 | Firefox 55    | very low | no         | None                   | [c8561687d9ecd83f](https://tlsfingerprint.io/id/c8561687d9ecd83f) |
+| iOS 11.1      | low** | no         | None                   | [a9ecd7afe6b0e4a4](https://tlsfingerprint.io/id/a9ecd7afe6b0e4a4) |
 
 \* Denotes very rough guesstimate of likelihood that unsupported things will get echoed back by the server in the wild,
 *visibly breaking the connection*.  
-
+\*\* No risk, if `utls.EnableWeakCiphers()` is called prior to using it.  
 
 #### Parrots FAQ
 > Does it really look like, say, Google Chrome with all the [GREASE](https://tools.ietf.org/html/draft-davidben-tls-grease-01) and stuff?
