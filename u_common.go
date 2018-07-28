@@ -127,8 +127,6 @@ func utlsMacSHA384(version uint16, key []byte) macFunction {
 
 var utlsSupportedCipherSuites []*cipherSuite
 
-var utlsIdToSpec map[ClientHelloID]ClientHelloSpec
-
 func init() {
 	utlsSupportedCipherSuites = append(cipherSuites, []*cipherSuite{
 		{OLD_TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256, 32, 0, 12, ecdheRSAKA,
@@ -136,9 +134,6 @@ func init() {
 		{OLD_TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256, 32, 0, 12, ecdheECDSAKA,
 			suiteECDHE | suiteECDSA | suiteTLS12 | suiteDefaultOff, nil, nil, aeadChaCha20Poly1305},
 	}...)
-
-	utlsIdToSpec = make(map[ClientHelloID]ClientHelloSpec)
-	initParrots()
 }
 
 // EnableWeakCiphers allows utls connections to continue in some cases, when weak cipher was chosen.
