@@ -65,6 +65,7 @@ func (uconn *UConn) BuildHandshakeState() error {
 		if err != nil {
 			return err
 		}
+
 		err = uconn.ApplyConfig()
 		if err != nil {
 			return err
