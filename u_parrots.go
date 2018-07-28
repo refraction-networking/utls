@@ -177,7 +177,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 func (uconn *UConn) applyPresetByID(id ClientHelloID) (err error) {
 	var spec ClientHelloSpec
 	// choose/generate the spec
-	switch uconn.clientHelloID {
+	switch id {
 	case HelloRandomized:
 		if tossBiasedCoin(0.5) {
 			return uconn.applyPresetByID(HelloRandomizedALPN)
