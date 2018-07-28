@@ -3,10 +3,14 @@ package main
 import (
 	"encoding/hex"
 	"fmt"
-	tls "github.com/refraction-networking/utls"
 	"net"
+	"net/http"
+	"net/http/httputil"
 	"strings"
 	"time"
+
+	tls "github.com/refraction-networking/utls"
+	"golang.org/x/net/http2"
 )
 
 var (
@@ -185,7 +189,7 @@ func HttpGetCustom(hostname string, addr string) (string, error) {
 		},
 		Extensions: []tls.TLSExtension{
 			&tls.SNIExtension{},
-			&tls.SupportedCurvesExtension{[]tls.CurveID{tls.X25519, tls.CurveP256}},
+			&tls.SupportedCurvesExtension{Curves: []tls.CurveID{tls.X25519, tls.CurveP256}},
 			&tls.SupportedPointsExtension{SupportedPoints: []byte{0}},
 			&tls.SessionTicketExtension{},
 			&tls.ALPNExtension{AlpnProtocols: []string{"myFancyProtocol", "h2", "http/1.1"}},
@@ -221,9 +225,56 @@ func HttpGetCustom(hostname string, addr string) (string, error) {
 	return string(buf), nil
 }
 
+var roller *tls.Roller
+
+func HttpGetGoogleWithRoller() (string, error) {
+	var err error
+	hostname := "www.google.com"
+	if roller == nil {
+		roller, err = tls.NewRoller()
+		if err != nil {
+			return "", err
+		}
+	}
+
+	// As of 2018-07-24 this tries to connect with Chrome, fails due to ChannelID extension
+	// being selected by Google, but not supported by utls, and seamlessly moves on to either
+	// Firefox or iOS fingerprints, which work.
+	c, err := roller.Dial("tcp4", hostname+":443", hostname)
+	if err != nil {
+		return "", err
+	}
+	if c.ConnectionState().NegotiatedProtocol == "h2" {
+		t := http2.Transport{}
+		h2c, err := t.NewClientConn(c)
+		if err != nil {
+			return "", err
+		}
+		req, err := http.NewRequest("GET", "/", nil)
+		if err != nil {
+			return "", err
+		}
+		resp, err := h2c.RoundTrip(req)
+		if err != nil {
+			return "", err
+		}
+		respbytes, err := httputil.DumpResponse(resp, true)
+		if err != nil {
+			return "", err
+		}
+		return string(respbytes), nil
+	} else {
+		c.Write([]byte("GET / HTTP/1.1\r\nHost: " + hostname + "\r\n\r\n"))
+		buf := make([]byte, 14096)
+		c.Read(buf)
+		return string(buf), nil
+	}
+}
+
 func main() {
 	var response string
 	var err error
+
 	requestHostname := "tlsfingerprint.io"
 	requestAddr := "54.145.209.94:443"
 
@@ -274,6 +325,15 @@ func main() {
 		fmt.Printf("#> HttpGetCustom() failed: %+v\n", err)
 	} else {
 		fmt.Printf("#> HttpGetCustom() response: %+s\n", getFirstLine(response))
+	}
+
+	for i := 0; i < 5; i++ {
+		response, err = HttpGetGoogleWithRoller()
+		if err != nil {
+			fmt.Printf("#> HttpGetGoogleWithRoller() failed: %+v\n", err)
+		} else {
+			fmt.Printf("#> HttpGetGoogleWithRoller() response: %+s\n", getFirstLine(response))
+		}
 	}
 
 	return
