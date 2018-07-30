@@ -209,8 +209,8 @@ func (uconn *UConn) applyPresetByID(id ClientHelloID) (err error) {
 }
 
 // ApplyPreset should only be used in conjunction with HelloCustom to apply custom specs.
-// Separate ClientHelloSpec for each UConn is advised, to avoid state sharing.
-// Also used internally.
+// Fields of TLSExtensions that are slices/pointers are shared across different connections with
+// same ClientHelloSpec. It is advised to use different specs and avoid any shared state.
 func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 	hello := uconn.HandshakeState.Hello
 	session := uconn.HandshakeState.Session
