@@ -155,5 +155,5 @@ func (uconn *UConn) MarshalClientHello() error
 ## Contributors' guide
 Please refer to [this document](./CONTRIBUTORS_GUIDE.md) if you're interested in internals
 
-## Disclamer
-This is not an official Google product.
+## Credits
+The initial development of uTLS was completed during an internship at [Google Jigsaw](https://jigsaw.google.com/). This is not an official Google product.
