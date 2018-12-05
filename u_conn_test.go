@@ -17,14 +17,14 @@ import (
 )
 
 func TestUTLSMarshalNoOp(t *testing.T) {
-	// we rely on
 	str := "We rely on clientHelloMsg.marshal() not doing anything if clientHelloMsg.raw is set"
-	cHello, err := makeClientHello(getUTLSTestConfig())
+	uconn := UClient(&net.TCPConn{}, &Config{ServerName: "foobar"}, HelloGolang)
+	msg, _, err := uconn.makeClientHello()
 	if err != nil {
 		t.Errorf("Got error: %s; expected to succeed", err)
 	}
-	cHello.raw = []byte(str)
-	marshalledHello := cHello.marshal()
+	msg.raw = []byte(str)
+	marshalledHello := msg.marshal()
 	if strings.Compare(string(marshalledHello), str) != 0 {
 		t.Errorf("clientHelloMsg.marshal() is not NOOP! Expected to get: %s, got: %s", str, string(marshalledHello))
 	}
@@ -297,7 +297,7 @@ func (test *clientTest) runUTLS(t *testing.T, write bool, helloID ClientHelloID)
 		}
 		clientConn = recordingConn
 	} else {
-		clientConn, serverConn = net.Pipe()
+		clientConn, serverConn = localPipe(t)
 	}
 
 	config := test.config
@@ -307,8 +307,13 @@ func (test *clientTest) runUTLS(t *testing.T, write bool, helloID ClientHelloID)
 	}
 	client := UClient(clientConn, config, helloID)
 	if strings.HasPrefix(test.name, "TLSv12-UTLS-setclienthello-") {
+		err := client.BuildHandshakeState()
+		if err != nil {
+			t.Errorf("Client.BuildHandshakeState() failed: %s", err)
+			return
+		}
 		// TODO: fix this name hack if we ever decide to use non-standard testing object
-		err := client.SetClientRandom([]byte("Custom ClientRandom h^xbw8bf0sn3"))
+		err = client.SetClientRandom([]byte("Custom ClientRandom h^xbw8bf0sn3"))
 		if err != nil {
 			t.Errorf("Client.SetClientRandom() failed: %s", err)
 			return
@@ -318,16 +323,13 @@ func (test *clientTest) runUTLS(t *testing.T, write bool, helloID ClientHelloID)
 	doneChan := make(chan bool)
 	go func() {
 		defer func() {
+			// Give time to the send buffer to drain, to avoid the kernel
+			// sending a RST and cutting off the flow. See Issue 18701.
+			time.Sleep(10 * time.Millisecond)
+			client.Close()
+			clientConn.Close()
 			doneChan <- true
 		}()
-		defer clientConn.Close()
-		defer client.Close()
-
-		err := client.Handshake()
-		if err != nil {
-			t.Errorf("Client.Handshake() failed: %s", err)
-			return
-		}
 
 		if _, err := client.Write([]byte("hello\n")); err != nil {
 			t.Errorf("Client.Write failed: %s", err)
@@ -356,9 +358,7 @@ func (test *clientTest) runUTLS(t *testing.T, write bool, helloID ClientHelloID)
 			signalChan := make(chan struct{})
 
 			go func() {
-				defer func() {
-					signalChan <- struct{}{}
-				}()
+				defer close(signalChan)
 
 				buf := make([]byte, 256)
 				n, err := client.Read(buf)
@@ -393,9 +393,60 @@ func (test *clientTest) runUTLS(t *testing.T, write bool, helloID ClientHelloID)
 			<-signalChan
 		}
 
+		if test.sendKeyUpdate {
+			if write {
+				<-stdout.handshakeComplete
+				stdin <- opensslKeyUpdate
+			}
+
+			doneRead := make(chan struct{})
+
+			go func() {
+				defer close(doneRead)
+
+				buf := make([]byte, 256)
+				n, err := client.Read(buf)
+
+				if err != nil {
+					t.Errorf("Client.Read failed after KeyUpdate: %s", err)
+					return
+				}
+
+				buf = buf[:n]
+				if !bytes.Equal([]byte(opensslSentinel), buf) {
+					t.Errorf("Client.Read returned %q, but wanted %q", string(buf), opensslSentinel)
+				}
+			}()
+
+			if write {
+				// There's no real reason to wait for the client KeyUpdate to
+				// send data with the new server keys, except that s_server
+				// drops writes if they are sent at the wrong time.
+				<-stdout.readKeyUpdate
+				stdin <- opensslSendSentinel
+			}
+			<-doneRead
+
+			if _, err := client.Write([]byte("hello again\n")); err != nil {
+				t.Errorf("Client.Write failed: %s", err)
+				return
+			}
+		}
+
 		if test.validate != nil {
 			if err := test.validate(client.ConnectionState()); err != nil {
 				t.Errorf("validate callback returned error: %s", err)
+			}
+		}
+
+		// If the server sent us an alert after our last flight, give it a
+		// chance to arrive.
+		if write && test.renegotiationExpectedToFail == 0 {
+			client.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+			if _, err := client.Read(make([]byte, 1)); err != nil {
+				if netErr, ok := err.(net.Error); !ok || !netErr.Timeout() {
+					t.Errorf("final Read returned an error: %s", err)
+				}
 			}
 		}
 	}()
@@ -407,10 +458,12 @@ func (test *clientTest) runUTLS(t *testing.T, write bool, helloID ClientHelloID)
 		}
 		for i, b := range flows {
 			if i%2 == 1 {
+				serverConn.SetWriteDeadline(time.Now().Add(1 * time.Minute))
 				serverConn.Write(b)
 				continue
 			}
 			bb := make([]byte, len(b))
+			serverConn.SetReadDeadline(time.Now().Add(1 * time.Minute))
 			_, err := io.ReadFull(serverConn, bb)
 			if err != nil {
 				t.Fatalf("%s #%d: %s", test.name, i, err)
@@ -419,6 +472,9 @@ func (test *clientTest) runUTLS(t *testing.T, write bool, helloID ClientHelloID)
 				t.Fatalf("%s #%d: mismatch on read: got:%x want:%x", test.name, i, bb, b)
 			}
 		}
+		// Give time to the send buffer to drain, to avoid the kernel
+		// sending a RST and cutting off the flow. See Issue 18701.
+		time.Sleep(10 * time.Millisecond)
 		serverConn.Close()
 	}
 
@@ -436,7 +492,7 @@ func (test *clientTest) runUTLS(t *testing.T, write bool, helloID ClientHelloID)
 		childProcess.Process.Kill()
 		childProcess.Wait()
 		if len(recordingConn.flows) < 3 {
-			os.Stdout.Write(childProcess.Stdout.(*opensslOutputSink).all)
+			os.Stdout.Write(stdout.all)
 			t.Fatalf("Client connection didn't work")
 		}
 		recordingConn.WriteTo(out)

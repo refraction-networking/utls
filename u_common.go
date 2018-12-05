@@ -80,8 +80,10 @@ type ClientHelloSpec struct {
 	CompressionMethods []uint8        // nil => no compression
 	Extensions         []TLSExtension // nil => no extensions
 
-	// GreaseStyle: currently only random
+	TLSVersMin uint16 // [1.0-1.3]
+	TLSVersMax uint16 // [1.2-1.3]
 
+	// GreaseStyle: currently only random
 	// sessionID may or may not depend on ticket; nil => random
 	GetSessionID func(ticket []byte) [32]byte
 
@@ -118,11 +120,13 @@ var (
 )
 
 // based on spec's GreaseStyle, GREASE_PLACEHOLDER may be replaced by another GREASE value
+// https://tools.ietf.org/html/draft-ietf-tls-grease-01
 const GREASE_PLACEHOLDER = 0x0a0a
 
-// utlsMacSHA384 returns a SHA-384.
+// utlsMacSHA384 returns a SHA-384 based MAC. These are only supported in TLS 1.2
+// so the given version is ignored.
 func utlsMacSHA384(version uint16, key []byte) macFunction {
-	return tls10MAC{hmac.New(sha512.New384, key)}
+	return tls10MAC{h: hmac.New(sha512.New384, key)}
 }
 
 var utlsSupportedCipherSuites []*cipherSuite

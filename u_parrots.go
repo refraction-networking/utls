@@ -20,6 +20,8 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 	switch id {
 	case HelloChrome_58, HelloChrome_62:
 		return ClientHelloSpec{
+			TLSVersMax: VersionTLS12,
+			TLSVersMin: VersionTLS10,
 			CipherSuites: []uint16{
 				GREASE_PLACEHOLDER,
 				TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
@@ -68,6 +70,8 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 		}, nil
 	case HelloFirefox_55, HelloFirefox_56:
 		return ClientHelloSpec{
+			TLSVersMax: VersionTLS12,
+			TLSVersMin: VersionTLS10,
 			CipherSuites: []uint16{
 				TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
 				TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
@@ -114,6 +118,8 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 		}, nil
 	case HelloIOS_11_1:
 		return ClientHelloSpec{
+			TLSVersMax: VersionTLS12,
+			TLSVersMin: VersionTLS10,
 			CipherSuites: []uint16{
 				TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
 				TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
@@ -212,12 +218,21 @@ func (uconn *UConn) applyPresetByID(id ClientHelloID) (err error) {
 // Fields of TLSExtensions that are slices/pointers are shared across different connections with
 // same ClientHelloSpec. It is advised to use different specs and avoid any shared state.
 func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
+	var err error
+	err = uconn.SetTLSVers(p.TLSVersMin, p.TLSVersMax)
+	if err != nil {
+		return err
+	}
+
+	privateHello, ecdheParams, err := uconn.makeClientHello()
+	if err != nil {
+		return err
+	}
+	uconn.HandshakeState.Hello = privateHello.getPublicPtr()
+	uconn.HandshakeState.State13.EcdheParams = ecdheParams
 	hello := uconn.HandshakeState.Hello
 	session := uconn.HandshakeState.Session
 
-	if hello.Vers == 0 {
-		hello.Vers = VersionTLS12
-	}
 	switch len(hello.Random) {
 	case 0:
 		hello.Random = make([]byte, 32)
@@ -241,7 +256,7 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 	// Currently, GREASE is assumed to come from BoringSSL
 	grease_bytes := make([]byte, 2*ssl_grease_last_index)
 	grease_extensions_seen := 0
-	_, err := io.ReadFull(uconn.config.rand(), grease_bytes)
+	_, err = io.ReadFull(uconn.config.rand(), grease_bytes)
 	if err != nil {
 		return errors.New("tls: short read from Rand: " + err.Error())
 	}
@@ -260,7 +275,6 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 		}
 	}
 	uconn.GetSessionID = p.GetSessionID
-
 	uconn.Extensions = make([]TLSExtension, len(p.Extensions))
 	copy(uconn.Extensions, p.Extensions)
 
