@@ -5,56 +5,218 @@
 package tls
 
 import (
-	"crypto/cipher"
+	"crypto"
 	"crypto/x509"
 	"hash"
 )
 
+// ClientHandshakeState includes both TLS 1.3-only and TLS 1.2-only states,
+// only one of them will be used, depending on negotiated version.
+//
+// ClientHandshakeState will be converted into and from either
+//   - clientHandshakeState      (TLS 1.2)
+//   - clientHandshakeStateTLS13 (TLS 1.3)
+// uTLS will call .handshake() on one of these private internal states,
+// to perform TLS handshake using standard crypto/tls implementation.
 type ClientHandshakeState struct {
 	C            *Conn
 	ServerHello  *ServerHelloMsg
 	Hello        *ClientHelloMsg
-	Suite        *CipherSuite
-	FinishedHash FinishedHash
 	MasterSecret []byte
 	Session      *ClientSessionState
+
+	State12 TLS12OnlyState
+	State13 TLS13OnlyState
 }
 
-// getPrivatePtr() methods make shallow copies
+// TLS 1.3 only
+type TLS13OnlyState struct {
+	Suite         *CipherSuiteTLS13
+	EcdheParams   EcdheParameters
+	EarlySecret   []byte
+	BinderKey     []byte
+	CertReq       *CertificateRequestMsgTLS13
+	UsingPSK      bool
+	SentDummyCCS  bool
+	Transcript    hash.Hash
+	TrafficSecret []byte // client_application_traffic_secret_0
+}
 
-func (chs *ClientHandshakeState) getPrivatePtr() *clientHandshakeState {
+// TLS 1.2 and before only
+type TLS12OnlyState struct {
+	FinishedHash FinishedHash
+	Suite        CipherSuite
+}
+
+func (chs *ClientHandshakeState) toPrivate13() *clientHandshakeStateTLS13 {
+	if chs == nil {
+		return nil
+	} else {
+		return &clientHandshakeStateTLS13{
+			c:           chs.C,
+			serverHello: chs.ServerHello.getPrivatePtr(),
+			hello:       chs.Hello.getPrivatePtr(),
+			ecdheParams: chs.State13.EcdheParams,
+
+			session:     chs.Session,
+			earlySecret: chs.State13.EarlySecret,
+			binderKey:   chs.State13.BinderKey,
+
+			certReq:       chs.State13.CertReq.toPrivate(),
+			usingPSK:      chs.State13.UsingPSK,
+			sentDummyCCS:  chs.State13.SentDummyCCS,
+			suite:         chs.State13.Suite.toPrivate(),
+			transcript:    chs.State13.Transcript,
+			masterSecret:  chs.MasterSecret,
+			trafficSecret: chs.State13.TrafficSecret,
+		}
+	}
+}
+
+func (chs13 *clientHandshakeStateTLS13) toPublic13() *ClientHandshakeState {
+	if chs13 == nil {
+		return nil
+	} else {
+		tls13State := TLS13OnlyState{
+			EcdheParams:   chs13.ecdheParams,
+			EarlySecret:   chs13.earlySecret,
+			BinderKey:     chs13.binderKey,
+			CertReq:       chs13.certReq.toPublic(),
+			UsingPSK:      chs13.usingPSK,
+			SentDummyCCS:  chs13.sentDummyCCS,
+			Suite:         chs13.suite.toPublic(),
+			TrafficSecret: chs13.trafficSecret,
+			Transcript:    chs13.transcript,
+		}
+		return &ClientHandshakeState{
+			C:           chs13.c,
+			ServerHello: chs13.serverHello.getPublicPtr(),
+			Hello:       chs13.hello.getPublicPtr(),
+
+			Session: chs13.session,
+
+			MasterSecret: chs13.masterSecret,
+
+			State13: tls13State,
+		}
+	}
+}
+
+func (chs *ClientHandshakeState) toPrivate12() *clientHandshakeState {
 	if chs == nil {
 		return nil
 	} else {
 		return &clientHandshakeState{
-			c:            chs.C,
-			serverHello:  chs.ServerHello.getPrivatePtr(),
-			hello:        chs.Hello.getPrivatePtr(),
-			suite:        chs.Suite.getPrivatePtr(),
-			finishedHash: *chs.FinishedHash.getPrivatePtr(),
+			c:           chs.C,
+			serverHello: chs.ServerHello.getPrivatePtr(),
+			hello:       chs.Hello.getPrivatePtr(),
+			suite:       chs.State12.Suite.getPrivatePtr(),
+			session:     chs.Session,
+
 			masterSecret: chs.MasterSecret,
-			session:      chs.Session,
+
+			finishedHash: *chs.State12.FinishedHash.getPrivatePtr(),
 		}
 	}
 }
 
-func (chs *clientHandshakeState) getPublicPtr() *ClientHandshakeState {
-	if chs == nil {
+func (chs12 *clientHandshakeState) toPublic13() *ClientHandshakeState {
+	if chs12 == nil {
 		return nil
 	} else {
+		tls12State := TLS12OnlyState{
+			Suite:        *chs12.suite.getPublicPtr(),
+			FinishedHash: *chs12.finishedHash.getPublicPtr(),
+		}
 		return &ClientHandshakeState{
-			C:            chs.c,
-			ServerHello:  chs.serverHello.getPublicPtr(),
-			Hello:        chs.hello.getPublicPtr(),
-			Suite:        chs.suite.getPublicPtr(),
-			FinishedHash: *chs.finishedHash.getPublicPtr(),
-			MasterSecret: chs.masterSecret,
-			Session:      chs.session,
+			C:           chs12.c,
+			ServerHello: chs12.serverHello.getPublicPtr(),
+			Hello:       chs12.hello.getPublicPtr(),
+
+			Session: chs12.session,
+
+			MasterSecret: chs12.masterSecret,
+
+			State12: tls12State,
 		}
 	}
 }
 
-type BensStruct serverHelloMsg
+type EcdheParameters interface {
+	ecdheParameters
+}
+
+type CertificateRequestMsgTLS13 struct {
+	Raw                              []byte
+	OcspStapling                     bool
+	Scts                             bool
+	SupportedSignatureAlgorithms     []SignatureScheme
+	SupportedSignatureAlgorithmsCert []SignatureScheme
+	CertificateAuthorities           [][]byte
+}
+
+func (crm *certificateRequestMsgTLS13) toPublic() *CertificateRequestMsgTLS13 {
+	if crm == nil {
+		return nil
+	} else {
+		return &CertificateRequestMsgTLS13{
+			Raw:          crm.raw,
+			OcspStapling: crm.ocspStapling,
+			Scts:         crm.scts,
+			SupportedSignatureAlgorithms:     crm.supportedSignatureAlgorithms,
+			SupportedSignatureAlgorithmsCert: crm.supportedSignatureAlgorithmsCert,
+			CertificateAuthorities:           crm.certificateAuthorities,
+		}
+	}
+}
+
+func (crm *CertificateRequestMsgTLS13) toPrivate() *certificateRequestMsgTLS13 {
+	if crm == nil {
+		return nil
+	} else {
+		return &certificateRequestMsgTLS13{
+			raw:          crm.Raw,
+			ocspStapling: crm.OcspStapling,
+			scts:         crm.Scts,
+			supportedSignatureAlgorithms:     crm.SupportedSignatureAlgorithms,
+			supportedSignatureAlgorithmsCert: crm.SupportedSignatureAlgorithmsCert,
+			certificateAuthorities:           crm.CertificateAuthorities,
+		}
+	}
+}
+
+type CipherSuiteTLS13 struct {
+	Id     uint16
+	KeyLen int
+	Aead   func(key, fixedNonce []byte) aead
+	Hash   crypto.Hash
+}
+
+func (c *cipherSuiteTLS13) toPublic() *CipherSuiteTLS13 {
+	if c == nil {
+		return nil
+	} else {
+		return &CipherSuiteTLS13{
+			Id:     c.id,
+			KeyLen: c.keyLen,
+			Aead:   c.aead,
+			Hash:   c.hash,
+		}
+	}
+}
+
+func (c *CipherSuiteTLS13) toPrivate() *cipherSuiteTLS13 {
+	if c == nil {
+		return nil
+	} else {
+		return &cipherSuiteTLS13{
+			id:     c.Id,
+			keyLen: c.KeyLen,
+			aead:   c.Aead,
+			hash:   c.Hash,
+		}
+	}
+}
 
 type ServerHelloMsg struct {
 	Raw                          []byte
@@ -72,6 +234,15 @@ type ServerHelloMsg struct {
 	SecureRenegotiation          []byte
 	SecureRenegotiationSupported bool
 	AlpnProtocol                 string
+
+	// 1.3
+	SupportedVersion        uint16
+	ServerShare             keyShare
+	SelectedIdentityPresent bool
+	SelectedIdentity        uint16
+	Cookie                  []byte  // HelloRetryRequest extension
+	SelectedGroup           CurveID // HelloRetryRequest extension
+
 }
 
 func (shm *ServerHelloMsg) getPrivatePtr() *serverHelloMsg {
@@ -94,6 +265,12 @@ func (shm *ServerHelloMsg) getPrivatePtr() *serverHelloMsg {
 			secureRenegotiation:          shm.SecureRenegotiation,
 			secureRenegotiationSupported: shm.SecureRenegotiationSupported,
 			alpnProtocol:                 shm.AlpnProtocol,
+			supportedVersion:             shm.SupportedVersion,
+			serverShare:                  shm.ServerShare,
+			selectedIdentityPresent:      shm.SelectedIdentityPresent,
+			selectedIdentity:             shm.SelectedIdentity,
+			cookie:                       shm.Cookie,
+			selectedGroup:                shm.SelectedGroup,
 		}
 	}
 }
@@ -118,6 +295,12 @@ func (shm *serverHelloMsg) getPublicPtr() *ServerHelloMsg {
 			SecureRenegotiation:          shm.secureRenegotiation,
 			SecureRenegotiationSupported: shm.secureRenegotiationSupported,
 			AlpnProtocol:                 shm.alpnProtocol,
+			SupportedVersion:             shm.supportedVersion,
+			ServerShare:                  shm.serverShare,
+			SelectedIdentityPresent:      shm.selectedIdentityPresent,
+			SelectedIdentity:             shm.selectedIdentity,
+			Cookie:                       shm.cookie,
+			SelectedGroup:                shm.selectedGroup,
 		}
 	}
 }
@@ -133,7 +316,7 @@ type ClientHelloMsg struct {
 	ServerName                   string
 	OcspStapling                 bool
 	Scts                         bool
-	Ems                          bool
+	Ems                          bool // [UTLS] actually implemented due to its prevalence
 	SupportedCurves              []CurveID
 	SupportedPoints              []uint8
 	TicketSupported              bool
@@ -142,6 +325,16 @@ type ClientHelloMsg struct {
 	SecureRenegotiation          []byte
 	SecureRenegotiationSupported bool
 	AlpnProtocols                []string
+
+	// 1.3
+	SupportedSignatureAlgorithmsCert []SignatureScheme
+	SupportedVersions                []uint16
+	Cookie                           []byte
+	KeyShares                        []keyShare
+	EarlyData                        bool
+	PskModes                         []uint8
+	PskIdentities                    []pskIdentity
+	PskBinders                       [][]byte
 }
 
 func (chm *ClientHelloMsg) getPrivatePtr() *clientHelloMsg {
@@ -168,6 +361,15 @@ func (chm *ClientHelloMsg) getPrivatePtr() *clientHelloMsg {
 			secureRenegotiation:          chm.SecureRenegotiation,
 			secureRenegotiationSupported: chm.SecureRenegotiationSupported,
 			alpnProtocols:                chm.AlpnProtocols,
+
+			supportedSignatureAlgorithmsCert: chm.SupportedSignatureAlgorithmsCert,
+			supportedVersions:                chm.SupportedVersions,
+			cookie:                           chm.Cookie,
+			keyShares:                        chm.KeyShares,
+			earlyData:                        chm.EarlyData,
+			pskModes:                         chm.PskModes,
+			pskIdentities:                    chm.PskIdentities,
+			pskBinders:                       chm.PskBinders,
 		}
 	}
 }
@@ -196,6 +398,15 @@ func (chm *clientHelloMsg) getPublicPtr() *ClientHelloMsg {
 			SecureRenegotiation:          chm.secureRenegotiation,
 			SecureRenegotiationSupported: chm.secureRenegotiationSupported,
 			AlpnProtocols:                chm.alpnProtocols,
+
+			SupportedSignatureAlgorithmsCert: chm.supportedSignatureAlgorithmsCert,
+			SupportedVersions:                chm.supportedVersions,
+			Cookie:                           chm.cookie,
+			KeyShares:                        chm.keyShares,
+			EarlyData:                        chm.earlyData,
+			PskModes:                         chm.pskModes,
+			PskIdentities:                    chm.pskIdentities,
+			PskBinders:                       chm.pskBinders,
 		}
 	}
 }
@@ -213,7 +424,7 @@ type CipherSuite struct {
 	Flags  int
 	Cipher func(key, iv []byte, isRead bool) interface{}
 	Mac    func(version uint16, macKey []byte) macFunction
-	Aead   func(key, fixedNonce []byte) cipher.AEAD
+	Aead   func(key, fixedNonce []byte) aead
 }
 
 func (cs *CipherSuite) getPrivatePtr() *cipherSuite {

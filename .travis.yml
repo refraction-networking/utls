@@ -1,8 +1,7 @@
 language: go
 
 go:
- - "1.9"
- - "1.10.x"
+ - "1.11.x"
 
 sudo: required
 dist: trusty
@@ -16,4 +15,5 @@ install:
 script:
  - go test -race -v .
  - gometalinter --install
- - gometalinter --disable-all -E vet -E gofmt -E misspell -E ineffassign --tests .
+ - gometalinter --disable-all -E vet -E gofmt -E staticcheck  -E ineffassign --tests .
+ - gometalinter --disable-all -E misspell -E goimports --tests u_*

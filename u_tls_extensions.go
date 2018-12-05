@@ -194,7 +194,7 @@ func (e *SignatureAlgorithmsExtension) Read(b []byte) (int, error) {
 
 type RenegotiationInfoExtension struct {
 	renegotiation       RenegotiationSupport
-	SecureRenegotiation []byte // you probably want to leave it empty
+	SecureRenegotiation []byte // if empty, default []byte{0} is assumed
 }
 
 func (e *RenegotiationInfoExtension) writeToUConn(uc *UConn) error {
@@ -205,7 +205,7 @@ func (e *RenegotiationInfoExtension) writeToUConn(uc *UConn) error {
 	case RenegotiateFreelyAsClient:
 		uc.HandshakeState.Hello.SecureRenegotiationSupported = true
 		// Note that if we manage to use this in renegotiation(currently only in initial handshake), we'd have to point
-		// uc.HandshakeState.Hello.SecureRenegotiation = chs.C.clientFinished
+		// uc.ClientHelloMsg.SecureRenegotiation = chs.C.clientFinished
 		// and probably do something else. It's a mess.
 	case RenegotiateNever:
 	default:
@@ -218,7 +218,11 @@ func (e *RenegotiationInfoExtension) Len() int {
 	case RenegotiateOnceAsClient:
 		fallthrough
 	case RenegotiateFreelyAsClient:
-		return 5 + len(e.SecureRenegotiation)
+		extBodyLen := len(e.SecureRenegotiation)
+		if extBodyLen == 0 {
+			extBodyLen = 1
+		}
+		return 4 + extBodyLen
 	case RenegotiateNever:
 	default:
 	}
@@ -233,11 +237,18 @@ func (e *RenegotiationInfoExtension) Read(b []byte) (int, error) {
 	case RenegotiateOnceAsClient:
 		fallthrough
 	case RenegotiateFreelyAsClient:
+		secureRenegBody := e.SecureRenegotiation
+		if len(secureRenegBody) == 0 {
+			secureRenegBody = []byte{0}
+		}
+		extBodyLen := len(secureRenegBody)
+
 		b[0] = byte(extensionRenegotiationInfo >> 8)
 		b[1] = byte(extensionRenegotiationInfo & 0xff)
-		b[2] = 0 // TODO: this is not what Chrome does :(
-		b[3] = byte(len(e.SecureRenegotiation) + 1)
-		b[4] = byte(len(e.SecureRenegotiation))
+		b[2] = byte(extBodyLen >> 8)
+		b[3] = byte(extBodyLen)
+		copy(b[4:], secureRenegBody)
+
 		if len(e.SecureRenegotiation) != 0 {
 			copy(b[5:], e.SecureRenegotiation)
 		}
