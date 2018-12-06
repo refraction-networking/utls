@@ -15,5 +15,5 @@ install:
 script:
  - go test -race -v .
  - gometalinter --install
- - gometalinter --disable-all -E vet -E gofmt -E staticcheck  -E ineffassign --tests .
- - gometalinter --disable-all -E misspell -E goimports --tests u_*
+ - gometalinter --disable-all -E vet -E ineffassign --tests .
+ - gometalinter --disable-all -E gofmt -E misspell -E goimports --tests u_*

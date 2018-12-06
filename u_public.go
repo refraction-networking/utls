@@ -160,9 +160,9 @@ func (crm *certificateRequestMsgTLS13) toPublic() *CertificateRequestMsgTLS13 {
 		return nil
 	} else {
 		return &CertificateRequestMsgTLS13{
-			Raw:          crm.raw,
-			OcspStapling: crm.ocspStapling,
-			Scts:         crm.scts,
+			Raw:                              crm.raw,
+			OcspStapling:                     crm.ocspStapling,
+			Scts:                             crm.scts,
 			SupportedSignatureAlgorithms:     crm.supportedSignatureAlgorithms,
 			SupportedSignatureAlgorithmsCert: crm.supportedSignatureAlgorithmsCert,
 			CertificateAuthorities:           crm.certificateAuthorities,
@@ -175,9 +175,9 @@ func (crm *CertificateRequestMsgTLS13) toPrivate() *certificateRequestMsgTLS13 {
 		return nil
 	} else {
 		return &certificateRequestMsgTLS13{
-			raw:          crm.Raw,
-			ocspStapling: crm.OcspStapling,
-			scts:         crm.Scts,
+			raw:                              crm.Raw,
+			ocspStapling:                     crm.OcspStapling,
+			scts:                             crm.Scts,
 			supportedSignatureAlgorithms:     crm.SupportedSignatureAlgorithms,
 			supportedSignatureAlgorithmsCert: crm.SupportedSignatureAlgorithmsCert,
 			certificateAuthorities:           crm.CertificateAuthorities,
