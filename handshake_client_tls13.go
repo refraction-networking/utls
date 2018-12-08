@@ -48,7 +48,8 @@ func (hs *clientHandshakeStateTLS13) handshake() error {
 	}
 
 	// Consistency check on the presence of a keyShare and its parameters.
-	if hs.ecdheParams == nil || len(hs.hello.keyShares) != 1 {
+	if hs.ecdheParams == nil || len(hs.hello.keyShares) < 1 { // [uTLS]
+		// keyshares "< 1" instead of "!= 1", as uTLS may send multiple
 		return c.sendAlert(alertInternalError)
 	}
 

@@ -21,6 +21,9 @@ const (
 
 	// extensions with 'fake' prefix break connection, if server echoes them back
 	fakeExtensionChannelID uint16 = 30032 // not IANA assigned
+
+	fakeCertCompressionAlgs uint16 = 0x001b
+	fakeRecordSizeLimit     uint16 = 0x001c
 )
 
 const (
@@ -47,6 +50,12 @@ var (
 
 	// fakeEd25519 = SignatureAndHash{0x08, 0x07}
 	// fakeEd448 = SignatureAndHash{0x08, 0x08}
+)
+
+// fake curves(groups)
+var (
+	FakeFFDHE2048 = uint16(0x0100)
+	FakeFFDHE3072 = uint16(0x0101)
 )
 
 type ClientHelloID struct {
@@ -107,13 +116,15 @@ var (
 	HelloRandomizedNoALPN = ClientHelloID{helloRandomized, helloRandomizedNoALPN}
 
 	// The rest will will parrot given browser.
-	HelloFirefox_Auto = HelloFirefox_56
+	HelloFirefox_Auto = HelloFirefox_63
 	HelloFirefox_55   = ClientHelloID{helloFirefox, 55}
 	HelloFirefox_56   = ClientHelloID{helloFirefox, 56}
+	HelloFirefox_63   = ClientHelloID{helloFirefox, 63}
 
-	HelloChrome_Auto = HelloChrome_62
+	HelloChrome_Auto = HelloChrome_70
 	HelloChrome_58   = ClientHelloID{helloChrome, 58}
 	HelloChrome_62   = ClientHelloID{helloChrome, 62}
+	HelloChrome_70   = ClientHelloID{helloChrome, 70}
 
 	HelloIOS_Auto = HelloIOS_11_1
 	HelloIOS_11_1 = ClientHelloID{helloIOS, 111}

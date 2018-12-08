@@ -330,7 +330,7 @@ type ClientHelloMsg struct {
 	SupportedSignatureAlgorithmsCert []SignatureScheme
 	SupportedVersions                []uint16
 	Cookie                           []byte
-	KeyShares                        []keyShare
+	KeyShares                        []KeyShare
 	EarlyData                        bool
 	PskModes                         []uint8
 	PskIdentities                    []pskIdentity
@@ -365,7 +365,7 @@ func (chm *ClientHelloMsg) getPrivatePtr() *clientHelloMsg {
 			supportedSignatureAlgorithmsCert: chm.SupportedSignatureAlgorithmsCert,
 			supportedVersions:                chm.SupportedVersions,
 			cookie:                           chm.Cookie,
-			keyShares:                        chm.KeyShares,
+			keyShares:                        KeyShares(chm.KeyShares).ToPrivate(),
 			earlyData:                        chm.EarlyData,
 			pskModes:                         chm.PskModes,
 			pskIdentities:                    chm.PskIdentities,
@@ -402,7 +402,7 @@ func (chm *clientHelloMsg) getPublicPtr() *ClientHelloMsg {
 			SupportedSignatureAlgorithmsCert: chm.supportedSignatureAlgorithmsCert,
 			SupportedVersions:                chm.supportedVersions,
 			Cookie:                           chm.cookie,
-			KeyShares:                        chm.keyShares,
+			KeyShares:                        keyShares(chm.keyShares).ToPublic(),
 			EarlyData:                        chm.earlyData,
 			PskModes:                         chm.pskModes,
 			PskIdentities:                    chm.pskIdentities,
@@ -509,6 +509,30 @@ func (fh *finishedHash) getPublicPtr() *FinishedHash {
 			Version:   fh.version,
 			Prf:       fh.prf}
 	}
+}
+
+// TLS 1.3 Key Share. See RFC 8446, Section 4.2.8.
+type KeyShare struct {
+	Group CurveID
+	Data  []byte
+}
+
+type KeyShares []KeyShare
+type keyShares []keyShare
+
+func (kss keyShares) ToPublic() []KeyShare {
+	var KSS []KeyShare
+	for _, ks := range kss {
+		KSS = append(KSS, KeyShare{Data: ks.data, Group: ks.group})
+	}
+	return KSS
+}
+func (KSS KeyShares) ToPrivate() []keyShare {
+	var kss []keyShare
+	for _, KS := range KSS {
+		kss = append(kss, keyShare{data: KS.Data, group: KS.Group})
+	}
+	return kss
 }
 
 // ClientSessionState is public, but all its fields are private. Let's add setters, getters and constructor

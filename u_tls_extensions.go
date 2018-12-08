@@ -5,6 +5,7 @@
 package tls
 
 import (
+	"errors"
 	"io"
 )
 
@@ -560,3 +561,128 @@ func BoringPaddingStyle(unpaddedLen int) (int, bool) {
 	}
 	return 0, false
 }
+
+/* TLS 1.3 */
+type KeyShareExtension struct {
+	KeyShares []KeyShare
+}
+
+func (e *KeyShareExtension) Len() int {
+	return 4 + 2 + e.keySharesLen()
+}
+
+func (e *KeyShareExtension) keySharesLen() int {
+	extLen := 0
+	for _, ks := range e.KeyShares {
+		extLen += 4 + len(ks.Data)
+	}
+	return extLen
+}
+
+func (e *KeyShareExtension) Read(b []byte) (int, error) {
+	if len(b) < e.Len() {
+		return 0, io.ErrShortBuffer
+	}
+
+	b[0] = byte(extensionKeyShare >> 8)
+	b[1] = byte(extensionKeyShare)
+	keySharesLen := e.keySharesLen()
+	b[2] = byte((keySharesLen + 2) >> 8)
+	b[3] = byte((keySharesLen + 2))
+	b[4] = byte((keySharesLen) >> 8)
+	b[5] = byte((keySharesLen))
+
+	i := 6
+	for _, ks := range e.KeyShares {
+		b[i] = byte(ks.Group >> 8)
+		b[i+1] = byte(ks.Group)
+		b[i+2] = byte(len(ks.Data) >> 8)
+		b[i+3] = byte(len(ks.Data))
+		copy(b[i+4:], ks.Data)
+		i += 4 + len(ks.Data)
+	}
+
+	return e.Len(), io.EOF
+}
+
+func (e *KeyShareExtension) writeToUConn(uc *UConn) error {
+	uc.HandshakeState.Hello.KeyShares = e.KeyShares
+	return nil
+}
+
+type PSKKeyExchangeModesExtension struct {
+	Modes []uint8
+}
+
+func (e *PSKKeyExchangeModesExtension) Len() int {
+	return 4 + 1 + len(e.Modes)
+}
+
+func (e *PSKKeyExchangeModesExtension) Read(b []byte) (int, error) {
+	if len(b) < e.Len() {
+		return 0, io.ErrShortBuffer
+	}
+
+	if len(e.Modes) > 255 {
+		return 0, errors.New("too many PSK Key Exchange modes")
+	}
+
+	b[0] = byte(extensionPSKModes >> 8)
+	b[1] = byte(extensionPSKModes)
+
+	modesLen := len(e.Modes)
+	b[2] = byte((modesLen + 1) >> 8)
+	b[3] = byte((modesLen + 1))
+	b[4] = byte(modesLen)
+
+	if len(e.Modes) > 0 {
+		copy(b[5:], e.Modes)
+	}
+
+	return e.Len(), io.EOF
+}
+
+func (e *PSKKeyExchangeModesExtension) writeToUConn(uc *UConn) error {
+	uc.HandshakeState.Hello.PskModes = e.Modes
+	return nil
+}
+
+type SupportedVersionsExtension struct {
+	Versions []uint16
+}
+
+func (e *SupportedVersionsExtension) writeToUConn(uc *UConn) error {
+	uc.HandshakeState.Hello.SupportedVersions = e.Versions
+	return nil
+}
+
+func (e *SupportedVersionsExtension) Len() int {
+	return 4 + 1 + (2 * len(e.Versions))
+}
+
+func (e *SupportedVersionsExtension) Read(b []byte) (int, error) {
+	if len(b) < e.Len() {
+		return 0, io.ErrShortBuffer
+	}
+	extLen := 2 * len(e.Versions)
+	if extLen > 255 {
+		return 0, errors.New("too many supported versions")
+	}
+
+	b[0] = byte(extensionSupportedVersions >> 8)
+	b[1] = byte(extensionSupportedVersions)
+	b[2] = byte((extLen + 1) >> 8)
+	b[3] = byte((extLen + 1))
+	b[4] = byte(extLen)
+
+	i := 5
+	for _, sv := range e.Versions {
+		b[i] = byte(sv >> 8)
+		b[i+1] = byte(sv)
+		i += 2
+	}
+	return e.Len(), io.EOF
+}
+
+// TODO: FakeCertificateCompressionAlgorithmsExtension
+// TODO: FakeRecordSizeLimitExtension
