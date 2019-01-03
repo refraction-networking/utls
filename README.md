@@ -3,7 +3,7 @@
 [![godoc](https://img.shields.io/badge/godoc-reference-blue.svg)](https://godoc.org/github.com/refraction-networking/utls#UConn)
 ---
 uTLS is a fork of "crypto/tls", which provides ClientHello fingerprinting resistance, low-level access to handshake, fake session tickets and some other features. Handshake is still performed by "crypto/tls", this library merely changes ClientHello part of it and provides low-level access.  
-Golang 1.9+ is required.  
+Golang 1.11+ is required.  
 If you have any questions, bug reports or contributions, you are welcome to publish those on GitHub. If you want to do so in private, you can contact one of developers personally via sergey.frolov@colorado.edu
 # Features
 ## Low-level access to handshake
@@ -29,9 +29,11 @@ This is not a problem, if you fully control the server and turn unsupported thin
 
 | Parrot        | Ciphers* | Signature* | Unsupported extensions | TLS Fingerprint ID              |
 | ------------- | -------- | ---------- | ---------------------- | --------------------------------------------- |
-| Chrome 58     | no       | no         | ChannelID              | [06e3579010335639](https://tlsfingerprint.io/id/06e3579010335639) |
-| Firefox 55    | very low | no         | None                   | [c8561687d9ecd83f](https://tlsfingerprint.io/id/c8561687d9ecd83f) |
-| iOS 11.1      | low** | no         | None                   | [a9ecd7afe6b0e4a4](https://tlsfingerprint.io/id/a9ecd7afe6b0e4a4) |
+| Chrome 62     | no       | no         | ChannelID              | [0a4a74aeebd1bb66](https://tlsfingerprint.io/id/0a4a74aeebd1bb66) |
+| Chrome 70     | no       | no         | ChannelID, Encrypted Certs | [bc4c7e42f4961cd7](https://tlsfingerprint.io/id/bc4c7e42f4961cd7) |
+| Firefox 56    | very low | no         | None                   | [c884bad7f40bee56](https://tlsfingerprint.io/id/c884bad7f40bee56) |
+| Firefox 63    | very low | no         | MaxRecordSize                   | [6bfedc5d5c740d58](https://tlsfingerprint.io/id/6bfedc5d5c740d58) |
+| iOS 11.1      | low** | no         | None                   | [71a81bafd58e1301](https://tlsfingerprint.io/id/71a81bafd58e1301) |
 
 \* Denotes very rough guesstimate of likelihood that unsupported things will get echoed back by the server in the wild,
 *visibly breaking the connection*.  
