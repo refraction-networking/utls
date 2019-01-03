@@ -495,6 +495,25 @@ func (uconn *UConn) generateRandomizedSpec(WithALPN bool) (ClientHelloSpec, erro
 	if err != nil {
 		return p, err
 	}
+
+	if tossBiasedCoin(0.4) {
+		p.TLSVersMin = VersionTLS10
+		p.TLSVersMax = VersionTLS13
+		tls13ciphers := defaultCipherSuitesTLS13()
+		err = shuffleUInts16(tls13ciphers)
+		if err != nil {
+			return p, err
+		}
+		// appending TLS 1.3 ciphers before TLS 1.2, since that's what popular implementations do
+		shuffledSuites = append(tls13ciphers, shuffledSuites...)
+
+		// TLS 1.3 forbids RC4 in any configurations
+		shuffledSuites = removeRC4Ciphers(shuffledSuites)
+	} else {
+		p.TLSVersMin = VersionTLS10
+		p.TLSVersMax = VersionTLS12
+	}
+
 	p.CipherSuites = removeRandomCiphers(shuffledSuites, 0.4)
 
 	sni := SNIExtension{uconn.config.ServerName}
@@ -506,25 +525,22 @@ func (uconn *UConn) generateRandomizedSpec(WithALPN bool) (ClientHelloSpec, erro
 		ECDSAWithP384AndSHA384,
 		PKCS1WithSHA384,
 		PKCS1WithSHA1,
+		PKCS1WithSHA512,
 	}
 
-	if tossBiasedCoin(0.5) {
+	if tossBiasedCoin(0.63) {
 		sigAndHashAlgos = append(sigAndHashAlgos, ECDSAWithSHA1)
 	}
-	if tossBiasedCoin(0.5) {
+	if tossBiasedCoin(0.59) {
 		sigAndHashAlgos = append(sigAndHashAlgos, ECDSAWithP521AndSHA512)
 	}
-	if tossBiasedCoin(0.5) {
-		sigAndHashAlgos = append(sigAndHashAlgos, PKCS1WithSHA512)
-	}
-	if tossBiasedCoin(0.5) {
+	if tossBiasedCoin(0.51) {
+		// these usually go together
 		sigAndHashAlgos = append(sigAndHashAlgos, PSSWithSHA256)
-	}
-	if tossBiasedCoin(0.5) {
-		sigAndHashAlgos = append(sigAndHashAlgos, PSSWithSHA384)
-	}
-	if tossBiasedCoin(0.5) {
-		sigAndHashAlgos = append(sigAndHashAlgos, PSSWithSHA512)
+		if tossBiasedCoin(0.9) {
+			sigAndHashAlgos = append(sigAndHashAlgos, PSSWithSHA384)
+			sigAndHashAlgos = append(sigAndHashAlgos, PSSWithSHA512)
+		}
 	}
 
 	err = shuffleSignatures(sigAndHashAlgos)
@@ -535,16 +551,18 @@ func (uconn *UConn) generateRandomizedSpec(WithALPN bool) (ClientHelloSpec, erro
 
 	status := StatusRequestExtension{}
 	sct := SCTExtension{}
+	ems := UtlsExtendedMasterSecretExtension{}
 	points := SupportedPointsExtension{SupportedPoints: []byte{pointFormatUncompressed}}
 
 	curveIDs := []CurveID{}
-	if tossBiasedCoin(0.7) {
+	if tossBiasedCoin(0.71) || p.TLSVersMax == VersionTLS13 {
 		curveIDs = append(curveIDs, X25519)
 	}
 	curveIDs = append(curveIDs, CurveP256, CurveP384)
-	if tossBiasedCoin(0.3) {
+	if tossBiasedCoin(0.46) {
 		curveIDs = append(curveIDs, CurveP521)
 	}
+
 	curves := SupportedCurvesExtension{curveIDs}
 
 	padding := UtlsPaddingExtension{GetPaddingLen: BoringPaddingStyle}
@@ -567,19 +585,41 @@ func (uconn *UConn) generateRandomizedSpec(WithALPN bool) (ClientHelloSpec, erro
 		p.Extensions = append(p.Extensions, &alpn)
 	}
 
-	if tossBiasedCoin(0.66) {
+	if tossBiasedCoin(0.62) || p.TLSVersMax == VersionTLS13 {
+		// always include for TLS 1.3, since TLS 1.3 ClientHellos are often over 256 bytes
+		// and that's when padding is required to work around buggy middleboxes
 		p.Extensions = append(p.Extensions, &padding)
 	}
-	if tossBiasedCoin(0.66) {
+	if tossBiasedCoin(0.74) {
 		p.Extensions = append(p.Extensions, &status)
 	}
-	if tossBiasedCoin(0.55) {
+	if tossBiasedCoin(0.46) {
 		p.Extensions = append(p.Extensions, &sct)
 	}
-	if tossBiasedCoin(0.44) {
+	if tossBiasedCoin(0.75) {
 		p.Extensions = append(p.Extensions, &reneg)
 	}
+	if tossBiasedCoin(0.77) {
+		p.Extensions = append(p.Extensions, &ems)
+	}
+	if p.TLSVersMax == VersionTLS13 {
+		ks := KeyShareExtension{[]KeyShare{
+			{Group: X25519}, // the key for the group will be generated later
+		}}
+		if tossBiasedCoin(0.5) {
+			ks.KeyShares = append(ks.KeyShares, KeyShare{Group: CurveP256})
+		}
+		pskExchangeModes := PSKKeyExchangeModesExtension{[]uint8{pskModeDHE}}
+		supportedVersionsExt := SupportedVersionsExtension{
+			Versions: makeSupportedVersions(p.TLSVersMin, p.TLSVersMax),
+		}
+		p.Extensions = append(p.Extensions, &ks, &pskExchangeModes, &supportedVersionsExt)
+	}
 	err = shuffleTLSExtensions(p.Extensions)
+	if err != nil {
+		return p, err
+	}
+	err = uconn.SetTLSVers(p.TLSVersMin, p.TLSVersMax)
 	if err != nil {
 		return p, err
 	}
@@ -624,7 +664,23 @@ func removeRandomCiphers(s []uint16, maxRemovalProbability float32) []uint16 {
 			i--
 		}
 	}
-	return s
+	return s[:sliceLen]
+}
+
+func removeRC4Ciphers(s []uint16) []uint16 {
+	// removes elements in place
+	sliceLen := len(s)
+	for i := 0; i < sliceLen; i++ {
+		cipher := s[i]
+		if cipher == TLS_ECDHE_ECDSA_WITH_RC4_128_SHA ||
+			cipher == TLS_ECDHE_RSA_WITH_RC4_128_SHA ||
+			cipher == TLS_RSA_WITH_RC4_128_SHA {
+			s = append(s[:i], s[i+1:]...)
+			sliceLen--
+			i--
+		}
+	}
+	return s[:sliceLen]
 }
 
 func getRandInt(max int) (int, error) {
@@ -709,6 +765,19 @@ func shuffleTLSExtensions(s []TLSExtension) error {
 
 // so much for generics
 func shuffleSignatures(s []SignatureScheme) error {
+	// shuffles array in place
+	perm, err := getRandPerm(len(s))
+	if err != nil {
+		return err
+	}
+	for i := range s {
+		s[i], s[perm[i]] = s[perm[i]], s[i]
+	}
+	return nil
+}
+
+// so much for generics
+func shuffleUInts16(s []uint16) error {
 	// shuffles array in place
 	perm, err := getRandPerm(len(s))
 	if err != nil {

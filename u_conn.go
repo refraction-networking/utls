@@ -489,17 +489,17 @@ func (uconn *UConn) SetTLSVers(minTLSVers, maxTLSVers uint16) error {
 		return fmt.Errorf("uTLS does not support 0x%X as max version", maxTLSVers)
 	}
 
-	makeSupportedVersions := func(maxVers, minVers uint16) []uint16 {
-		// max goes first
-		a := make([]uint16, maxVers-minVers+1)
-		for i := range a {
-			a[i] = maxVers - uint16(i)
-		}
-		return a
-	}
-	uconn.HandshakeState.Hello.SupportedVersions = makeSupportedVersions(maxTLSVers, minTLSVers)
+	uconn.HandshakeState.Hello.SupportedVersions = makeSupportedVersions(minTLSVers, maxTLSVers)
 	uconn.config.MinVersion = minTLSVers
 	uconn.config.MaxVersion = maxTLSVers
 
 	return nil
+}
+
+func makeSupportedVersions(minVers, maxVers uint16) []uint16 {
+	a := make([]uint16, maxVers-minVers+1)
+	for i := range a {
+		a[i] = maxVers - uint16(i)
+	}
+	return a
 }
