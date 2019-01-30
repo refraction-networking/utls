@@ -6,6 +6,7 @@ package tls
 
 import (
 	"bytes"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
@@ -583,4 +584,45 @@ func (test *clientTest) runUTLS(t *testing.T, write bool, helloID ClientHelloID)
 		recordingConn.WriteTo(out)
 		fmt.Printf("Wrote %s\n", path)
 	}
+}
+
+func TestUTLSMakeConnWithCompleteHandshake(t *testing.T) {
+	serverConn, clientConn := net.Pipe()
+
+	masterSecret := []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47}
+	clientRandom := []byte{40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71}
+	serverRandom := []byte{80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111}
+	serverTls := MakeConnWithCompleteHandshake(serverConn, tls.VersionTLS12, tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+		masterSecret, clientRandom, serverRandom, false)
+	clientTls := MakeConnWithCompleteHandshake(clientConn, tls.VersionTLS12, tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+		masterSecret, clientRandom, serverRandom, true)
+
+	clientMsg := []byte("Hello, world!")
+	serverMsg := []byte("Test response!")
+
+	go func() {
+		clientTls.Write(clientMsg)
+		resp := make([]byte, 20)
+		read, err := clientTls.Read(resp)
+		if !bytes.Equal(resp[:read], serverMsg) {
+			t.Errorf("client expected to receive: %v, got %v\n",
+				serverMsg, resp[:read])
+		}
+		if err != nil {
+			t.Errorf("error reading client: %+v\n", err)
+		}
+		clientConn.Close()
+	}()
+
+	buf := make([]byte, 20)
+	read, err := serverTls.Read(buf)
+	if !bytes.Equal(buf[:read], clientMsg) {
+		t.Errorf("server expected to receive: %v, got %v\n",
+			clientMsg, buf[:read])
+	}
+	if err != nil {
+		t.Errorf("error reading client: %+v\n", err)
+	}
+
+	serverTls.Write(serverMsg)
 }
