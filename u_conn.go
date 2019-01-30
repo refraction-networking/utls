@@ -150,43 +150,41 @@ func (uconn *UConn) SetClientRandom(r []byte) error {
 	}
 }
 
-func (uconn *UConn) SetSecret(state ClientHandshakeState, client bool) {
-	uconn.HandshakeState = state
+func (uconn *UConn) SetSecret(version uint16, cipherSuite uint16, masterSecret []byte, clientRandom []byte, serverRandom []byte, client bool) {
 
-	cs := cipherSuiteByID(state.ServerHello.CipherSuite)
+	cs := cipherSuiteByID(cipherSuite)
 
 	// This is mostly borrowed from establishKeys()
 	clientMAC, serverMAC, clientKey, serverKey, clientIV, serverIV :=
-		keysFromMasterSecret(state.C.vers, cs,
-			state.MasterSecret, state.Hello.Random, state.ServerHello.Random,
+		keysFromMasterSecret(version, cs, masterSecret, clientRandom, serverRandom,
 			cs.macLen, cs.keyLen, cs.ivLen)
 
 	var clientCipher, serverCipher interface{}
 	var clientHash, serverHash macFunction
 	if cs.cipher != nil {
 		clientCipher = cs.cipher(clientKey, clientIV, false /* not for reading */)
-		clientHash = cs.mac(state.C.vers, clientMAC)
+		clientHash = cs.mac(version, clientMAC)
 		serverCipher = cs.cipher(serverKey, serverIV, true /* for reading */)
-		serverHash = cs.mac(state.C.vers, serverMAC)
+		serverHash = cs.mac(version, serverMAC)
 	} else {
 		clientCipher = cs.aead(clientKey, clientIV)
 		serverCipher = cs.aead(serverKey, serverIV)
 	}
 
 	if client {
-		uconn.Conn.in.prepareCipherSpec(state.C.vers, serverCipher, serverHash)
-		uconn.Conn.out.prepareCipherSpec(state.C.vers, clientCipher, clientHash)
+		uconn.Conn.in.prepareCipherSpec(version, serverCipher, serverHash)
+		uconn.Conn.out.prepareCipherSpec(version, clientCipher, clientHash)
 	} else {
-		uconn.Conn.out.prepareCipherSpec(state.C.vers, serverCipher, serverHash)
-		uconn.Conn.in.prepareCipherSpec(state.C.vers, clientCipher, clientHash)
+		uconn.Conn.out.prepareCipherSpec(version, serverCipher, serverHash)
+		uconn.Conn.in.prepareCipherSpec(version, clientCipher, clientHash)
 	}
 
 	// skip the handshake states
 	uconn.Conn.isClient = client
 	uconn.Conn.handshakeStatus = 1
-	uconn.Conn.cipherSuite = state.ServerHello.CipherSuite
+	uconn.Conn.cipherSuite = cipherSuite
 	uconn.Conn.haveVers = true
-	uconn.Conn.vers = state.C.vers
+	uconn.Conn.vers = version
 
 	// Update to the new cipher specs
 	// and consume the finished messages

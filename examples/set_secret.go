@@ -44,7 +44,9 @@ func main() {
 	serverConn, clientConn := net.Pipe()
 
 	serverUtls := tls.UClient(serverConn, nil, tls.HelloGolang)
-	serverUtls.SetSecret(clientUtls.HandshakeState, false)
+	hs := clientUtls.HandshakeState
+	serverUtls.SetSecret(hs.ServerHello.Vers, hs.ServerHello.CipherSuite,
+		hs.MasterSecret, hs.Hello.Random, hs.ServerHello.Random, false)
 	clientUtls.SetNetConn(clientConn)
 
 	//return httpGetOverConn(clientUtls, clientUtls.HandshakeState.ServerHello.AlpnProtocol)
