@@ -150,6 +150,57 @@ func (uconn *UConn) SetClientRandom(r []byte) error {
 	}
 }
 
+func (uconn *UConn) SetSecret(state ClientHandshakeState, client bool) {
+	uconn.HandshakeState = state
+
+	cs := cipherSuiteByID(state.ServerHello.CipherSuite)
+
+	// This is mostly borrowed from establishKeys()
+	clientMAC, serverMAC, clientKey, serverKey, clientIV, serverIV :=
+		keysFromMasterSecret(state.C.vers, cs,
+			state.MasterSecret, state.Hello.Random, state.ServerHello.Random,
+			cs.macLen, cs.keyLen, cs.ivLen)
+
+	var clientCipher, serverCipher interface{}
+	var clientHash, serverHash macFunction
+	if cs.cipher != nil {
+		clientCipher = cs.cipher(clientKey, clientIV, false /* not for reading */)
+		clientHash = cs.mac(state.C.vers, clientMAC)
+		serverCipher = cs.cipher(serverKey, serverIV, true /* for reading */)
+		serverHash = cs.mac(state.C.vers, serverMAC)
+	} else {
+		clientCipher = cs.aead(clientKey, clientIV)
+		serverCipher = cs.aead(serverKey, serverIV)
+	}
+
+	if client {
+		uconn.Conn.in.prepareCipherSpec(state.C.vers, serverCipher, serverHash)
+		uconn.Conn.out.prepareCipherSpec(state.C.vers, clientCipher, clientHash)
+	} else {
+		uconn.Conn.out.prepareCipherSpec(state.C.vers, serverCipher, serverHash)
+		uconn.Conn.in.prepareCipherSpec(state.C.vers, clientCipher, clientHash)
+	}
+
+	// skip the handshake states
+	uconn.Conn.isClient = client
+	uconn.Conn.handshakeStatus = 1
+	uconn.Conn.cipherSuite = state.ServerHello.CipherSuite
+	uconn.Conn.haveVers = true
+	uconn.Conn.vers = state.C.vers
+
+	// Update to the new cipher specs
+	// and consume the finished messages
+	uconn.Conn.in.changeCipherSpec()
+	uconn.Conn.out.changeCipherSpec()
+
+	uconn.Conn.in.incSeq()
+	uconn.Conn.out.incSeq()
+}
+
+func (uconn *UConn) SetNetConn(c net.Conn) {
+	uconn.Conn.conn = c
+}
+
 func (uconn *UConn) SetSNI(sni string) {
 	hname := hostnameInSNI(sni)
 	uconn.config.ServerName = hname
