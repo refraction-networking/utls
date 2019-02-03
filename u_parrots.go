@@ -534,10 +534,11 @@ func (uconn *UConn) generateRandomizedSpec(WithALPN bool) (ClientHelloSpec, erro
 	if tossBiasedCoin(0.59) {
 		sigAndHashAlgos = append(sigAndHashAlgos, ECDSAWithP521AndSHA512)
 	}
-	if tossBiasedCoin(0.51) {
-		// these usually go together
+	if tossBiasedCoin(0.51) || p.TLSVersMax == VersionTLS13 {
+		// https://tools.ietf.org/html/rfc8446 says "...RSASSA-PSS (which is mandatory in TLS 1.3)..."
 		sigAndHashAlgos = append(sigAndHashAlgos, PSSWithSHA256)
 		if tossBiasedCoin(0.9) {
+			// these usually go together
 			sigAndHashAlgos = append(sigAndHashAlgos, PSSWithSHA384)
 			sigAndHashAlgos = append(sigAndHashAlgos, PSSWithSHA512)
 		}
@@ -606,8 +607,11 @@ func (uconn *UConn) generateRandomizedSpec(WithALPN bool) (ClientHelloSpec, erro
 		ks := KeyShareExtension{[]KeyShare{
 			{Group: X25519}, // the key for the group will be generated later
 		}}
-		if tossBiasedCoin(0.5) {
-			ks.KeyShares = append(ks.KeyShares, KeyShare{Group: CurveP256})
+		if tossBiasedCoin(0.25) {
+			// do not ADD second keyShare because crypto/tls does not support multiple ecdheParams
+			// TODO: add it back when they implement multiple keyShares, or implement it oursevles
+			// ks.KeyShares = append(ks.KeyShares, KeyShare{Group: CurveP256})
+			ks.KeyShares[0].Group = CurveP256
 		}
 		pskExchangeModes := PSKKeyExchangeModesExtension{[]uint8{pskModeDHE}}
 		supportedVersionsExt := SupportedVersionsExtension{
