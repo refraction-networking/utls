@@ -270,7 +270,7 @@ func forgeConn() {
 
 	serverConn, clientConn := net.Pipe()
 
-	clientUtls.SetNetConn(clientConn)
+	clientUtls.SetUnderlyingConn(clientConn)
 
 	hs := clientUtls.HandshakeState
 	serverTls := tls.MakeConnWithCompleteHandshake(serverConn, hs.ServerHello.Vers, hs.ServerHello.CipherSuite,
