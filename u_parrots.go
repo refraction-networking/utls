@@ -11,10 +11,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/big"
+	mrand "math/rand"
 	"sort"
 	"strconv"
-	"time"
 )
 
 func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
@@ -326,25 +327,15 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 
 func (uconn *UConn) applyPresetByID(id ClientHelloID) (err error) {
 	var spec ClientHelloSpec
+	uconn.ClientHelloID = id
 	// choose/generate the spec
-	switch id {
-	case HelloRandomized:
-		if tossBiasedCoin(0.5) {
-			return uconn.applyPresetByID(HelloRandomizedALPN)
-		} else {
-			return uconn.applyPresetByID(HelloRandomizedNoALPN)
-		}
-	case HelloRandomizedALPN:
-		spec, err = uconn.generateRandomizedSpec(true)
+	switch id.Browser {
+	case helloRandomized, helloRandomizedNoALPN, helloRandomizedALPN:
+		spec, err = uconn.generateRandomizedSpec(id)
 		if err != nil {
 			return err
 		}
-	case HelloRandomizedNoALPN:
-		spec, err = uconn.generateRandomizedSpec(false)
-		if err != nil {
-			return err
-		}
-	case HelloCustom:
+	case helloCustom:
 		return nil
 
 	default:
@@ -354,7 +345,6 @@ func (uconn *UConn) applyPresetByID(id ClientHelloID) (err error) {
 		}
 	}
 
-	uconn.clientHelloID = id
 	return uconn.ApplyPreset(&spec)
 }
 
@@ -486,24 +476,47 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 	return nil
 }
 
-func (uconn *UConn) generateRandomizedSpec(WithALPN bool) (ClientHelloSpec, error) {
+func (uconn *UConn) generateRandomizedSpec(id ClientHelloID) (ClientHelloSpec, error) {
 	p := ClientHelloSpec{}
+	if id.Version == 0 {
+		seed, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64))
+		if err != nil {
+			return p, err
+		}
+		id.Version = seed.Int64()
+		uconn.ClientHelloID = id
+	}
+
+	r := makeUtlsRandomizer(id.Version)
+
+	var WithALPN bool
+	switch id.Browser {
+	case helloRandomizedALPN:
+		WithALPN = true
+	case helloRandomizedNoALPN:
+		WithALPN = false
+	case helloRandomized:
+		if r.tossBiasedCoin(0.7) {
+			WithALPN = true
+		} else {
+			WithALPN = false
+		}
+	default:
+		return p, fmt.Errorf("Using %v in generateRandomizedSpec()", id.Browser)
+	}
 
 	p.CipherSuites = make([]uint16, len(defaultCipherSuites()))
 	copy(p.CipherSuites, defaultCipherSuites())
-	shuffledSuites, err := shuffledCiphers()
+	shuffledSuites, err := r.shuffledCiphers()
 	if err != nil {
 		return p, err
 	}
 
-	if tossBiasedCoin(0.4) {
+	if r.tossBiasedCoin(0.4) {
 		p.TLSVersMin = VersionTLS10
 		p.TLSVersMax = VersionTLS13
 		tls13ciphers := defaultCipherSuitesTLS13()
-		err = shuffleUInts16(tls13ciphers)
-		if err != nil {
-			return p, err
-		}
+		r.shuffleUInts16(tls13ciphers)
 		// appending TLS 1.3 ciphers before TLS 1.2, since that's what popular implementations do
 		shuffledSuites = append(tls13ciphers, shuffledSuites...)
 
@@ -514,7 +527,7 @@ func (uconn *UConn) generateRandomizedSpec(WithALPN bool) (ClientHelloSpec, erro
 		p.TLSVersMax = VersionTLS12
 	}
 
-	p.CipherSuites = removeRandomCiphers(shuffledSuites, 0.4)
+	p.CipherSuites = r.removeRandomCiphers(shuffledSuites, 0.4)
 
 	sni := SNIExtension{uconn.config.ServerName}
 	sessionTicket := SessionTicketExtension{Session: uconn.HandshakeState.Session}
@@ -528,25 +541,22 @@ func (uconn *UConn) generateRandomizedSpec(WithALPN bool) (ClientHelloSpec, erro
 		PKCS1WithSHA512,
 	}
 
-	if tossBiasedCoin(0.63) {
+	if r.tossBiasedCoin(0.63) {
 		sigAndHashAlgos = append(sigAndHashAlgos, ECDSAWithSHA1)
 	}
-	if tossBiasedCoin(0.59) {
+	if r.tossBiasedCoin(0.59) {
 		sigAndHashAlgos = append(sigAndHashAlgos, ECDSAWithP521AndSHA512)
 	}
-	if tossBiasedCoin(0.51) {
+	if r.tossBiasedCoin(0.51) {
 		// these usually go together
 		sigAndHashAlgos = append(sigAndHashAlgos, PSSWithSHA256)
-		if tossBiasedCoin(0.9) {
+		if r.tossBiasedCoin(0.9) {
 			sigAndHashAlgos = append(sigAndHashAlgos, PSSWithSHA384)
 			sigAndHashAlgos = append(sigAndHashAlgos, PSSWithSHA512)
 		}
 	}
 
-	err = shuffleSignatures(sigAndHashAlgos)
-	if err != nil {
-		return p, err
-	}
+	r.shuffleSignatures(sigAndHashAlgos)
 	sigAndHash := SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: sigAndHashAlgos}
 
 	status := StatusRequestExtension{}
@@ -555,11 +565,11 @@ func (uconn *UConn) generateRandomizedSpec(WithALPN bool) (ClientHelloSpec, erro
 	points := SupportedPointsExtension{SupportedPoints: []byte{pointFormatUncompressed}}
 
 	curveIDs := []CurveID{}
-	if tossBiasedCoin(0.71) || p.TLSVersMax == VersionTLS13 {
+	if r.tossBiasedCoin(0.71) || p.TLSVersMax == VersionTLS13 {
 		curveIDs = append(curveIDs, X25519)
 	}
 	curveIDs = append(curveIDs, CurveP256, CurveP384)
-	if tossBiasedCoin(0.46) {
+	if r.tossBiasedCoin(0.46) {
 		curveIDs = append(curveIDs, CurveP521)
 	}
 
@@ -585,28 +595,28 @@ func (uconn *UConn) generateRandomizedSpec(WithALPN bool) (ClientHelloSpec, erro
 		p.Extensions = append(p.Extensions, &alpn)
 	}
 
-	if tossBiasedCoin(0.62) || p.TLSVersMax == VersionTLS13 {
+	if r.tossBiasedCoin(0.62) || p.TLSVersMax == VersionTLS13 {
 		// always include for TLS 1.3, since TLS 1.3 ClientHellos are often over 256 bytes
 		// and that's when padding is required to work around buggy middleboxes
 		p.Extensions = append(p.Extensions, &padding)
 	}
-	if tossBiasedCoin(0.74) {
+	if r.tossBiasedCoin(0.74) {
 		p.Extensions = append(p.Extensions, &status)
 	}
-	if tossBiasedCoin(0.46) {
+	if r.tossBiasedCoin(0.46) {
 		p.Extensions = append(p.Extensions, &sct)
 	}
-	if tossBiasedCoin(0.75) {
+	if r.tossBiasedCoin(0.75) {
 		p.Extensions = append(p.Extensions, &reneg)
 	}
-	if tossBiasedCoin(0.77) {
+	if r.tossBiasedCoin(0.77) {
 		p.Extensions = append(p.Extensions, &ems)
 	}
 	if p.TLSVersMax == VersionTLS13 {
 		ks := KeyShareExtension{[]KeyShare{
 			{Group: X25519}, // the key for the group will be generated later
 		}}
-		if tossBiasedCoin(0.5) {
+		if r.tossBiasedCoin(0.5) {
 			ks.KeyShares = append(ks.KeyShares, KeyShare{Group: CurveP256})
 		}
 		pskExchangeModes := PSKKeyExchangeModesExtension{[]uint8{pskModeDHE}}
@@ -615,10 +625,7 @@ func (uconn *UConn) generateRandomizedSpec(WithALPN bool) (ClientHelloSpec, erro
 		}
 		p.Extensions = append(p.Extensions, &ks, &pskExchangeModes, &supportedVersionsExt)
 	}
-	err = shuffleTLSExtensions(p.Extensions)
-	if err != nil {
-		return p, err
-	}
+	r.shuffleTLSExtensions(p.Extensions)
 	err = uconn.SetTLSVers(p.TLSVersMin, p.TLSVersMax)
 	if err != nil {
 		return p, err
@@ -627,18 +634,20 @@ func (uconn *UConn) generateRandomizedSpec(WithALPN bool) (ClientHelloSpec, erro
 	return p, nil
 }
 
-func tossBiasedCoin(probability float32) bool {
+type utlsRandomizer struct {
+	rand     mrand.Rand
+	savedErr error
+}
+
+func makeUtlsRandomizer(seed int64) *utlsRandomizer {
+	return &utlsRandomizer{rand: *mrand.New(mrand.NewSource(seed))}
+}
+
+func (r *utlsRandomizer) tossBiasedCoin(probability float32) bool {
 	// probability is expected to be in [0,1]
-	// this function never returns errors for ease of use
 	const precision = 0xffff
 	threshold := float32(precision) * probability
-	value, err := getRandInt(precision)
-	if err != nil {
-		// I doubt that this code will ever actually be used, as other functions are expected to complain
-		// about used source of entropy. Nonetheless, this is more than enough for given purpose
-		return ((time.Now().Unix() & 1) == 0)
-	}
-
+	value := r.getRandInt(precision)
 	if float32(value) <= threshold {
 		return true
 	} else {
@@ -646,7 +655,21 @@ func tossBiasedCoin(probability float32) bool {
 	}
 }
 
-func removeRandomCiphers(s []uint16, maxRemovalProbability float32) []uint16 {
+func (r *utlsRandomizer) getRandInt(max int) int {
+	return r.rand.Intn(max)
+}
+
+func (r *utlsRandomizer) getRandPerm(n int) []int {
+	permArray := make([]int, n)
+	for i := 1; i < n; i++ {
+		j := r.getRandInt(i + 1)
+		permArray[i] = permArray[j]
+		permArray[j] = i
+	}
+	return permArray
+}
+
+func (r *utlsRandomizer) removeRandomCiphers(s []uint16, maxRemovalProbability float32) []uint16 {
 	// removes elements in place
 	// probability to remove increases for further elements
 	// never remove first cipher
@@ -658,7 +681,7 @@ func removeRandomCiphers(s []uint16, maxRemovalProbability float32) []uint16 {
 	floatLen := float32(len(s))
 	sliceLen := len(s)
 	for i := 1; i < sliceLen; i++ {
-		if tossBiasedCoin(maxRemovalProbability * float32(i) / floatLen) {
+		if r.tossBiasedCoin(maxRemovalProbability * float32(i) / floatLen) {
 			s = append(s[:i], s[i+1:]...)
 			sliceLen--
 			i--
@@ -667,46 +690,9 @@ func removeRandomCiphers(s []uint16, maxRemovalProbability float32) []uint16 {
 	return s[:sliceLen]
 }
 
-func removeRC4Ciphers(s []uint16) []uint16 {
-	// removes elements in place
-	sliceLen := len(s)
-	for i := 0; i < sliceLen; i++ {
-		cipher := s[i]
-		if cipher == TLS_ECDHE_ECDSA_WITH_RC4_128_SHA ||
-			cipher == TLS_ECDHE_RSA_WITH_RC4_128_SHA ||
-			cipher == TLS_RSA_WITH_RC4_128_SHA {
-			s = append(s[:i], s[i+1:]...)
-			sliceLen--
-			i--
-		}
-	}
-	return s[:sliceLen]
-}
-
-func getRandInt(max int) (int, error) {
-	bigInt, err := rand.Int(rand.Reader, big.NewInt(int64(max)))
-	return int(bigInt.Int64()), err
-}
-
-func getRandPerm(n int) ([]int, error) {
-	permArray := make([]int, n)
-	for i := 1; i < n; i++ {
-		j, err := getRandInt(i + 1)
-		if err != nil {
-			return permArray, err
-		}
-		permArray[i] = permArray[j]
-		permArray[j] = i
-	}
-	return permArray, nil
-}
-
-func shuffledCiphers() ([]uint16, error) {
+func (r *utlsRandomizer) shuffledCiphers() ([]uint16, error) {
 	ciphers := make(sortableCiphers, len(cipherSuites))
-	perm, err := getRandPerm(len(cipherSuites))
-	if err != nil {
-		return nil, err
-	}
+	perm := r.getRandPerm(len(cipherSuites))
 	for i, suite := range cipherSuites {
 		ciphers[i] = sortableCipher{suite: suite.id,
 			isObsolete: ((suite.flags & suiteTLS12) == 0),
@@ -714,6 +700,36 @@ func shuffledCiphers() ([]uint16, error) {
 	}
 	sort.Sort(ciphers)
 	return ciphers.GetCiphers(), nil
+}
+
+// so much for generics
+func (r *utlsRandomizer) shuffle(s []interface{}) {
+	r.rand.Shuffle(len(s), func(i, j int) {
+		s[i], s[j] = s[j], s[i]
+	})
+}
+
+// so much for generics
+func (r *utlsRandomizer) shuffleTLSExtensions(s []TLSExtension) {
+	// shuffles array in place
+	perm := r.getRandPerm(len(s))
+	for i := range s {
+		s[i], s[perm[i]] = s[perm[i]], s[i]
+	}
+}
+
+// so much for generics
+func (r *utlsRandomizer) shuffleSignatures(s []SignatureScheme) {
+	r.rand.Shuffle(len(s), func(i, j int) {
+		s[i], s[j] = s[j], s[i]
+	})
+}
+
+// so much for generics
+func (r *utlsRandomizer) shuffleUInts16(s []uint16) {
+	r.rand.Shuffle(len(s), func(i, j int) {
+		s[i], s[j] = s[j], s[i]
+	})
 }
 
 type sortableCipher struct {
@@ -750,41 +766,18 @@ func (ciphers sortableCiphers) GetCiphers() []uint16 {
 	return cipherIDs
 }
 
-// so much for generics
-func shuffleTLSExtensions(s []TLSExtension) error {
-	// shuffles array in place
-	perm, err := getRandPerm(len(s))
-	if err != nil {
-		return err
+func removeRC4Ciphers(s []uint16) []uint16 {
+	// removes elements in place
+	sliceLen := len(s)
+	for i := 0; i < sliceLen; i++ {
+		cipher := s[i]
+		if cipher == TLS_ECDHE_ECDSA_WITH_RC4_128_SHA ||
+			cipher == TLS_ECDHE_RSA_WITH_RC4_128_SHA ||
+			cipher == TLS_RSA_WITH_RC4_128_SHA {
+			s = append(s[:i], s[i+1:]...)
+			sliceLen--
+			i--
+		}
 	}
-	for i := range s {
-		s[i], s[perm[i]] = s[perm[i]], s[i]
-	}
-	return nil
-}
-
-// so much for generics
-func shuffleSignatures(s []SignatureScheme) error {
-	// shuffles array in place
-	perm, err := getRandPerm(len(s))
-	if err != nil {
-		return err
-	}
-	for i := range s {
-		s[i], s[perm[i]] = s[perm[i]], s[i]
-	}
-	return nil
-}
-
-// so much for generics
-func shuffleUInts16(s []uint16) error {
-	// shuffles array in place
-	perm, err := getRandPerm(len(s))
-	if err != nil {
-		return err
-	}
-	for i := range s {
-		s[i], s[perm[i]] = s[perm[i]], s[i]
-	}
-	return nil
+	return s[:sliceLen]
 }

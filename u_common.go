@@ -6,8 +6,10 @@ package tls
 
 import (
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha512"
 	"fmt"
+	"math/big"
 )
 
 // Naming convention:
@@ -60,7 +62,7 @@ var (
 
 type ClientHelloID struct {
 	Browser string
-	Version uint16
+	Version int64
 	// TODO: consider adding OS?
 }
 
@@ -71,6 +73,8 @@ func (p *ClientHelloID) Str() string {
 const (
 	helloGolang     = "Golang"
 	helloRandomized = "Randomized"
+	helloRandomizedALPN = "Randomized-ALPN"
+	helloRandomizedNoALPN = "Randomized-NoALPN"
 	helloCustom     = "Custom"
 	helloFirefox    = "Firefox"
 	helloChrome     = "Chrome"
@@ -80,8 +84,6 @@ const (
 
 const (
 	helloAutoVers = iota
-	helloRandomizedALPN
-	helloRandomizedNoALPN
 )
 
 type ClientHelloSpec struct {
@@ -112,8 +114,8 @@ var (
 
 	// HelloRandomized* randomly adds/reorders extensions, ciphersuites, etc.
 	HelloRandomized       = ClientHelloID{helloRandomized, helloAutoVers}
-	HelloRandomizedALPN   = ClientHelloID{helloRandomized, helloRandomizedALPN}
-	HelloRandomizedNoALPN = ClientHelloID{helloRandomized, helloRandomizedNoALPN}
+	HelloRandomizedALPN   = ClientHelloID{helloRandomizedALPN, helloAutoVers}
+	HelloRandomizedNoALPN = ClientHelloID{helloRandomizedNoALPN, helloAutoVers}
 
 	// The rest will will parrot given browser.
 	HelloFirefox_Auto = HelloFirefox_63
@@ -166,4 +168,22 @@ func EnableWeakCiphers() {
 		{DISABLED_TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384, 32, 48, 16, ecdheRSAKA,
 			suiteECDHE | suiteTLS12 | suiteDefaultOff | suiteSHA384, cipherAES, utlsMacSHA384, nil},
 	}...)
+}
+
+func getRandInt(max int) (int, error) {
+	bigInt, err := rand.Int(rand.Reader, big.NewInt(int64(max)))
+	return int(bigInt.Int64()), err
+}
+
+func getRandPerm(n int) ([]int, error) {
+	permArray := make([]int, n)
+	for i := 1; i < n; i++ {
+		j, err := getRandInt(i + 1)
+		if err != nil {
+			return permArray, err
+		}
+		permArray[i] = permArray[j]
+		permArray[j] = i
+	}
+	return permArray, nil
 }
