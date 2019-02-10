@@ -684,5 +684,33 @@ func (e *SupportedVersionsExtension) Read(b []byte) (int, error) {
 	return e.Len(), io.EOF
 }
 
+// MUST NOT be part of initial ClientHello
+type CookieExtension struct {
+	Cookie []byte
+}
+
+func (e *CookieExtension) writeToUConn(uc *UConn) error {
+	return nil
+}
+
+func (e *CookieExtension) Len() int {
+	return 4 + len(e.Cookie)
+}
+
+func (e *CookieExtension) Read(b []byte) (int, error) {
+	if len(b) < e.Len() {
+		return 0, io.ErrShortBuffer
+	}
+
+	b[0] = byte(extensionCookie >> 8)
+	b[1] = byte(extensionCookie)
+	b[2] = byte(len(e.Cookie) >> 8)
+	b[3] = byte(len(e.Cookie))
+	if len(e.Cookie) > 0 {
+		copy(b[4:], e.Cookie)
+	}
+	return e.Len(), io.EOF
+}
+
 // TODO: FakeCertificateCompressionAlgorithmsExtension
 // TODO: FakeRecordSizeLimitExtension
