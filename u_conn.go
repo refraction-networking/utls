@@ -500,8 +500,8 @@ func (uconn *UConn) SetUnderlyingConn(c net.Conn) {
 	uconn.Conn.conn = c
 }
 
-func (uconn *UConn) SetNetConn(c net.Conn) {
-	uconn.Conn.conn = c
+func (uconn *UConn) GetUnderlyingConn() net.Conn {
+	return uconn.Conn.conn
 }
 
 // MakeConnWithCompleteHandshake allows to forge both server and client side TLS connections.
