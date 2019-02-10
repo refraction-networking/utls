@@ -142,6 +142,23 @@ func TestUTLSHandshakeClientParrotChrome_58_setclienthello(t *testing.T) {
 	runUTLSClientTestTLS12(t, test, helloID)
 }
 
+// tests consistency of fingerprint after HelloRetryRequest
+// chrome 70 is used, due to only specifying X25519 in keyshare, but being able to generate P-256 curve too
+// openssl server, configured to use P-256, will send HelloRetryRequest
+func TestUTLSHelloRetryRequest(t *testing.T) {
+	helloID := HelloChrome_70
+	config := testConfig.Clone()
+	config.CurvePreferences = []CurveID{X25519, CurveP256}
+
+	test := &clientTest{
+		name:    "UTLS-HelloRetryRequest-" + helloID.Str(),
+		command: []string{"openssl", "s_server", "-cipher", "ECDHE-RSA-AES128-GCM-SHA256", "-curves", "P-256"},
+		config:  config,
+	}
+
+	runUTLSClientTestTLS13(t, test, helloID)
+}
+
 /*
 *
  HELPER FUNCTIONS BELOW

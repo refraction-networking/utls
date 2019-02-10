@@ -33,6 +33,8 @@ type clientHandshakeStateTLS13 struct {
 	transcript    hash.Hash
 	masterSecret  []byte
 	trafficSecret []byte // client_application_traffic_secret_0
+
+	uconn *UConn // [UTLS]
 }
 
 // handshake requires hs.c, hs.hello, hs.serverHello, hs.ecdheParams, and,
@@ -250,6 +252,67 @@ func (hs *clientHandshakeStateTLS13) processHelloRetryRequest() error {
 			hs.hello.pskBinders = nil
 		}
 	}
+
+	// [UTLS SECTION BEGINS]
+	// crypto/tls code above this point had changed crypto/tls structures in accordance with HRR, and is about
+	// to call default marshaller.
+	// Instead, we fill uTLS-specific structs and call uTLS marshaller.
+	// Only extensionCookie, extensionPreSharedKey, extensionKeyShare, extensionEarlyData, extensionSupportedVersions,
+	// and utlsExtensionPadding are supposed to change
+	if hs.uconn != nil {
+		if hs.uconn.clientHelloID != HelloGolang {
+			if len(hs.hello.pskIdentities) > 0 {
+				// TODO: wait for someone who cares about PSK to implement
+				return errors.New("uTLS does not support reprocessing of PSK key triggered by HelloRetryRequest")
+			}
+
+			keyShareExtFound := false
+			for _, ext := range hs.uconn.Extensions {
+				// new ks seems to be generated either way
+				if ks, ok := ext.(*KeyShareExtension); ok {
+					ks.KeyShares = keyShares(hs.hello.keyShares).ToPublic()
+					keyShareExtFound = true
+				}
+			}
+			if !keyShareExtFound {
+				return errors.New("uTLS: received HelloRetryRequest, but keyshare not found among client's " +
+					"uconn.Extensions")
+			}
+
+			if len(hs.serverHello.cookie) > 0 {
+				// serverHello specified a cookie, let's echo it
+				cookieFound := false
+				for _, ext := range hs.uconn.Extensions {
+					if ks, ok := ext.(*CookieExtension); ok {
+						ks.Cookie = hs.serverHello.cookie
+						cookieFound = true
+					}
+				}
+
+				if !cookieFound {
+					// pick a random index where to add cookieExtension
+					// -2 instead of -1 is a lazy way to ensure that PSK is still a last extension
+					cookieIndex, err := getRandInt(len(hs.uconn.Extensions) - 2)
+					if err != nil {
+						return err
+					}
+					if cookieIndex >= len(hs.uconn.Extensions) {
+						// this check is for empty hs.uconn.Extensions
+						return fmt.Errorf("cookieIndex >= len(hs.uconn.Extensions): %v >= %v",
+							cookieIndex, len(hs.uconn.Extensions))
+					}
+					hs.uconn.Extensions = append(hs.uconn.Extensions[:cookieIndex],
+						append([]TLSExtension{&CookieExtension{Cookie: hs.serverHello.cookie}},
+							hs.uconn.Extensions[cookieIndex:]...)...)
+				}
+			}
+			if err = hs.uconn.MarshalClientHello(); err != nil {
+				return err
+			}
+			hs.hello.raw = hs.uconn.HandshakeState.Hello.Raw
+		}
+	}
+	// [UTLS SECTION ENDS]
 
 	hs.transcript.Write(hs.hello.marshal())
 	if _, err := c.writeRecord(recordTypeHandshake, hs.hello.marshal()); err != nil {
