@@ -58,12 +58,17 @@ func (c *Roller) Dial(network, addr, serverName string) (*UConn, error) {
 	workingHelloId := c.WorkingHelloID // keep using same helloID, if it works
 	c.HelloIDMu.Unlock()
 	if workingHelloId != nil {
+		helloIDFound := false
 		for i, ID := range helloIDs {
 			if ID == *workingHelloId {
 				helloIDs[i] = helloIDs[0]
 				helloIDs[0] = *workingHelloId // push working hello ID first
+				helloIDFound = true
 				break
 			}
+		}
+		if !helloIDFound {
+			helloIDs = append([]ClientHelloID{*workingHelloId}, helloIDs...)
 		}
 	}
 
@@ -84,7 +89,7 @@ func (c *Roller) Dial(network, addr, serverName string) (*UConn, error) {
 		}
 
 		c.HelloIDMu.Lock()
-		c.WorkingHelloID = &helloID
+		c.WorkingHelloID = &client.ClientHelloID
 		c.HelloIDMu.Unlock()
 		return client, err
 	}
