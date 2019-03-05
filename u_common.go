@@ -61,25 +61,28 @@ var (
 )
 
 type ClientHelloID struct {
-	Browser string
-	Version int64
-	// TODO: consider adding OS?
+	Client  string
+	Version uint64 // major version for browsers, seed for randomized fingerprints
 }
 
 func (p *ClientHelloID) Str() string {
-	return fmt.Sprintf("%s-%d", p.Browser, p.Version)
+	return fmt.Sprintf("%s-%d", p.Client, p.Version)
+}
+
+func (p *ClientHelloID) IsSet() bool {
+	return (p.Client == "") && (p.Version == 0)
 }
 
 const (
-	helloGolang     = "Golang"
-	helloRandomized = "Randomized"
-	helloRandomizedALPN = "Randomized-ALPN"
+	helloGolang           = "Golang"
+	helloRandomized       = "Randomized"
+	helloRandomizedALPN   = "Randomized-ALPN"
 	helloRandomizedNoALPN = "Randomized-NoALPN"
-	helloCustom     = "Custom"
-	helloFirefox    = "Firefox"
-	helloChrome     = "Chrome"
-	helloIOS        = "iOS"
-	helloAndroid    = "Android"
+	helloCustom           = "Custom"
+	helloFirefox          = "Firefox"
+	helloChrome           = "Chrome"
+	helloIOS              = "iOS"
+	helloAndroid          = "Android"
 )
 
 const (

@@ -13,9 +13,10 @@ import (
 	"io"
 	"math"
 	"math/big"
-	mrand "math/rand"
 	"sort"
 	"strconv"
+
+	"golang.org/x/crypto/hkdf"
 )
 
 func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
@@ -329,9 +330,9 @@ func (uconn *UConn) applyPresetByID(id ClientHelloID) (err error) {
 	var spec ClientHelloSpec
 	uconn.ClientHelloID = id
 	// choose/generate the spec
-	switch id.Browser {
+	switch id.Client {
 	case helloRandomized, helloRandomizedNoALPN, helloRandomizedALPN:
-		spec, err = uconn.generateRandomizedSpec(id)
+		spec, err = uconn.generateRandomizedSpec()
 		if err != nil {
 			return err
 		}
@@ -476,21 +477,24 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 	return nil
 }
 
-func (uconn *UConn) generateRandomizedSpec(id ClientHelloID) (ClientHelloSpec, error) {
+func (uconn *UConn) generateRandomizedSpec() (ClientHelloSpec, error) {
 	p := ClientHelloSpec{}
+	id := uconn.ClientHelloID
+
+	// id.Version is used as a seed
 	if id.Version == 0 {
 		seed, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64))
 		if err != nil {
 			return p, err
 		}
-		id.Version = seed.Int64()
+		id.Version = seed.Uint64()
 		uconn.ClientHelloID = id
 	}
 
 	r := makeUtlsRandomizer(id.Version)
 
 	var WithALPN bool
-	switch id.Browser {
+	switch id.Client {
 	case helloRandomizedALPN:
 		WithALPN = true
 	case helloRandomizedNoALPN:
@@ -502,7 +506,7 @@ func (uconn *UConn) generateRandomizedSpec(id ClientHelloID) (ClientHelloSpec, e
 			WithALPN = false
 		}
 	default:
-		return p, fmt.Errorf("Using %v in generateRandomizedSpec()", id.Browser)
+		return p, fmt.Errorf("using non-randomized ClientHelloID %v to generate randomized spec", id.Client)
 	}
 
 	p.CipherSuites = make([]uint16, len(defaultCipherSuites()))
@@ -635,23 +639,62 @@ func (uconn *UConn) generateRandomizedSpec(id ClientHelloID) (ClientHelloSpec, e
 		return p, err
 	}
 
-	return p, nil
+	return p, r.savedErr
 }
 
+// utlsRandomizer never returns errors, but stores first one in savedErr
 type utlsRandomizer struct {
-	rand     mrand.Rand
+	r        io.Reader
 	savedErr error
 }
 
-func makeUtlsRandomizer(seed int64) *utlsRandomizer {
-	return &utlsRandomizer{rand: *mrand.New(mrand.NewSource(seed))}
+func makeUtlsRandomizer(seed uint64) *utlsRandomizer {
+	seedBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(seedBytes, seed)
+	tdHkdf := hkdf.New(sha256.New, seedBytes, []byte("uTLS salty salt"), nil)
+	return &utlsRandomizer{r: tdHkdf}
+}
+
+// randUInt64 is the only function that touches source of entropy,
+// and other primitives are built using randUInt64
+func (r *utlsRandomizer) randUInt64() uint64 {
+	uintBytes := make([]byte, 8)
+	_, err := r.r.Read(uintBytes)
+	if r.savedErr == nil && err != nil {
+		r.savedErr = err
+	}
+	return binary.BigEndian.Uint64(uintBytes)
+}
+
+// returns int64 in [0, max)
+func (r *utlsRandomizer) randInt64n(max int) int64 {
+	if max == 0 {
+		return 0
+	}
+	randUint := r.randUInt64() % uint64(max)
+	if randUint > math.MaxInt64 {
+		randUint >>= 1
+	}
+	return int64(randUint)
+}
+
+// returns int in [0, max) up to max int32
+func (r *utlsRandomizer) randIntn(max int) int {
+	if max > math.MaxInt32 && strconv.IntSize < 64 {
+		// in practice, we never use randomizer with such big values for max
+		// if we ever do, it may panic on 32 bit architecture, so we have to check for that
+		r.savedErr = fmt.Errorf("utlsRandomizer does not support randIntn(%v): max is too big for a %v-bit architecture",
+			max, strconv.IntSize)
+		return 0
+	}
+	return int(r.randInt64n(max))
 }
 
 func (r *utlsRandomizer) tossBiasedCoin(probability float32) bool {
 	// probability is expected to be in [0,1]
 	const precision = 0xffff
 	threshold := float32(precision) * probability
-	value := r.getRandInt(precision)
+	value := r.randIntn(precision)
 	if float32(value) <= threshold {
 		return true
 	} else {
@@ -659,14 +702,10 @@ func (r *utlsRandomizer) tossBiasedCoin(probability float32) bool {
 	}
 }
 
-func (r *utlsRandomizer) getRandInt(max int) int {
-	return r.rand.Intn(max)
-}
-
 func (r *utlsRandomizer) getRandPerm(n int) []int {
 	permArray := make([]int, n)
 	for i := 1; i < n; i++ {
-		j := r.getRandInt(i + 1)
+		j := r.randIntn(i + 1)
 		permArray[i] = permArray[j]
 		permArray[j] = i
 	}
@@ -708,9 +747,10 @@ func (r *utlsRandomizer) shuffledCiphers() ([]uint16, error) {
 
 // so much for generics
 func (r *utlsRandomizer) shuffle(s []interface{}) {
-	r.rand.Shuffle(len(s), func(i, j int) {
-		s[i], s[j] = s[j], s[i]
-	})
+	perm := r.getRandPerm(len(s))
+	for i := range s {
+		s[i], s[perm[i]] = s[perm[i]], s[i]
+	}
 }
 
 // so much for generics
@@ -724,16 +764,18 @@ func (r *utlsRandomizer) shuffleTLSExtensions(s []TLSExtension) {
 
 // so much for generics
 func (r *utlsRandomizer) shuffleSignatures(s []SignatureScheme) {
-	r.rand.Shuffle(len(s), func(i, j int) {
-		s[i], s[j] = s[j], s[i]
-	})
+	perm := r.getRandPerm(len(s))
+	for i := range s {
+		s[i], s[perm[i]] = s[perm[i]], s[i]
+	}
 }
 
 // so much for generics
 func (r *utlsRandomizer) shuffleUInts16(s []uint16) {
-	r.rand.Shuffle(len(s), func(i, j int) {
-		s[i], s[j] = s[j], s[i]
-	})
+	perm := r.getRandPerm(len(s))
+	for i := range s {
+		s[i], s[perm[i]] = s[perm[i]], s[i]
+	}
 }
 
 type sortableCipher struct {
