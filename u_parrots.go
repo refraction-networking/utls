@@ -473,7 +473,6 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 }
 
 func (uconn *UConn) generateRandomizedSpec() (ClientHelloSpec, error) {
-
 	p := ClientHelloSpec{}
 
 	if uconn.ClientHelloID.Seed == nil {
@@ -515,7 +514,9 @@ func (uconn *UConn) generateRandomizedSpec() (ClientHelloSpec, error) {
 		p.TLSVersMin = VersionTLS10
 		p.TLSVersMax = VersionTLS13
 		tls13ciphers := defaultCipherSuitesTLS13()
-		shuffleUInts16(r, tls13ciphers)
+		r.rand.Shuffle(len(tls13ciphers), func(i, j int) {
+			tls13ciphers[i], tls13ciphers[j] = tls13ciphers[j], tls13ciphers[i]
+		})
 		// appending TLS 1.3 ciphers before TLS 1.2, since that's what popular implementations do
 		shuffledSuites = append(tls13ciphers, shuffledSuites...)
 
@@ -556,7 +557,9 @@ func (uconn *UConn) generateRandomizedSpec() (ClientHelloSpec, error) {
 		}
 	}
 
-	shuffleSignatures(r, sigAndHashAlgos)
+	r.rand.Shuffle(len(sigAndHashAlgos), func(i, j int) {
+		sigAndHashAlgos[i], sigAndHashAlgos[j] = sigAndHashAlgos[j], sigAndHashAlgos[i]
+	})
 	sigAndHash := SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: sigAndHashAlgos}
 
 	status := StatusRequestExtension{}
@@ -628,7 +631,9 @@ func (uconn *UConn) generateRandomizedSpec() (ClientHelloSpec, error) {
 		}
 		p.Extensions = append(p.Extensions, &ks, &pskExchangeModes, &supportedVersionsExt)
 	}
-	shuffleTLSExtensions(r, p.Extensions)
+	r.rand.Shuffle(len(p.Extensions), func(i, j int) {
+		p.Extensions[i], p.Extensions[j] = p.Extensions[j], p.Extensions[i]
+	})
 	err = uconn.SetTLSVers(p.TLSVersMin, p.TLSVersMax)
 	if err != nil {
 		return p, err
@@ -668,31 +673,6 @@ func shuffledCiphers(r *prng) ([]uint16, error) {
 	}
 	sort.Sort(ciphers)
 	return ciphers.GetCiphers(), nil
-}
-
-// so much for generics
-func shuffleTLSExtensions(r *prng, s []TLSExtension) {
-	// shuffles array in place
-	perm := r.Perm(len(s))
-	for i := range s {
-		s[i], s[perm[i]] = s[perm[i]], s[i]
-	}
-}
-
-// so much for generics
-func shuffleSignatures(r *prng, s []SignatureScheme) {
-	perm := r.Perm(len(s))
-	for i := range s {
-		s[i], s[perm[i]] = s[perm[i]], s[i]
-	}
-}
-
-// so much for generics
-func shuffleUInts16(r *prng, s []uint16) {
-	perm := r.Perm(len(s))
-	for i := range s {
-		s[i], s[perm[i]] = s[perm[i]], s[i]
-	}
 }
 
 type sortableCipher struct {

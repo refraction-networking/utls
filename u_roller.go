@@ -18,7 +18,6 @@ type Roller struct {
 // NewRoller creates Roller object with default range of HelloIDs to cycle through until a
 // working/unblocked one is found.
 func NewRoller() (*Roller, error) {
-
 	r, err := newPRNG()
 	if err != nil {
 		return nil, err
@@ -51,10 +50,11 @@ func NewRoller() (*Roller, error) {
 //    Dial("tcp4", "google.com:443", "google.com")
 //    Dial("tcp", "10.23.144.22:443", "mywebserver.org")
 func (c *Roller) Dial(network, addr, serverName string) (*UConn, error) {
-	helloIDs, err := shuffleClientHelloIDs(c.r, c.HelloIDs)
-	if err != nil {
-		return nil, err
-	}
+	helloIDs := make([]ClientHelloID, len(c.HelloIDs))
+	copy(helloIDs, c.HelloIDs)
+	c.r.rand.Shuffle(len(c.HelloIDs), func(i, j int) {
+		helloIDs[i], helloIDs[j] = helloIDs[j], helloIDs[i]
+	})
 
 	c.HelloIDMu.Lock()
 	workingHelloId := c.WorkingHelloID // keep using same helloID, if it works
@@ -75,6 +75,7 @@ func (c *Roller) Dial(network, addr, serverName string) (*UConn, error) {
 	}
 
 	var tcpConn net.Conn
+	var err error
 	for _, helloID := range helloIDs {
 		tcpConn, err = net.DialTimeout(network, addr, c.TcpDialTimeout)
 		if err != nil {
@@ -96,14 +97,4 @@ func (c *Roller) Dial(network, addr, serverName string) (*UConn, error) {
 		return client, err
 	}
 	return nil, err
-}
-
-// returns a shuffled copy of input
-func shuffleClientHelloIDs(r *prng, helloIDs []ClientHelloID) ([]ClientHelloID, error) {
-	perm := r.Perm(len(helloIDs))
-	shuffled := make([]ClientHelloID, len(helloIDs))
-	for i, randI := range perm {
-		shuffled[i] = helloIDs[randI]
-	}
-	return shuffled, nil
 }

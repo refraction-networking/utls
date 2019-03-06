@@ -60,22 +60,26 @@ var (
 
 type ClientHelloID struct {
 	Client  string
-	Version uint64 // major version for browsers
 
-	// Seed is a PRNG seed for randomized fingerprints.
+	// Version specifies version of a mimicked clients (e.g. browsers).
+	// Not used in randomized, custom handshake, and default Go.
+	Version string
+
+	// Seed is only used for randomized fingerprints to seed PRNG.
 	// Must not be modified once set.
 	Seed *PRNGSeed
 }
 
 func (p *ClientHelloID) Str() string {
-	return fmt.Sprintf("%s-%d", p.Client, p.Version)
+	return fmt.Sprintf("%s-%s", p.Client, p.Version)
 }
 
 func (p *ClientHelloID) IsSet() bool {
-	return (p.Client == "") && (p.Version == 0)
+	return (p.Client == "") && (p.Version == "")
 }
 
 const (
+	// clients
 	helloGolang           = "Golang"
 	helloRandomized       = "Randomized"
 	helloRandomizedALPN   = "Randomized-ALPN"
@@ -85,10 +89,9 @@ const (
 	helloChrome           = "Chrome"
 	helloIOS              = "iOS"
 	helloAndroid          = "Android"
-)
 
-const (
-	helloAutoVers = iota
+	// versions
+	helloAutoVers = "0"
 )
 
 type ClientHelloSpec struct {
@@ -124,17 +127,17 @@ var (
 
 	// The rest will will parrot given browser.
 	HelloFirefox_Auto = HelloFirefox_63
-	HelloFirefox_55   = ClientHelloID{helloFirefox, 55, nil}
-	HelloFirefox_56   = ClientHelloID{helloFirefox, 56, nil}
-	HelloFirefox_63   = ClientHelloID{helloFirefox, 63, nil}
+	HelloFirefox_55   = ClientHelloID{helloFirefox, "55", nil}
+	HelloFirefox_56   = ClientHelloID{helloFirefox, "56", nil}
+	HelloFirefox_63   = ClientHelloID{helloFirefox, "63", nil}
 
 	HelloChrome_Auto = HelloChrome_70
-	HelloChrome_58   = ClientHelloID{helloChrome, 58, nil}
-	HelloChrome_62   = ClientHelloID{helloChrome, 62, nil}
-	HelloChrome_70   = ClientHelloID{helloChrome, 70, nil}
+	HelloChrome_58   = ClientHelloID{helloChrome, "58", nil}
+	HelloChrome_62   = ClientHelloID{helloChrome, "62", nil}
+	HelloChrome_70   = ClientHelloID{helloChrome, "70", nil}
 
 	HelloIOS_Auto = HelloIOS_11_1
-	HelloIOS_11_1 = ClientHelloID{helloIOS, 111, nil}
+	HelloIOS_11_1 = ClientHelloID{helloIOS, "111", nil}
 )
 
 // based on spec's GreaseStyle, GREASE_PLACEHOLDER may be replaced by another GREASE value

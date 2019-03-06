@@ -337,7 +337,6 @@ func forgeConn() {
 
 }
 
-
 func main() {
 	var response *http.Response
 	var err error
