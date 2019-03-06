@@ -260,7 +260,7 @@ func (hs *clientHandshakeStateTLS13) processHelloRetryRequest() error {
 	// Only extensionCookie, extensionPreSharedKey, extensionKeyShare, extensionEarlyData, extensionSupportedVersions,
 	// and utlsExtensionPadding are supposed to change
 	if hs.uconn != nil {
-		if hs.uconn.clientHelloID != HelloGolang {
+		if hs.uconn.ClientHelloID != HelloGolang {
 			if len(hs.hello.pskIdentities) > 0 {
 				// TODO: wait for someone who cares about PSK to implement
 				return errors.New("uTLS does not support reprocessing of PSK key triggered by HelloRetryRequest")
@@ -292,10 +292,11 @@ func (hs *clientHandshakeStateTLS13) processHelloRetryRequest() error {
 				if !cookieFound {
 					// pick a random index where to add cookieExtension
 					// -2 instead of -1 is a lazy way to ensure that PSK is still a last extension
-					cookieIndex, err := getRandInt(len(hs.uconn.Extensions) - 2)
+					p, err := newPRNG()
 					if err != nil {
 						return err
 					}
+					cookieIndex := p.Intn(len(hs.uconn.Extensions) - 2)
 					if cookieIndex >= len(hs.uconn.Extensions) {
 						// this check is for empty hs.uconn.Extensions
 						return fmt.Errorf("cookieIndex >= len(hs.uconn.Extensions): %v >= %v",

@@ -59,29 +59,39 @@ var (
 )
 
 type ClientHelloID struct {
-	Browser string
-	Version uint16
-	// TODO: consider adding OS?
+	Client  string
+
+	// Version specifies version of a mimicked clients (e.g. browsers).
+	// Not used in randomized, custom handshake, and default Go.
+	Version string
+
+	// Seed is only used for randomized fingerprints to seed PRNG.
+	// Must not be modified once set.
+	Seed *PRNGSeed
 }
 
 func (p *ClientHelloID) Str() string {
-	return fmt.Sprintf("%s-%d", p.Browser, p.Version)
+	return fmt.Sprintf("%s-%s", p.Client, p.Version)
+}
+
+func (p *ClientHelloID) IsSet() bool {
+	return (p.Client == "") && (p.Version == "")
 }
 
 const (
-	helloGolang     = "Golang"
-	helloRandomized = "Randomized"
-	helloCustom     = "Custom"
-	helloFirefox    = "Firefox"
-	helloChrome     = "Chrome"
-	helloIOS        = "iOS"
-	helloAndroid    = "Android"
-)
+	// clients
+	helloGolang           = "Golang"
+	helloRandomized       = "Randomized"
+	helloRandomizedALPN   = "Randomized-ALPN"
+	helloRandomizedNoALPN = "Randomized-NoALPN"
+	helloCustom           = "Custom"
+	helloFirefox          = "Firefox"
+	helloChrome           = "Chrome"
+	helloIOS              = "iOS"
+	helloAndroid          = "Android"
 
-const (
-	helloAutoVers = iota
-	helloRandomizedALPN
-	helloRandomizedNoALPN
+	// versions
+	helloAutoVers = "0"
 )
 
 type ClientHelloSpec struct {
@@ -104,30 +114,30 @@ var (
 	// overwrite your changes to Hello(Config, Session are fine).
 	// You might want to call BuildHandshakeState() before applying any changes.
 	// UConn.Extensions will be completely ignored.
-	HelloGolang = ClientHelloID{helloGolang, helloAutoVers}
+	HelloGolang = ClientHelloID{helloGolang, helloAutoVers, nil}
 
 	// HelloCustom will prepare ClientHello with empty uconn.Extensions so you can fill it with
 	// TLSExtensions manually or use ApplyPreset function
-	HelloCustom = ClientHelloID{helloCustom, helloAutoVers}
+	HelloCustom = ClientHelloID{helloCustom, helloAutoVers, nil}
 
 	// HelloRandomized* randomly adds/reorders extensions, ciphersuites, etc.
-	HelloRandomized       = ClientHelloID{helloRandomized, helloAutoVers}
-	HelloRandomizedALPN   = ClientHelloID{helloRandomized, helloRandomizedALPN}
-	HelloRandomizedNoALPN = ClientHelloID{helloRandomized, helloRandomizedNoALPN}
+	HelloRandomized       = ClientHelloID{helloRandomized, helloAutoVers, nil}
+	HelloRandomizedALPN   = ClientHelloID{helloRandomizedALPN, helloAutoVers, nil}
+	HelloRandomizedNoALPN = ClientHelloID{helloRandomizedNoALPN, helloAutoVers, nil}
 
 	// The rest will will parrot given browser.
 	HelloFirefox_Auto = HelloFirefox_63
-	HelloFirefox_55   = ClientHelloID{helloFirefox, 55}
-	HelloFirefox_56   = ClientHelloID{helloFirefox, 56}
-	HelloFirefox_63   = ClientHelloID{helloFirefox, 63}
+	HelloFirefox_55   = ClientHelloID{helloFirefox, "55", nil}
+	HelloFirefox_56   = ClientHelloID{helloFirefox, "56", nil}
+	HelloFirefox_63   = ClientHelloID{helloFirefox, "63", nil}
 
 	HelloChrome_Auto = HelloChrome_70
-	HelloChrome_58   = ClientHelloID{helloChrome, 58}
-	HelloChrome_62   = ClientHelloID{helloChrome, 62}
-	HelloChrome_70   = ClientHelloID{helloChrome, 70}
+	HelloChrome_58   = ClientHelloID{helloChrome, "58", nil}
+	HelloChrome_62   = ClientHelloID{helloChrome, "62", nil}
+	HelloChrome_70   = ClientHelloID{helloChrome, "70", nil}
 
 	HelloIOS_Auto = HelloIOS_11_1
-	HelloIOS_11_1 = ClientHelloID{helloIOS, 111}
+	HelloIOS_11_1 = ClientHelloID{helloIOS, "111", nil}
 )
 
 // based on spec's GreaseStyle, GREASE_PLACEHOLDER may be replaced by another GREASE value

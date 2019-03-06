@@ -21,7 +21,7 @@ type UConn struct {
 	*Conn
 
 	Extensions    []TLSExtension
-	clientHelloID ClientHelloID
+	ClientHelloID ClientHelloID
 
 	ClientHelloBuilt bool
 	HandshakeState   ClientHandshakeState
@@ -40,7 +40,7 @@ func UClient(conn net.Conn, config *Config, clientHelloID ClientHelloID) *UConn 
 	}
 	tlsConn := Conn{conn: conn, config: config, isClient: true}
 	handshakeState := ClientHandshakeState{C: &tlsConn, Hello: &ClientHelloMsg{}}
-	uconn := UConn{Conn: &tlsConn, clientHelloID: clientHelloID, HandshakeState: handshakeState}
+	uconn := UConn{Conn: &tlsConn, ClientHelloID: clientHelloID, HandshakeState: handshakeState}
 	uconn.HandshakeState.uconn = &uconn
 	return &uconn
 }
@@ -58,7 +58,7 @@ func UClient(conn net.Conn, config *Config, clientHelloID ClientHelloID) *UConn 
 // amd should only be called explicitly to inspect/change fields of
 // default/mimicked ClientHello.
 func (uconn *UConn) BuildHandshakeState() error {
-	if uconn.clientHelloID == HelloGolang {
+	if uconn.ClientHelloID == HelloGolang {
 		if uconn.ClientHelloBuilt {
 			return nil
 		}
@@ -74,7 +74,7 @@ func (uconn *UConn) BuildHandshakeState() error {
 		uconn.HandshakeState.C = uconn.Conn
 	} else {
 		if !uconn.ClientHelloBuilt {
-			err := uconn.applyPresetByID(uconn.clientHelloID)
+			err := uconn.applyPresetByID(uconn.ClientHelloID)
 			if err != nil {
 				return err
 			}
