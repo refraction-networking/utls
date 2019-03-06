@@ -41,6 +41,7 @@ func UClient(conn net.Conn, config *Config, clientHelloID ClientHelloID) *UConn 
 	tlsConn := Conn{conn: conn, config: config, isClient: true}
 	handshakeState := ClientHandshakeState{C: &tlsConn, Hello: &ClientHelloMsg{}}
 	uconn := UConn{Conn: &tlsConn, ClientHelloID: clientHelloID, HandshakeState: handshakeState}
+	uconn.HandshakeState.uconn = &uconn
 	return &uconn
 }
 
@@ -368,7 +369,7 @@ func (c *UConn) clientHandshake() (err error) {
 	hs12.serverHello = serverHello
 	hs12.hello = hello
 	err = hs12.handshake()
-	c.HandshakeState = *hs12.toPublic13()
+	c.HandshakeState = *hs12.toPublic12()
 	if err != nil {
 		return err
 	}
@@ -509,6 +510,9 @@ func (uconn *UConn) GetUnderlyingConn() net.Conn {
 func MakeConnWithCompleteHandshake(tcpConn net.Conn, version uint16, cipherSuite uint16, masterSecret []byte, clientRandom []byte, serverRandom []byte, isClient bool) *Conn {
 	tlsConn := &Conn{conn: tcpConn, config: &Config{}, isClient: isClient}
 	cs := cipherSuiteByID(cipherSuite)
+	if cs == nil {
+		return nil
+	}
 
 	// This is mostly borrowed from establishKeys()
 	clientMAC, serverMAC, clientKey, serverKey, clientIV, serverIV :=
