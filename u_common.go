@@ -6,10 +6,8 @@ package tls
 
 import (
 	"crypto/hmac"
-	"crypto/rand"
 	"crypto/sha512"
 	"fmt"
-	"math/big"
 )
 
 // Naming convention:
@@ -62,7 +60,11 @@ var (
 
 type ClientHelloID struct {
 	Client  string
-	Version uint64 // major version for browsers, seed for randomized fingerprints
+	Version uint64 // major version for browsers
+
+	// Seed is a PRNG seed for randomized fingerprints.
+	// Must not be modified once set.
+	Seed *PRNGSeed
 }
 
 func (p *ClientHelloID) Str() string {
@@ -109,30 +111,30 @@ var (
 	// overwrite your changes to Hello(Config, Session are fine).
 	// You might want to call BuildHandshakeState() before applying any changes.
 	// UConn.Extensions will be completely ignored.
-	HelloGolang = ClientHelloID{helloGolang, helloAutoVers}
+	HelloGolang = ClientHelloID{helloGolang, helloAutoVers, nil}
 
 	// HelloCustom will prepare ClientHello with empty uconn.Extensions so you can fill it with
 	// TLSExtensions manually or use ApplyPreset function
-	HelloCustom = ClientHelloID{helloCustom, helloAutoVers}
+	HelloCustom = ClientHelloID{helloCustom, helloAutoVers, nil}
 
 	// HelloRandomized* randomly adds/reorders extensions, ciphersuites, etc.
-	HelloRandomized       = ClientHelloID{helloRandomized, helloAutoVers}
-	HelloRandomizedALPN   = ClientHelloID{helloRandomizedALPN, helloAutoVers}
-	HelloRandomizedNoALPN = ClientHelloID{helloRandomizedNoALPN, helloAutoVers}
+	HelloRandomized       = ClientHelloID{helloRandomized, helloAutoVers, nil}
+	HelloRandomizedALPN   = ClientHelloID{helloRandomizedALPN, helloAutoVers, nil}
+	HelloRandomizedNoALPN = ClientHelloID{helloRandomizedNoALPN, helloAutoVers, nil}
 
 	// The rest will will parrot given browser.
 	HelloFirefox_Auto = HelloFirefox_63
-	HelloFirefox_55   = ClientHelloID{helloFirefox, 55}
-	HelloFirefox_56   = ClientHelloID{helloFirefox, 56}
-	HelloFirefox_63   = ClientHelloID{helloFirefox, 63}
+	HelloFirefox_55   = ClientHelloID{helloFirefox, 55, nil}
+	HelloFirefox_56   = ClientHelloID{helloFirefox, 56, nil}
+	HelloFirefox_63   = ClientHelloID{helloFirefox, 63, nil}
 
 	HelloChrome_Auto = HelloChrome_70
-	HelloChrome_58   = ClientHelloID{helloChrome, 58}
-	HelloChrome_62   = ClientHelloID{helloChrome, 62}
-	HelloChrome_70   = ClientHelloID{helloChrome, 70}
+	HelloChrome_58   = ClientHelloID{helloChrome, 58, nil}
+	HelloChrome_62   = ClientHelloID{helloChrome, 62, nil}
+	HelloChrome_70   = ClientHelloID{helloChrome, 70, nil}
 
 	HelloIOS_Auto = HelloIOS_11_1
-	HelloIOS_11_1 = ClientHelloID{helloIOS, 111}
+	HelloIOS_11_1 = ClientHelloID{helloIOS, 111, nil}
 )
 
 // based on spec's GreaseStyle, GREASE_PLACEHOLDER may be replaced by another GREASE value
@@ -171,22 +173,4 @@ func EnableWeakCiphers() {
 		{DISABLED_TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384, 32, 48, 16, ecdheRSAKA,
 			suiteECDHE | suiteTLS12 | suiteDefaultOff | suiteSHA384, cipherAES, utlsMacSHA384, nil},
 	}...)
-}
-
-func getRandInt(max int) (int, error) {
-	bigInt, err := rand.Int(rand.Reader, big.NewInt(int64(max)))
-	return int(bigInt.Int64()), err
-}
-
-func getRandPerm(n int) ([]int, error) {
-	permArray := make([]int, n)
-	for i := 1; i < n; i++ {
-		j, err := getRandInt(i + 1)
-		if err != nil {
-			return permArray, err
-		}
-		permArray[i] = permArray[j]
-		permArray[j] = i
-	}
-	return permArray, nil
 }

@@ -5,18 +5,13 @@
 package tls
 
 import (
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
-	"math"
-	"math/big"
 	"sort"
 	"strconv"
-
-	"golang.org/x/crypto/hkdf"
 )
 
 func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
@@ -478,20 +473,20 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 }
 
 func (uconn *UConn) generateRandomizedSpec() (ClientHelloSpec, error) {
-	p := ClientHelloSpec{}
-	id := uconn.ClientHelloID
 
-	// id.Version is used as a seed
-	if id.Version == 0 {
-		seed, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64))
+	p := ClientHelloSpec{}
+
+	if uconn.ClientHelloID.Seed == nil {
+		seed, err := NewPRNGSeed()
 		if err != nil {
 			return p, err
 		}
-		id.Version = seed.Uint64()
-		uconn.ClientHelloID = id
+		uconn.ClientHelloID.Seed = seed
 	}
 
-	r := makeUtlsRandomizer(id.Version)
+	r := newPRNGWithSeed(uconn.ClientHelloID.Seed)
+
+	id := uconn.ClientHelloID
 
 	var WithALPN bool
 	switch id.Client {
@@ -500,7 +495,7 @@ func (uconn *UConn) generateRandomizedSpec() (ClientHelloSpec, error) {
 	case helloRandomizedNoALPN:
 		WithALPN = false
 	case helloRandomized:
-		if r.tossBiasedCoin(0.7) {
+		if r.FlipWeightedCoin(0.7) {
 			WithALPN = true
 		} else {
 			WithALPN = false
@@ -511,16 +506,16 @@ func (uconn *UConn) generateRandomizedSpec() (ClientHelloSpec, error) {
 
 	p.CipherSuites = make([]uint16, len(defaultCipherSuites()))
 	copy(p.CipherSuites, defaultCipherSuites())
-	shuffledSuites, err := r.shuffledCiphers()
+	shuffledSuites, err := shuffledCiphers(r)
 	if err != nil {
 		return p, err
 	}
 
-	if r.tossBiasedCoin(0.4) {
+	if r.FlipWeightedCoin(0.4) {
 		p.TLSVersMin = VersionTLS10
 		p.TLSVersMax = VersionTLS13
 		tls13ciphers := defaultCipherSuitesTLS13()
-		r.shuffleUInts16(tls13ciphers)
+		shuffleUInts16(r, tls13ciphers)
 		// appending TLS 1.3 ciphers before TLS 1.2, since that's what popular implementations do
 		shuffledSuites = append(tls13ciphers, shuffledSuites...)
 
@@ -531,7 +526,7 @@ func (uconn *UConn) generateRandomizedSpec() (ClientHelloSpec, error) {
 		p.TLSVersMax = VersionTLS12
 	}
 
-	p.CipherSuites = r.removeRandomCiphers(shuffledSuites, 0.4)
+	p.CipherSuites = removeRandomCiphers(r, shuffledSuites, 0.4)
 
 	sni := SNIExtension{uconn.config.ServerName}
 	sessionTicket := SessionTicketExtension{Session: uconn.HandshakeState.Session}
@@ -545,23 +540,23 @@ func (uconn *UConn) generateRandomizedSpec() (ClientHelloSpec, error) {
 		PKCS1WithSHA512,
 	}
 
-	if r.tossBiasedCoin(0.63) {
+	if r.FlipWeightedCoin(0.63) {
 		sigAndHashAlgos = append(sigAndHashAlgos, ECDSAWithSHA1)
 	}
-	if r.tossBiasedCoin(0.59) {
+	if r.FlipWeightedCoin(0.59) {
 		sigAndHashAlgos = append(sigAndHashAlgos, ECDSAWithP521AndSHA512)
 	}
-	if r.tossBiasedCoin(0.51) || p.TLSVersMax == VersionTLS13 {
+	if r.FlipWeightedCoin(0.51) || p.TLSVersMax == VersionTLS13 {
 		// https://tools.ietf.org/html/rfc8446 says "...RSASSA-PSS (which is mandatory in TLS 1.3)..."
 		sigAndHashAlgos = append(sigAndHashAlgos, PSSWithSHA256)
-		if r.tossBiasedCoin(0.9) {
+		if r.FlipWeightedCoin(0.9) {
 			// these usually go together
 			sigAndHashAlgos = append(sigAndHashAlgos, PSSWithSHA384)
 			sigAndHashAlgos = append(sigAndHashAlgos, PSSWithSHA512)
 		}
 	}
 
-	r.shuffleSignatures(sigAndHashAlgos)
+	shuffleSignatures(r, sigAndHashAlgos)
 	sigAndHash := SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: sigAndHashAlgos}
 
 	status := StatusRequestExtension{}
@@ -570,11 +565,11 @@ func (uconn *UConn) generateRandomizedSpec() (ClientHelloSpec, error) {
 	points := SupportedPointsExtension{SupportedPoints: []byte{pointFormatUncompressed}}
 
 	curveIDs := []CurveID{}
-	if r.tossBiasedCoin(0.71) || p.TLSVersMax == VersionTLS13 {
+	if r.FlipWeightedCoin(0.71) || p.TLSVersMax == VersionTLS13 {
 		curveIDs = append(curveIDs, X25519)
 	}
 	curveIDs = append(curveIDs, CurveP256, CurveP384)
-	if r.tossBiasedCoin(0.46) {
+	if r.FlipWeightedCoin(0.46) {
 		curveIDs = append(curveIDs, CurveP521)
 	}
 
@@ -600,28 +595,28 @@ func (uconn *UConn) generateRandomizedSpec() (ClientHelloSpec, error) {
 		p.Extensions = append(p.Extensions, &alpn)
 	}
 
-	if r.tossBiasedCoin(0.62) || p.TLSVersMax == VersionTLS13 {
+	if r.FlipWeightedCoin(0.62) || p.TLSVersMax == VersionTLS13 {
 		// always include for TLS 1.3, since TLS 1.3 ClientHellos are often over 256 bytes
 		// and that's when padding is required to work around buggy middleboxes
 		p.Extensions = append(p.Extensions, &padding)
 	}
-	if r.tossBiasedCoin(0.74) {
+	if r.FlipWeightedCoin(0.74) {
 		p.Extensions = append(p.Extensions, &status)
 	}
-	if r.tossBiasedCoin(0.46) {
+	if r.FlipWeightedCoin(0.46) {
 		p.Extensions = append(p.Extensions, &sct)
 	}
-	if r.tossBiasedCoin(0.75) {
+	if r.FlipWeightedCoin(0.75) {
 		p.Extensions = append(p.Extensions, &reneg)
 	}
-	if r.tossBiasedCoin(0.77) {
+	if r.FlipWeightedCoin(0.77) {
 		p.Extensions = append(p.Extensions, &ems)
 	}
 	if p.TLSVersMax == VersionTLS13 {
 		ks := KeyShareExtension{[]KeyShare{
 			{Group: X25519}, // the key for the group will be generated later
 		}}
-		if r.tossBiasedCoin(0.25) {
+		if r.FlipWeightedCoin(0.25) {
 			// do not ADD second keyShare because crypto/tls does not support multiple ecdheParams
 			// TODO: add it back when they implement multiple keyShares, or implement it oursevles
 			// ks.KeyShares = append(ks.KeyShares, KeyShare{Group: CurveP256})
@@ -633,86 +628,16 @@ func (uconn *UConn) generateRandomizedSpec() (ClientHelloSpec, error) {
 		}
 		p.Extensions = append(p.Extensions, &ks, &pskExchangeModes, &supportedVersionsExt)
 	}
-	r.shuffleTLSExtensions(p.Extensions)
+	shuffleTLSExtensions(r, p.Extensions)
 	err = uconn.SetTLSVers(p.TLSVersMin, p.TLSVersMax)
 	if err != nil {
 		return p, err
 	}
 
-	return p, r.savedErr
+	return p, nil
 }
 
-// utlsRandomizer never returns errors, but stores first one in savedErr
-type utlsRandomizer struct {
-	r        io.Reader
-	savedErr error
-}
-
-func makeUtlsRandomizer(seed uint64) *utlsRandomizer {
-	seedBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(seedBytes, seed)
-	tdHkdf := hkdf.New(sha256.New, seedBytes, []byte("uTLS salty salt"), nil)
-	return &utlsRandomizer{r: tdHkdf}
-}
-
-// randUInt64 is the only function that touches source of entropy,
-// and other primitives are built using randUInt64
-func (r *utlsRandomizer) randUInt64() uint64 {
-	uintBytes := make([]byte, 8)
-	_, err := r.r.Read(uintBytes)
-	if r.savedErr == nil && err != nil {
-		r.savedErr = err
-	}
-	return binary.BigEndian.Uint64(uintBytes)
-}
-
-// returns int64 in [0, max)
-func (r *utlsRandomizer) randInt64n(max int) int64 {
-	if max == 0 {
-		return 0
-	}
-	randUint := r.randUInt64() % uint64(max)
-	if randUint > math.MaxInt64 {
-		randUint >>= 1
-	}
-	return int64(randUint)
-}
-
-// returns int in [0, max) up to max int32
-func (r *utlsRandomizer) randIntn(max int) int {
-	if max > math.MaxInt32 && strconv.IntSize < 64 {
-		// in practice, we never use randomizer with such big values for max
-		// if we ever do, it may panic on 32 bit architecture, so we have to check for that
-		r.savedErr = fmt.Errorf("utlsRandomizer does not support randIntn(%v): max is too big for a %v-bit architecture",
-			max, strconv.IntSize)
-		return 0
-	}
-	return int(r.randInt64n(max))
-}
-
-func (r *utlsRandomizer) tossBiasedCoin(probability float32) bool {
-	// probability is expected to be in [0,1]
-	const precision = 0xffff
-	threshold := float32(precision) * probability
-	value := r.randIntn(precision)
-	if float32(value) <= threshold {
-		return true
-	} else {
-		return false
-	}
-}
-
-func (r *utlsRandomizer) getRandPerm(n int) []int {
-	permArray := make([]int, n)
-	for i := 1; i < n; i++ {
-		j := r.randIntn(i + 1)
-		permArray[i] = permArray[j]
-		permArray[j] = i
-	}
-	return permArray
-}
-
-func (r *utlsRandomizer) removeRandomCiphers(s []uint16, maxRemovalProbability float32) []uint16 {
+func removeRandomCiphers(r *prng, s []uint16, maxRemovalProbability float64) []uint16 {
 	// removes elements in place
 	// probability to remove increases for further elements
 	// never remove first cipher
@@ -721,10 +646,10 @@ func (r *utlsRandomizer) removeRandomCiphers(s []uint16, maxRemovalProbability f
 	}
 
 	// remove random elements
-	floatLen := float32(len(s))
+	floatLen := float64(len(s))
 	sliceLen := len(s)
 	for i := 1; i < sliceLen; i++ {
-		if r.tossBiasedCoin(maxRemovalProbability * float32(i) / floatLen) {
+		if r.FlipWeightedCoin(maxRemovalProbability * float64(i) / floatLen) {
 			s = append(s[:i], s[i+1:]...)
 			sliceLen--
 			i--
@@ -733,9 +658,9 @@ func (r *utlsRandomizer) removeRandomCiphers(s []uint16, maxRemovalProbability f
 	return s[:sliceLen]
 }
 
-func (r *utlsRandomizer) shuffledCiphers() ([]uint16, error) {
+func shuffledCiphers(r *prng) ([]uint16, error) {
 	ciphers := make(sortableCiphers, len(cipherSuites))
-	perm := r.getRandPerm(len(cipherSuites))
+	perm := r.Perm(len(cipherSuites))
 	for i, suite := range cipherSuites {
 		ciphers[i] = sortableCipher{suite: suite.id,
 			isObsolete: ((suite.flags & suiteTLS12) == 0),
@@ -746,33 +671,25 @@ func (r *utlsRandomizer) shuffledCiphers() ([]uint16, error) {
 }
 
 // so much for generics
-func (r *utlsRandomizer) shuffle(s []interface{}) {
-	perm := r.getRandPerm(len(s))
-	for i := range s {
-		s[i], s[perm[i]] = s[perm[i]], s[i]
-	}
-}
-
-// so much for generics
-func (r *utlsRandomizer) shuffleTLSExtensions(s []TLSExtension) {
+func shuffleTLSExtensions(r *prng, s []TLSExtension) {
 	// shuffles array in place
-	perm := r.getRandPerm(len(s))
+	perm := r.Perm(len(s))
 	for i := range s {
 		s[i], s[perm[i]] = s[perm[i]], s[i]
 	}
 }
 
 // so much for generics
-func (r *utlsRandomizer) shuffleSignatures(s []SignatureScheme) {
-	perm := r.getRandPerm(len(s))
+func shuffleSignatures(r *prng, s []SignatureScheme) {
+	perm := r.Perm(len(s))
 	for i := range s {
 		s[i], s[perm[i]] = s[perm[i]], s[i]
 	}
 }
 
 // so much for generics
-func (r *utlsRandomizer) shuffleUInts16(s []uint16) {
-	perm := r.getRandPerm(len(s))
+func shuffleUInts16(r *prng, s []uint16) {
+	perm := r.Perm(len(s))
 	for i := range s {
 		s[i], s[perm[i]] = s[perm[i]], s[i]
 	}
