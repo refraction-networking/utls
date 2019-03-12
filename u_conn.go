@@ -481,7 +481,51 @@ func (uconn *UConn) GetOutKeystream(length int) ([]byte, error) {
 }
 
 // SetVersCreateState set min and max TLS version in all appropriate places.
-func (uconn *UConn) SetTLSVers(minTLSVers, maxTLSVers uint16) error {
+// If minTLSVers == 0 && minTLSVers == 0,
+// SetTLSVers() will try to parse to parse the version from extensions.
+func (uconn *UConn) SetTLSVers(minTLSVers, maxTLSVers uint16, extensions []TLSExtension) error {
+	if minTLSVers == 0 && maxTLSVers == 0 {
+		// if version is not set explicitly in the ClientHelloSpec, check the SupportedVersions extension
+		supportedVersionsExtensionsPresent := 0
+		for _, e := range uconn.Extensions {
+			switch ext := e.(type) {
+			case *SupportedVersionsExtension:
+				supportedVersionsExtensionsPresent += 1
+				findVersionsInSupportedVersionsExtensions := func(versions []uint16) (uint16, uint16) {
+					// returns (minVers, maxVers)
+					minVers := uint16(0)
+					maxVers := uint16(0)
+					for _, vers := range versions {
+						if vers == GREASE_PLACEHOLDER {
+							continue
+						}
+						if maxVers < vers || maxVers == 0 {
+							maxVers = vers
+						}
+						if minVers > vers || minVers == 0 {
+							minVers = vers
+						}
+					}
+					return minVers, maxVers
+				}
+				minTLSVers, maxTLSVers = findVersionsInSupportedVersionsExtensions(ext.Versions)
+				if minTLSVers == 0 && maxTLSVers == 0 {
+					return fmt.Errorf("SupportedVersions extension has invalid Versions field")
+				} // else: proceed
+			}
+		}
+		switch supportedVersionsExtensionsPresent {
+		case 0:
+			// just default to 1.2, if extension, that is mandatory for 1.3 is not present
+			minTLSVers = VersionTLS10
+			maxTLSVers = VersionTLS12
+		case 1:
+		default:
+			return fmt.Errorf("uconn.Extensions contains %v separate SupportedVersions extensions",
+				supportedVersionsExtensionsPresent)
+		}
+	}
+
 	if minTLSVers < VersionTLS10 || minTLSVers > VersionTLS12 {
 		return fmt.Errorf("uTLS does not support 0x%X as min version", minTLSVers)
 	}
