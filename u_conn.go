@@ -480,17 +480,21 @@ func (uconn *UConn) GetOutKeystream(length int) ([]byte, error) {
 	return nil, errors.New("Could not convert OutCipher to cipher.AEAD")
 }
 
-// SetVersCreateState set min and max TLS version in all appropriate places.
-// If minTLSVers == 0 && minTLSVers == 0,
-// SetTLSVers() will try to parse to parse the version from extensions.
-func (uconn *UConn) SetTLSVers(minTLSVers, maxTLSVers uint16, extensions []TLSExtension) error {
+// SetTLSVers sets min and max TLS version in all appropriate places.
+// Function will use first non-zero version parsed in following order:
+//   1) Provided minTLSVers, maxTLSVers
+//   2) specExtensions may have SupportedVersionsExtension
+//   3) [default] min = TLS 1.0, max = TLS 1.2
+//
+// Error is only returned if things are in clearly undesirable state
+// to help user fix them.
+func (uconn *UConn) SetTLSVers(minTLSVers, maxTLSVers uint16, specExtensions []TLSExtension) error {
 	if minTLSVers == 0 && maxTLSVers == 0 {
 		// if version is not set explicitly in the ClientHelloSpec, check the SupportedVersions extension
 		supportedVersionsExtensionsPresent := 0
-		for _, e := range uconn.Extensions {
+		for _, e := range specExtensions {
 			switch ext := e.(type) {
 			case *SupportedVersionsExtension:
-				supportedVersionsExtensionsPresent += 1
 				findVersionsInSupportedVersionsExtensions := func(versions []uint16) (uint16, uint16) {
 					// returns (minVers, maxVers)
 					minVers := uint16(0)
@@ -508,6 +512,8 @@ func (uconn *UConn) SetTLSVers(minTLSVers, maxTLSVers uint16, extensions []TLSEx
 					}
 					return minVers, maxVers
 				}
+
+				supportedVersionsExtensionsPresent += 1
 				minTLSVers, maxTLSVers = findVersionsInSupportedVersionsExtensions(ext.Versions)
 				if minTLSVers == 0 && maxTLSVers == 0 {
 					return fmt.Errorf("SupportedVersions extension has invalid Versions field")
@@ -516,7 +522,7 @@ func (uconn *UConn) SetTLSVers(minTLSVers, maxTLSVers uint16, extensions []TLSEx
 		}
 		switch supportedVersionsExtensionsPresent {
 		case 0:
-			// just default to 1.2, if extension, that is mandatory for 1.3 is not present
+			// if mandatory for TLS 1.3 extension is not present, just default to 1.2
 			minTLSVers = VersionTLS10
 			maxTLSVers = VersionTLS12
 		case 1:
