@@ -58,8 +58,21 @@ var (
 	FakeFFDHE3072 = uint16(0x0101)
 )
 
+// https://tools.ietf.org/html/draft-ietf-tls-certificate-compression-04
+type CertCompressionAlgo uint16
+
+const (
+	CertCompressionZlib   CertCompressionAlgo = 0x0001
+	CertCompressionBrotli CertCompressionAlgo = 0x0002
+)
+
+const (
+	PskModePlain uint8 = pskModePlain
+	PskModeDHE   uint8 = pskModeDHE
+)
+
 type ClientHelloID struct {
-	Client  string
+	Client string
 
 	// Version specifies version of a mimicked clients (e.g. browsers).
 	// Not used in randomized, custom handshake, and default Go.
@@ -99,8 +112,8 @@ type ClientHelloSpec struct {
 	CompressionMethods []uint8        // nil => no compression
 	Extensions         []TLSExtension // nil => no extensions
 
-	TLSVersMin uint16 // [1.0-1.3]
-	TLSVersMax uint16 // [1.2-1.3]
+	TLSVersMin uint16 // [1.0-1.3] default: parse from .Extensions, if SupportedVersions ext is not present => 1.0
+	TLSVersMax uint16 // [1.2-1.3] default: parse from .Extensions, if SupportedVersions ext is not present => 1.2
 
 	// GreaseStyle: currently only random
 	// sessionID may or may not depend on ticket; nil => random
@@ -126,18 +139,21 @@ var (
 	HelloRandomizedNoALPN = ClientHelloID{helloRandomizedNoALPN, helloAutoVers, nil}
 
 	// The rest will will parrot given browser.
-	HelloFirefox_Auto = HelloFirefox_63
+	HelloFirefox_Auto = HelloFirefox_65
 	HelloFirefox_55   = ClientHelloID{helloFirefox, "55", nil}
 	HelloFirefox_56   = ClientHelloID{helloFirefox, "56", nil}
 	HelloFirefox_63   = ClientHelloID{helloFirefox, "63", nil}
+	HelloFirefox_65   = ClientHelloID{helloFirefox, "65", nil}
 
-	HelloChrome_Auto = HelloChrome_70
+	HelloChrome_Auto = HelloChrome_72
 	HelloChrome_58   = ClientHelloID{helloChrome, "58", nil}
 	HelloChrome_62   = ClientHelloID{helloChrome, "62", nil}
 	HelloChrome_70   = ClientHelloID{helloChrome, "70", nil}
+	HelloChrome_72   = ClientHelloID{helloChrome, "72", nil}
 
-	HelloIOS_Auto = HelloIOS_11_1
-	HelloIOS_11_1 = ClientHelloID{helloIOS, "111", nil}
+	HelloIOS_Auto = HelloIOS_12_1
+	HelloIOS_11_1 = ClientHelloID{helloIOS, "111", nil} // legacy "111" means 11.1
+	HelloIOS_12_1 = ClientHelloID{helloIOS, "12.1", nil}
 )
 
 // based on spec's GreaseStyle, GREASE_PLACEHOLDER may be replaced by another GREASE value

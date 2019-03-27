@@ -65,9 +65,11 @@ This is not a problem, if you fully control the server and turn unsupported thin
 | ------------- | -------- | ---------- | ---------------------- | --------------------------------------------- |
 | Chrome 62     | no       | no         | ChannelID              | [0a4a74aeebd1bb66](https://tlsfingerprint.io/id/0a4a74aeebd1bb66) |
 | Chrome 70     | no       | no         | ChannelID, Encrypted Certs | [bc4c7e42f4961cd7](https://tlsfingerprint.io/id/bc4c7e42f4961cd7) |
+| Chrome 72     | no       | no         | ChannelID, Encrypted Certs | [bbf04e5f1881f506](https://tlsfingerprint.io/id/bbf04e5f1881f506) |
 | Firefox 56    | very low | no         | None                   | [c884bad7f40bee56](https://tlsfingerprint.io/id/c884bad7f40bee56) |
-| Firefox 63    | very low | no         | MaxRecordSize                   | [6bfedc5d5c740d58](https://tlsfingerprint.io/id/6bfedc5d5c740d58) |
+| Firefox 65    | very low | no         | MaxRecordSize                   | [6bfedc5d5c740d58](https://tlsfingerprint.io/id/6bfedc5d5c740d58) |
 | iOS 11.1      | low** | no         | None                   | [71a81bafd58e1301](https://tlsfingerprint.io/id/71a81bafd58e1301) |
+| iOS 12.1      | low** | no         | None                   | [ec55e5b4136c7949](https://tlsfingerprint.io/id/ec55e5b4136c7949) |
 
 \* Denotes very rough guesstimate of likelihood that unsupported things will get echoed back by the server in the wild,
 *visibly breaking the connection*.  
