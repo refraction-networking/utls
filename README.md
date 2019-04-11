@@ -1,4 +1,4 @@
-# ![uTLS](logo.png | width=50) uTLS
+# ![uTLS](logo_small.png) uTLS
 [![Build Status](https://travis-ci.org/refraction-networking/utls.svg?branch=master)](https://travis-ci.org/refraction-networking/utls)
 [![godoc](https://img.shields.io/badge/godoc-reference-blue.svg)](https://godoc.org/github.com/refraction-networking/utls#UConn)
 ---
