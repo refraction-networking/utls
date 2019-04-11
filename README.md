@@ -5,20 +5,54 @@
 uTLS is a fork of "crypto/tls", which provides ClientHello fingerprinting resistance, low-level access to handshake, fake session tickets and some other features. Handshake is still performed by "crypto/tls", this library merely changes ClientHello part of it and provides low-level access.  
 Golang 1.11+ is required.  
 If you have any questions, bug reports or contributions, you are welcome to publish those on GitHub. If you want to do so in private, you can contact one of developers personally via sergey.frolov@colorado.edu
+
+Documentation below may not keep up with all the changes and new features at all times,
+so you are encouraged to use [godoc](https://godoc.org/github.com/refraction-networking/utls#UConn).
+
 # Features
 ## Low-level access to handshake
 * Read/write access to all bits of client hello message.  
 * Read access to fields of ClientHandshakeState, which, among other things, includes ServerHello and MasterSecret.
 * Read keystream. Can be used, for example, to "write" something in ciphertext.
+
 ## ClientHello fingerprinting resistance
 Golang's ClientHello has a very unique fingerprint, which especially sticks out on mobile clients,
 where Golang is not too popular yet.
 Some members of anti-censorship community are concerned that their tools could be trivially blocked based on
 ClientHello with relatively small collateral damage. There are multiple solutions to this issue.
-### Randomized handshake
-This package can generate randomized ClientHello using only extensions and cipherSuites "crypto/tls" already supports.
-This provides a solid moving target without any compatibility or parrot-is-dead attack risks.  
-**Feedback about opinionated implementation details of randomized handshake is appreciated.**
+
+**It is highly recommended to use multiple fingeprints, including randomized ones to avoid relying on a single fingerprint.**
+[utls.Roller](#roller) does this automatically.
+
+### Randomized Fingerprint
+Randomized Fingerprints are supposedly good at defeating blacklists, since
+those fingerprints have random ciphersuites and extensions in random order.
+Note that all used ciphersuites and extensions are fully supported by uTLS,
+which provides a solid moving target without any compatibility or parrot-is-dead attack risks.  
+
+But note that there's a small chance that generated fingerprint won't work,
+so you may want to keep generating until a working one is found,
+and then keep reusing the working fingerprint to avoid suspicious behavior of constantly changing fingerprints.
+[utls.Roller](#roller) reuses working fingerprint automatically.
+
+#### Generating randomized fingerprints
+
+To generate a randomized fingerprint, simply do:
+```Golang
+uTlsConn := tls.UClient(tcpConn, &config, tls.HelloRandomized)
+```
+you can use `helloRandomizedALPN` or `helloRandomizedNoALPN` to ensure presence or absence of
+ALPN(Application-Layer Protocol Negotiation) extension.
+It is recommended, but certainly not required to include ALPN (or use helloRandomized which may or may not include ALPN).
+If you do use ALPN, you will want to correctly handle potential application layer protocols (likely h2 or http/1.1).
+
+#### Reusing randomized fingerprint
+```Golang
+// oldConn is an old connection that worked before, so we want to reuse it
+// newConn is a new connection we'd like to establish
+newConn := tls.UClient(tcpConn, &config, oldConn.ClientHelloID)
+```
+
 ### Parroting
 This package can be used to parrot ClientHello of popular browsers.
 There are some caveats to this parroting:
@@ -31,9 +65,11 @@ This is not a problem, if you fully control the server and turn unsupported thin
 | ------------- | -------- | ---------- | ---------------------- | --------------------------------------------- |
 | Chrome 62     | no       | no         | ChannelID              | [0a4a74aeebd1bb66](https://tlsfingerprint.io/id/0a4a74aeebd1bb66) |
 | Chrome 70     | no       | no         | ChannelID, Encrypted Certs | [bc4c7e42f4961cd7](https://tlsfingerprint.io/id/bc4c7e42f4961cd7) |
+| Chrome 72     | no       | no         | ChannelID, Encrypted Certs | [bbf04e5f1881f506](https://tlsfingerprint.io/id/bbf04e5f1881f506) |
 | Firefox 56    | very low | no         | None                   | [c884bad7f40bee56](https://tlsfingerprint.io/id/c884bad7f40bee56) |
-| Firefox 63    | very low | no         | MaxRecordSize                   | [6bfedc5d5c740d58](https://tlsfingerprint.io/id/6bfedc5d5c740d58) |
+| Firefox 65    | very low | no         | MaxRecordSize                   | [6bfedc5d5c740d58](https://tlsfingerprint.io/id/6bfedc5d5c740d58) |
 | iOS 11.1      | low** | no         | None                   | [71a81bafd58e1301](https://tlsfingerprint.io/id/71a81bafd58e1301) |
+| iOS 12.1      | low** | no         | None                   | [ec55e5b4136c7949](https://tlsfingerprint.io/id/ec55e5b4136c7949) |
 
 \* Denotes very rough guesstimate of likelihood that unsupported things will get echoed back by the server in the wild,
 *visibly breaking the connection*.  
@@ -48,10 +84,11 @@ It LGTM, but please open up Wireshark and check. If you see something — [say s
 
 There sure are. If you found one that approaches practicality at line speed — [please tell us](issues).
 
-#### Things to implement in Golang to make parrots better
-uTLS is fundamentially limited in parroting, because Golang's "crypto/tls" doesn't support many things. Would be nice to have:
- * ChannelID extension
- * In general, any modern crypto is likely to be useful going forward.
+However, there is a difference between this sort of parroting and techniques like SkypeMorth.
+Namely, TLS is highly standardized protocol, therefore simply not that many subtle things in TLS protocol
+could be different and/or suddenly change in one of mimicked implementation(potentially undermining the mimicry).
+It is possible that we have a distinguisher right now, but amount of those potential distinguishers is limited.
+
 ### Custom Handshake
 It is possible to create custom handshake by
 1) Use `HelloCustom` as an argument for `UClient()` to get empty config
@@ -63,6 +100,29 @@ If you need to manually control all the bytes on the wire(certainly not recommen
 you can set UConn.HandshakeStateBuilt = true, and marshal clientHello into UConn.HandshakeState.Hello.raw yourself.
 In this case you will be responsible for modifying other parts of Config and ClientHelloMsg to reflect your setup
 and not confuse "crypto/tls", which will be processing response from server.
+
+## Roller
+
+A simple wrapper, that allows to easily use multiple latest(auto-updated) fingerprints.
+
+```Golang
+// NewRoller creates Roller object with default range of HelloIDs to cycle
+// through until a working/unblocked one is found.
+func NewRoller() (*Roller, error)
+```
+
+```Golang
+// Dial attempts to connect to given address using different HelloIDs.
+// If a working HelloID is found, it is used again for subsequent Dials.
+// If tcp connection fails or all HelloIDs are tried, returns with last error.
+//
+// Usage examples:
+//
+// Dial("tcp4", "google.com:443", "google.com")
+// Dial("tcp", "10.23.144.22:443", "mywebserver.org")
+func (c *Roller) Dial(network, addr, serverName string) (*UConn, error)
+```
+
 ## Fake Session Tickets
 Fake session tickets is a very nifty trick that allows power users to hide parts of handshake, which may have some very fingerprintable features of handshake, and saves 1 RTT.
 Currently, there is a simple function to set session ticket to any desired state:
@@ -85,7 +145,7 @@ See full list of `clientHelloID` values [here](https://godoc.org/github.com/refr
 There are different behaviors you can get, depending  on your `clientHelloID`:
 
 1. ```utls.HelloRandomized``` adds/reorders extensions, ciphersuites, etc. randomly.  
-`HelloRandomized` adds ALPN in 50% of cases, you may want to use `HelloRandomizedALPN` or
+`HelloRandomized` adds ALPN in a percentage of cases, you may want to use `HelloRandomizedALPN` or
 `HelloRandomizedNoALPN` to choose specific behavior explicitly, as ALPN might affect application layer.
 2. ```utls.HelloGolang```
     HelloGolang will use default "crypto/tls" handshake marshaling codepath, which WILL

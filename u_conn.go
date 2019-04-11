@@ -21,7 +21,7 @@ type UConn struct {
 	*Conn
 
 	Extensions    []TLSExtension
-	clientHelloID ClientHelloID
+	ClientHelloID ClientHelloID
 
 	ClientHelloBuilt bool
 	HandshakeState   ClientHandshakeState
@@ -40,7 +40,8 @@ func UClient(conn net.Conn, config *Config, clientHelloID ClientHelloID) *UConn 
 	}
 	tlsConn := Conn{conn: conn, config: config, isClient: true}
 	handshakeState := ClientHandshakeState{C: &tlsConn, Hello: &ClientHelloMsg{}}
-	uconn := UConn{Conn: &tlsConn, clientHelloID: clientHelloID, HandshakeState: handshakeState}
+	uconn := UConn{Conn: &tlsConn, ClientHelloID: clientHelloID, HandshakeState: handshakeState}
+	uconn.HandshakeState.uconn = &uconn
 	return &uconn
 }
 
@@ -57,7 +58,7 @@ func UClient(conn net.Conn, config *Config, clientHelloID ClientHelloID) *UConn 
 // amd should only be called explicitly to inspect/change fields of
 // default/mimicked ClientHello.
 func (uconn *UConn) BuildHandshakeState() error {
-	if uconn.clientHelloID == HelloGolang {
+	if uconn.ClientHelloID == HelloGolang {
 		if uconn.ClientHelloBuilt {
 			return nil
 		}
@@ -73,7 +74,7 @@ func (uconn *UConn) BuildHandshakeState() error {
 		uconn.HandshakeState.C = uconn.Conn
 	} else {
 		if !uconn.ClientHelloBuilt {
-			err := uconn.applyPresetByID(uconn.clientHelloID)
+			err := uconn.applyPresetByID(uconn.ClientHelloID)
 			if err != nil {
 				return err
 			}
@@ -368,7 +369,7 @@ func (c *UConn) clientHandshake() (err error) {
 	hs12.serverHello = serverHello
 	hs12.hello = hello
 	err = hs12.handshake()
-	c.HandshakeState = *hs12.toPublic13()
+	c.HandshakeState = *hs12.toPublic12()
 	if err != nil {
 		return err
 	}
@@ -479,8 +480,58 @@ func (uconn *UConn) GetOutKeystream(length int) ([]byte, error) {
 	return nil, errors.New("Could not convert OutCipher to cipher.AEAD")
 }
 
-// SetVersCreateState set min and max TLS version in all appropriate places.
-func (uconn *UConn) SetTLSVers(minTLSVers, maxTLSVers uint16) error {
+// SetTLSVers sets min and max TLS version in all appropriate places.
+// Function will use first non-zero version parsed in following order:
+//   1) Provided minTLSVers, maxTLSVers
+//   2) specExtensions may have SupportedVersionsExtension
+//   3) [default] min = TLS 1.0, max = TLS 1.2
+//
+// Error is only returned if things are in clearly undesirable state
+// to help user fix them.
+func (uconn *UConn) SetTLSVers(minTLSVers, maxTLSVers uint16, specExtensions []TLSExtension) error {
+	if minTLSVers == 0 && maxTLSVers == 0 {
+		// if version is not set explicitly in the ClientHelloSpec, check the SupportedVersions extension
+		supportedVersionsExtensionsPresent := 0
+		for _, e := range specExtensions {
+			switch ext := e.(type) {
+			case *SupportedVersionsExtension:
+				findVersionsInSupportedVersionsExtensions := func(versions []uint16) (uint16, uint16) {
+					// returns (minVers, maxVers)
+					minVers := uint16(0)
+					maxVers := uint16(0)
+					for _, vers := range versions {
+						if vers == GREASE_PLACEHOLDER {
+							continue
+						}
+						if maxVers < vers || maxVers == 0 {
+							maxVers = vers
+						}
+						if minVers > vers || minVers == 0 {
+							minVers = vers
+						}
+					}
+					return minVers, maxVers
+				}
+
+				supportedVersionsExtensionsPresent += 1
+				minTLSVers, maxTLSVers = findVersionsInSupportedVersionsExtensions(ext.Versions)
+				if minTLSVers == 0 && maxTLSVers == 0 {
+					return fmt.Errorf("SupportedVersions extension has invalid Versions field")
+				} // else: proceed
+			}
+		}
+		switch supportedVersionsExtensionsPresent {
+		case 0:
+			// if mandatory for TLS 1.3 extension is not present, just default to 1.2
+			minTLSVers = VersionTLS10
+			maxTLSVers = VersionTLS12
+		case 1:
+		default:
+			return fmt.Errorf("uconn.Extensions contains %v separate SupportedVersions extensions",
+				supportedVersionsExtensionsPresent)
+		}
+	}
+
 	if minTLSVers < VersionTLS10 || minTLSVers > VersionTLS12 {
 		return fmt.Errorf("uTLS does not support 0x%X as min version", minTLSVers)
 	}
@@ -509,6 +560,9 @@ func (uconn *UConn) GetUnderlyingConn() net.Conn {
 func MakeConnWithCompleteHandshake(tcpConn net.Conn, version uint16, cipherSuite uint16, masterSecret []byte, clientRandom []byte, serverRandom []byte, isClient bool) *Conn {
 	tlsConn := &Conn{conn: tcpConn, config: &Config{}, isClient: isClient}
 	cs := cipherSuiteByID(cipherSuite)
+	if cs == nil {
+		return nil
+	}
 
 	// This is mostly borrowed from establishKeys()
 	clientMAC, serverMAC, clientKey, serverKey, clientIV, serverIV :=

@@ -52,6 +52,37 @@ func HttpGetByHelloID(hostname string, addr string, helloID tls.ClientHelloID) (
 	return httpGetOverConn(uTlsConn, uTlsConn.HandshakeState.ServerHello.AlpnProtocol)
 }
 
+// this example generates a randomized fingeprint, then re-uses it in a follow-up connection
+func HttpGetConsistentRandomized(hostname string, addr string) (*http.Response, error) {
+	config := tls.Config{ServerName: hostname}
+	tcpConn, err := net.DialTimeout("tcp", addr, dialTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("net.DialTimeout error: %+v", err)
+	}
+	uTlsConn := tls.UClient(tcpConn, &config, tls.HelloRandomized)
+	defer uTlsConn.Close()
+	err = uTlsConn.Handshake()
+	if err != nil {
+		return nil, fmt.Errorf("uTlsConn.Handshake() error: %+v", err)
+	}
+	uTlsConn.Close()
+
+	// At this point uTlsConn.ClientHelloID holds a seed that was used to generate
+	// randomized fingerprint. Now we can establish second connection with same fp
+	tcpConn2, err := net.DialTimeout("tcp", addr, dialTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("net.DialTimeout error: %+v", err)
+	}
+	uTlsConn2 := tls.UClient(tcpConn2, &config, uTlsConn.ClientHelloID)
+	defer uTlsConn2.Close()
+	err = uTlsConn2.Handshake()
+	if err != nil {
+		return nil, fmt.Errorf("uTlsConn.Handshake() error: %+v", err)
+	}
+
+	return httpGetOverConn(uTlsConn2, uTlsConn2.HandshakeState.ServerHello.AlpnProtocol)
+}
+
 func HttpGetExplicitRandom(hostname string, addr string) (*http.Response, error) {
 	dialConn, err := net.DialTimeout("tcp", addr, dialTimeout)
 	if err != nil {
@@ -306,7 +337,6 @@ func forgeConn() {
 
 }
 
-
 func main() {
 	var response *http.Response
 	var err error
@@ -325,11 +355,11 @@ func main() {
 		fmt.Printf("#> HttpGetByHelloID(HelloChrome_62) response: %+s\n", dumpResponseNoBody(response))
 	}
 
-	response, err = HttpGetByHelloID(requestHostname, requestAddr, tls.HelloRandomizedNoALPN)
+	response, err = HttpGetConsistentRandomized(requestHostname, requestAddr)
 	if err != nil {
-		fmt.Printf("#> HttpGetByHelloID(Randomized) failed: %+v\n", err)
+		fmt.Printf("#> HttpGetConsistentRandomized() failed: %+v\n", err)
 	} else {
-		fmt.Printf("#> HttpGetByHelloID(Randomized) response: %+s\n", dumpResponseNoBody(response))
+		fmt.Printf("#> HttpGetConsistentRandomized() response: %+s\n", dumpResponseNoBody(response))
 	}
 
 	response, err = HttpGetExplicitRandom(requestHostname, requestAddr)

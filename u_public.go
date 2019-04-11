@@ -27,6 +27,8 @@ type ClientHandshakeState struct {
 
 	State12 TLS12OnlyState
 	State13 TLS13OnlyState
+
+	uconn *UConn
 }
 
 // TLS 1.3 only
@@ -69,6 +71,8 @@ func (chs *ClientHandshakeState) toPrivate13() *clientHandshakeStateTLS13 {
 			transcript:    chs.State13.Transcript,
 			masterSecret:  chs.MasterSecret,
 			trafficSecret: chs.State13.TrafficSecret,
+
+			uconn: chs.uconn,
 		}
 	}
 }
@@ -98,6 +102,8 @@ func (chs13 *clientHandshakeStateTLS13) toPublic13() *ClientHandshakeState {
 			MasterSecret: chs13.masterSecret,
 
 			State13: tls13State,
+
+			uconn: chs13.uconn,
 		}
 	}
 }
@@ -116,11 +122,13 @@ func (chs *ClientHandshakeState) toPrivate12() *clientHandshakeState {
 			masterSecret: chs.MasterSecret,
 
 			finishedHash: *chs.State12.FinishedHash.getPrivatePtr(),
+
+			uconn: chs.uconn,
 		}
 	}
 }
 
-func (chs12 *clientHandshakeState) toPublic13() *ClientHandshakeState {
+func (chs12 *clientHandshakeState) toPublic12() *ClientHandshakeState {
 	if chs12 == nil {
 		return nil
 	} else {
@@ -138,6 +146,8 @@ func (chs12 *clientHandshakeState) toPublic13() *ClientHandshakeState {
 			MasterSecret: chs12.masterSecret,
 
 			State12: tls12State,
+
+			uconn: chs12.uconn,
 		}
 	}
 }
