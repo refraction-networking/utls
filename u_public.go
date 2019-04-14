@@ -121,7 +121,7 @@ func (chs *ClientHandshakeState) toPrivate12() *clientHandshakeState {
 
 			masterSecret: chs.MasterSecret,
 
-			finishedHash: *chs.State12.FinishedHash.getPrivatePtr(),
+			finishedHash: chs.State12.FinishedHash.getPrivateObj(),
 
 			uconn: chs.uconn,
 		}
@@ -133,8 +133,8 @@ func (chs12 *clientHandshakeState) toPublic12() *ClientHandshakeState {
 		return nil
 	} else {
 		tls12State := TLS12OnlyState{
-			Suite:        *chs12.suite.getPublicPtr(),
-			FinishedHash: *chs12.finishedHash.getPublicPtr(),
+			Suite:        chs12.suite.getPublicObj(),
+			FinishedHash: chs12.finishedHash.getPublicObj(),
 		}
 		return &ClientHandshakeState{
 			C:           chs12.c,
@@ -455,11 +455,11 @@ func (cs *CipherSuite) getPrivatePtr() *cipherSuite {
 	}
 }
 
-func (cs *cipherSuite) getPublicPtr() *CipherSuite {
+func (cs *cipherSuite) getPublicObj() CipherSuite {
 	if cs == nil {
-		return nil
+		return CipherSuite{}
 	} else {
-		return &CipherSuite{
+		return CipherSuite{
 			Id:     cs.id,
 			KeyLen: cs.keyLen,
 			MacLen: cs.macLen,
@@ -490,11 +490,11 @@ type FinishedHash struct {
 	Prf     func(result, secret, label, seed []byte)
 }
 
-func (fh *FinishedHash) getPrivatePtr() *finishedHash {
+func (fh *FinishedHash) getPrivateObj() finishedHash {
 	if fh == nil {
-		return nil
+		return finishedHash{}
 	} else {
-		return &finishedHash{
+		return finishedHash{
 			client:    fh.Client,
 			server:    fh.Server,
 			clientMD5: fh.ClientMD5,
@@ -506,11 +506,11 @@ func (fh *FinishedHash) getPrivatePtr() *finishedHash {
 	}
 }
 
-func (fh *finishedHash) getPublicPtr() *FinishedHash {
+func (fh *finishedHash) getPublicObj() FinishedHash {
 	if fh == nil {
-		return nil
+		return FinishedHash{}
 	} else {
-		return &FinishedHash{
+		return FinishedHash{
 			Client:    fh.client,
 			Server:    fh.server,
 			ClientMD5: fh.clientMD5,

@@ -361,7 +361,9 @@ func (c *UConn) clientHandshake() (err error) {
 		}
 		// In TLS 1.3, session tickets are delivered after the handshake.
 		err = hs13.handshake()
-		c.HandshakeState = *hs13.toPublic13()
+		if handshakeState := hs13.toPublic13(); handshakeState != nil {
+			c.HandshakeState = *handshakeState
+		}
 		return err
 	}
 
@@ -369,7 +371,9 @@ func (c *UConn) clientHandshake() (err error) {
 	hs12.serverHello = serverHello
 	hs12.hello = hello
 	err = hs12.handshake()
-	c.HandshakeState = *hs12.toPublic12()
+	if handshakeState := hs12.toPublic12(); handshakeState != nil {
+		c.HandshakeState = *handshakeState
+	}
 	if err != nil {
 		return err
 	}
