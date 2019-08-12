@@ -121,7 +121,7 @@ func (uconn *UConn) SetSessionState(session *ClientSessionState) error {
 				}
 			}
 			var sessionID [32]byte
-			_, err := io.ReadFull(uconn.config.rand(), uconn.HandshakeState.Hello.SessionId)
+			_, err := io.ReadFull(uconn.config.rand(), sessionID[:])
 			if err != nil {
 				return err
 			}
