@@ -135,7 +135,7 @@ func TestUTLSHandshakeClientParrotChrome_58_setclienthello(t *testing.T) {
 	opensslCipherName := "ECDHE-RSA-AES128-GCM-SHA256"
 	test := &clientTest{
 		name:    "UTLS-setclienthello-" + opensslCipherName + "-" + helloID.Str(),
-		command: []string{"openssl", "s_server", "-cipher", opensslCipherName},
+		args: []string{"openssl", "s_server", "-cipher", opensslCipherName},
 		config:  config,
 	}
 
@@ -152,7 +152,7 @@ func TestUTLSHelloRetryRequest(t *testing.T) {
 
 	test := &clientTest{
 		name:    "UTLS-HelloRetryRequest-" + helloID.Str(),
-		command: []string{"openssl", "s_server", "-cipher", "ECDHE-RSA-AES128-GCM-SHA256", "-curves", "P-256"},
+		args: []string{"openssl", "s_server", "-cipher", "ECDHE-RSA-AES128-GCM-SHA256", "-curves", "P-256"},
 		config:  config,
 	}
 
@@ -184,7 +184,7 @@ func testUTLSHandshakeClientECDHE_RSA_AES128_CBC_SHA(t *testing.T, helloID Clien
 	opensslCipherName := "ECDHE-RSA-AES128-SHA"
 	test := &clientTest{
 		name:    "UTLS-" + opensslCipherName + "-" + helloID.Str(),
-		command: []string{"openssl", "s_server", "-cipher", opensslCipherName},
+		args: []string{"openssl", "s_server", "-cipher", opensslCipherName},
 		config:  config,
 	}
 
@@ -196,7 +196,7 @@ func testUTLSHandshakeClientECDHE_RSA_AES256_CBC_SHA(t *testing.T, helloID Clien
 	opensslCipherName := "ECDHE-RSA-AES256-SHA"
 	test := &clientTest{
 		name:    "UTLS-" + opensslCipherName + "-" + helloID.Str(),
-		command: []string{"openssl", "s_server", "-cipher", opensslCipherName},
+		args: []string{"openssl", "s_server", "-cipher", opensslCipherName},
 		config:  config,
 	}
 
@@ -208,7 +208,7 @@ func testUTLSHandshakeClientECDHE_ECDSA_AES128_CBC_SHA(t *testing.T, helloID Cli
 	opensslCipherName := "ECDHE-ECDSA-AES128-SHA"
 	test := &clientTest{
 		name:    "UTLS-" + opensslCipherName + "-" + helloID.Str(),
-		command: []string{"openssl", "s_server", "-cipher", opensslCipherName},
+		args: []string{"openssl", "s_server", "-cipher", opensslCipherName},
 		cert:    testECDSACertificate,
 		key:     testECDSAPrivateKey,
 		config:  config,
@@ -222,7 +222,7 @@ func testUTLSHandshakeClientECDHE_ECDSA_AES256_CBC_SHA(t *testing.T, helloID Cli
 	opensslCipherName := "ECDHE-ECDSA-AES256-SHA"
 	test := &clientTest{
 		name:    "UTLS-" + opensslCipherName + "-" + helloID.Str(),
-		command: []string{"openssl", "s_server", "-cipher", opensslCipherName},
+		args: []string{"openssl", "s_server", "-cipher", opensslCipherName},
 		cert:    testECDSACertificate,
 		key:     testECDSAPrivateKey,
 		config:  config,
@@ -236,7 +236,7 @@ func testUTLSHandshakeClientRSA_AES128_GCM_SHA256(t *testing.T, helloID ClientHe
 	opensslCipherName := "AES128-GCM-SHA256"
 	test := &clientTest{
 		name:    "UTLS-" + opensslCipherName + "-" + helloID.Str(),
-		command: []string{"openssl", "s_server", "-cipher", opensslCipherName},
+		args: []string{"openssl", "s_server", "-cipher", opensslCipherName},
 		config:  config,
 	}
 
@@ -249,7 +249,7 @@ func testUTLSHandshakeClientECDHE_ECDSA_AES128_GCM_SHA256(t *testing.T, helloID 
 	opensslCipherName := "ECDHE-ECDSA-AES128-GCM-SHA256"
 	test := &clientTest{
 		name:    "UTLS-" + opensslCipherName + "-" + helloID.Str(),
-		command: []string{"openssl", "s_server", "-cipher", opensslCipherName},
+		args: []string{"openssl", "s_server", "-cipher", opensslCipherName},
 		cert:    testECDSACertificate,
 		key:     testECDSAPrivateKey,
 		config:  config,
@@ -264,7 +264,7 @@ func testUTLSHandshakeClientECDHE_RSA_AES128_GCM_SHA256(t *testing.T, helloID Cl
 	opensslCipherName := "ECDHE-RSA-AES128-GCM-SHA256"
 	test := &clientTest{
 		name:    "UTLS-" + opensslCipherName + "-" + helloID.Str(),
-		command: []string{"openssl", "s_server", "-cipher", opensslCipherName},
+		args: []string{"openssl", "s_server", "-cipher", opensslCipherName},
 		config:  config,
 	}
 
@@ -276,7 +276,7 @@ func testUTLSHandshakeClientECDHE_ECDSA_AES256_GCM_SHA256(t *testing.T, helloID 
 	opensslCipherName := "ECDHE-ECDSA-AES256-GCM-SHA256"
 	test := &clientTest{
 		name:    "UTLS-" + opensslCipherName + "-" + helloID.Str(),
-		command: []string{"openssl", "s_server", "-cipher", opensslCipherName},
+		args: []string{"openssl", "s_server", "-cipher", opensslCipherName},
 		cert:    testECDSACertificate,
 		key:     testECDSAPrivateKey,
 		config:  config,
@@ -290,7 +290,7 @@ func testUTLSHandshakeClientECDHE_RSA_AES256_GCM_SHA256(t *testing.T, helloID Cl
 	opensslCipherName := "ECDHE-RSA-AES128-GCM-SHA256"
 	test := &clientTest{
 		name:    "UTLS-" + opensslCipherName + "-" + helloID.Str(),
-		command: []string{"openssl", "s_server", "-cipher", opensslCipherName},
+		args: []string{"openssl", "s_server", "-cipher", opensslCipherName},
 		config:  config,
 	}
 
@@ -303,7 +303,7 @@ func testUTLSHandshakeClientTLS13_AES_128_GCM_SHA256(t *testing.T, helloID Clien
 	opensslCipherName := "TLS_AES_128_GCM_SHA256"
 	test := &clientTest{
 		name:    "UTLS-" + opensslCipherName + "-" + helloID.Str(),
-		command: []string{"openssl", "s_server", "-cipher", opensslCipherName},
+		args: []string{"openssl", "s_server", "-cipher", opensslCipherName},
 		config:  config,
 	}
 
@@ -316,7 +316,7 @@ func testUTLSHandshakeClientTLS13_AES_256_GCM_SHA384(t *testing.T, helloID Clien
 	opensslCipherName := "TLS_AES_256_GCM_SHA384"
 	test := &clientTest{
 		name:    "UTLS-" + opensslCipherName + "-" + helloID.Str(),
-		command: []string{"openssl", "s_server", "-cipher", opensslCipherName},
+		args: []string{"openssl", "s_server", "-cipher", opensslCipherName},
 		config:  config,
 	}
 
@@ -329,7 +329,7 @@ func testUTLSHandshakeClientTLS13_CHACHA20_POLY1305_SHA256(t *testing.T, helloID
 	opensslCipherName := "TLS_CHACHA20_POLY1305_SHA256"
 	test := &clientTest{
 		name:    "UTLS-" + opensslCipherName + "-" + helloID.Str(),
-		command: []string{"openssl", "s_server", "-cipher", opensslCipherName},
+		args: []string{"openssl", "s_server", "-cipher", opensslCipherName},
 		config:  config,
 	}
 
@@ -342,7 +342,7 @@ func testUTLSHandshakeClientECDHE_RSA_WITH_CHACHA20_POLY1305(t *testing.T, hello
 	opensslCipherName := "ECDHE-RSA-CHACHA20-POLY1305"
 	test := &clientTest{
 		name:    "UTLS-" + opensslCipherName + "-" + helloID.Str(),
-		command: []string{"openssl", "s_server", "-cipher", opensslCipherName},
+		args: []string{"openssl", "s_server", "-cipher", opensslCipherName},
 		config:  config,
 	}
 
@@ -355,7 +355,7 @@ func testUTLSHandshakeClientECDHE_ECDSA_WITH_CHACHA20_POLY1305(t *testing.T, hel
 	opensslCipherName := "ECDHE-ECDSA-CHACHA20-POLY1305"
 	test := &clientTest{
 		name:    "UTLS-" + opensslCipherName + "-" + helloID.Str(),
-		command: []string{"openssl", "s_server", "-cipher", opensslCipherName},
+		args: []string{"openssl", "s_server", "-cipher", opensslCipherName},
 		config:  config,
 		cert:    testECDSACertificate,
 		key:     testECDSAPrivateKey,
@@ -367,11 +367,11 @@ func testUTLSHandshakeClientECDHE_ECDSA_WITH_CHACHA20_POLY1305(t *testing.T, hel
 func runUTLSClientTestForVersion(t *testing.T, template *clientTest, prefix, option string, helloID ClientHelloID) {
 	test := *template
 	test.name = prefix + test.name
-	if len(test.command) == 0 {
-		test.command = defaultClientCommand
+	if len(test.args) == 0 {
+		test.args = defaultClientCommand
 	}
-	test.command = append([]string(nil), test.command...)
-	test.command = append(test.command, option)
+	test.args = append([]string(nil), test.args...)
+	test.args = append(test.args, option)
 	test.runUTLS(t, *update, helloID)
 }
 
