@@ -194,20 +194,18 @@ func (e *SignatureAlgorithmsExtension) Read(b []byte) (int, error) {
 }
 
 type RenegotiationInfoExtension struct {
-	renegotiation       RenegotiationSupport
-	SecureRenegotiation []byte // if empty, default []byte{0} is assumed
+	// Renegotiation field limits how many times client will perform renegotiation: no limit, once, or never.
+	// The extension still will be sent, even if Renegotiation is set to RenegotiateNever.
+	Renegotiation RenegotiationSupport
 }
 
 func (e *RenegotiationInfoExtension) writeToUConn(uc *UConn) error {
-	uc.config.Renegotiation = e.renegotiation
-	switch e.renegotiation {
+	uc.config.Renegotiation = e.Renegotiation
+	switch e.Renegotiation {
 	case RenegotiateOnceAsClient:
 		fallthrough
 	case RenegotiateFreelyAsClient:
 		uc.HandshakeState.Hello.SecureRenegotiationSupported = true
-		// Note that if we manage to use this in renegotiation(currently only in initial handshake), we'd have to point
-		// uc.ClientHelloMsg.SecureRenegotiation = chs.C.clientFinished
-		// and probably do something else. It's a mess.
 	case RenegotiateNever:
 	default:
 	}
@@ -215,47 +213,25 @@ func (e *RenegotiationInfoExtension) writeToUConn(uc *UConn) error {
 }
 
 func (e *RenegotiationInfoExtension) Len() int {
-	switch e.renegotiation {
-	case RenegotiateOnceAsClient:
-		fallthrough
-	case RenegotiateFreelyAsClient:
-		extBodyLen := len(e.SecureRenegotiation)
-		if extBodyLen == 0 {
-			extBodyLen = 1
-		}
-		return 4 + extBodyLen
-	case RenegotiateNever:
-	default:
-	}
-	return 0
+	return 5
 }
 
 func (e *RenegotiationInfoExtension) Read(b []byte) (int, error) {
 	if len(b) < e.Len() {
 		return 0, io.ErrShortBuffer
 	}
-	switch e.renegotiation {
-	case RenegotiateOnceAsClient:
-		fallthrough
-	case RenegotiateFreelyAsClient:
-		secureRenegBody := e.SecureRenegotiation
-		if len(secureRenegBody) == 0 {
-			secureRenegBody = []byte{0}
-		}
-		extBodyLen := len(secureRenegBody)
 
-		b[0] = byte(extensionRenegotiationInfo >> 8)
-		b[1] = byte(extensionRenegotiationInfo & 0xff)
-		b[2] = byte(extBodyLen >> 8)
-		b[3] = byte(extBodyLen)
-		copy(b[4:], secureRenegBody)
+	var extInnerBody []byte // inner body is empty
+	innerBodyLen := len(extInnerBody)
+	extBodyLen := innerBodyLen + 1
 
-		if len(e.SecureRenegotiation) != 0 {
-			copy(b[5:], e.SecureRenegotiation)
-		}
-	case RenegotiateNever:
-	default:
-	}
+	b[0] = byte(extensionRenegotiationInfo >> 8)
+	b[1] = byte(extensionRenegotiationInfo & 0xff)
+	b[2] = byte(extBodyLen >> 8)
+	b[3] = byte(extBodyLen)
+	b[4] = byte(innerBodyLen)
+	copy(b[5:], extInnerBody)
+
 	return e.Len(), io.EOF
 }
 
@@ -364,9 +340,10 @@ func (e *SessionTicketExtension) Read(b []byte) (int, error) {
 	return e.Len(), io.EOF
 }
 
+// GenericExtension allows to include in ClientHello arbitrary unsupported extensions.
 type GenericExtension struct {
-	id   uint16
-	data []byte
+	Id   uint16
+	Data []byte
 }
 
 func (e *GenericExtension) writeToUConn(uc *UConn) error {
@@ -374,7 +351,7 @@ func (e *GenericExtension) writeToUConn(uc *UConn) error {
 }
 
 func (e *GenericExtension) Len() int {
-	return 4 + len(e.data)
+	return 4 + len(e.Data)
 }
 
 func (e *GenericExtension) Read(b []byte) (int, error) {
@@ -382,12 +359,12 @@ func (e *GenericExtension) Read(b []byte) (int, error) {
 		return 0, io.ErrShortBuffer
 	}
 
-	b[0] = byte(e.id >> 8)
-	b[1] = byte(e.id)
-	b[2] = byte(len(e.data) >> 8)
-	b[3] = byte(len(e.data))
-	if len(e.data) > 0 {
-		copy(b[4:], e.data)
+	b[0] = byte(e.Id >> 8)
+	b[1] = byte(e.Id)
+	b[2] = byte(len(e.Data) >> 8)
+	b[3] = byte(len(e.Data))
+	if len(e.Data) > 0 {
+		copy(b[4:], e.Data)
 	}
 	return e.Len(), io.EOF
 }
