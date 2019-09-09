@@ -625,7 +625,10 @@ func (uconn *UConn) generateRandomizedSpec() (ClientHelloSpec, error) {
 		uconn.ClientHelloID.Seed = seed
 	}
 
-	r := newPRNGWithSeed(uconn.ClientHelloID.Seed)
+	r, err := newPRNGWithSeed(uconn.ClientHelloID.Seed)
+	if err != nil {
+		return p, err
+	}
 
 	id := uconn.ClientHelloID
 
