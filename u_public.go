@@ -7,6 +7,7 @@ package tls
 import (
 	"crypto"
 	"crypto/x509"
+	"errors"
 	"hash"
 )
 
@@ -419,6 +420,15 @@ func (chm *clientHelloMsg) getPublicPtr() *ClientHelloMsg {
 			PskBinders:                       chm.pskBinders,
 		}
 	}
+}
+
+// UnmarshalClientHello Allows external code to parse raw client hellos.
+func UnmarshalClientHello(data []byte) (*ClientHelloMsg, error) {
+	m := &clientHelloMsg{}
+	if m.unmarshal(data) {
+		return m.getPublicPtr(), nil
+	}
+	return nil, errors.New("Could not parse hello data")
 }
 
 // A CipherSuite is a specific combination of key agreement, cipher and MAC
