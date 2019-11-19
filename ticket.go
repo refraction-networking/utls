@@ -12,8 +12,9 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"errors"
-	"golang.org/x/crypto/cryptobyte"
 	"io"
+
+	"golang.org/x/crypto/cryptobyte"
 )
 
 // sessionState contains the information that is serialized into a session
@@ -172,6 +173,10 @@ func (c *Conn) encryptTicket(state []byte) ([]byte, error) {
 }
 
 func (c *Conn) decryptTicket(encrypted []byte) (plaintext []byte, usedOldKey bool) {
+	return DecryptTicketWith(encrypted, c.config)
+}
+
+func DecryptTicketWith(encrypted []byte, config *Config) (plaintext []byte, usedOldKey bool) {
 	if len(encrypted) < ticketKeyNameLen+aes.BlockSize+sha256.Size {
 		return nil, false
 	}
@@ -181,7 +186,7 @@ func (c *Conn) decryptTicket(encrypted []byte) (plaintext []byte, usedOldKey boo
 	macBytes := encrypted[len(encrypted)-sha256.Size:]
 	ciphertext := encrypted[ticketKeyNameLen+aes.BlockSize : len(encrypted)-sha256.Size]
 
-	keys := c.config.ticketKeys()
+	keys := config.ticketKeys()
 	keyIndex := -1
 	for i, candidateKey := range keys {
 		if bytes.Equal(keyName, candidateKey.keyName[:]) {
