@@ -54,10 +54,7 @@ func (e *SNIExtension) writeToUConn(uc *UConn) error {
 }
 
 func (e *SNIExtension) Len() int {
-	if len(e.ServerName) > 0 {
-		return 4 + 2 + 1 + 2 + len(e.ServerName)
-	}
-	return 0
+	return 4 + 2 + 1 + 2 + len(e.ServerName)
 }
 
 func (e *SNIExtension) Read(b []byte) (int, error) {
