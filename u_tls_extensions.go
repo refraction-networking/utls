@@ -64,9 +64,6 @@ func (e *SNIExtension) Read(b []byte) (int, error) {
 	if len(b) < e.Len() {
 		return 0, io.ErrShortBuffer
 	}
-	if len(e.ServerName) == 0 {
-		return 0, io.EOF
-	}
 	// RFC 3546, section 3.1
 	b[0] = byte(extensionServerName >> 8)
 	b[1] = byte(extensionServerName)
