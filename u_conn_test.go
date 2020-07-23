@@ -368,7 +368,7 @@ func runUTLSClientTestForVersion(t *testing.T, template *clientTest, prefix, opt
 	run := func(omitSNI bool) {
 		test := *template
 		// clone the test template config so we can successfully re-run
-		templateConfig := *template.config
+		templateConfig := *template.config // nolint
 		test.config = &templateConfig
 		test.name = prefix + test.name
 		if omitSNI {
