@@ -365,14 +365,26 @@ func testUTLSHandshakeClientECDHE_ECDSA_WITH_CHACHA20_POLY1305(t *testing.T, hel
 }
 
 func runUTLSClientTestForVersion(t *testing.T, template *clientTest, prefix, option string, helloID ClientHelloID) {
-	test := *template
-	test.name = prefix + test.name
-	if len(test.args) == 0 {
-		test.args = defaultClientCommand
+	run := func(omitSNI bool) {
+		test := *template
+		// clone the test template config so we can successfully re-run
+		templateConfig := *template.config
+		test.config = &templateConfig
+		test.name = prefix + test.name
+		if omitSNI {
+			test.name = test.name + "-OmitSNI"
+		}
+		if len(test.args) == 0 {
+			test.args = defaultClientCommand
+		}
+		test.args = append([]string(nil), test.args...)
+		test.args = append(test.args, option)
+		test.runUTLS(t, *update, helloID, omitSNI)
 	}
-	test.args = append([]string(nil), test.args...)
-	test.args = append(test.args, option)
-	test.runUTLS(t, *update, helloID)
+	run(false)
+	if helloID != HelloGolang {
+		run(true)
+	}
 }
 
 func runUTLSClientTestTLS12(t *testing.T, template *clientTest, helloID ClientHelloID) {
@@ -383,7 +395,7 @@ func runUTLSClientTestTLS13(t *testing.T, template *clientTest, helloID ClientHe
 	runUTLSClientTestForVersion(t, template, "TLSv13-", "-tls1_3", helloID)
 }
 
-func (test *clientTest) runUTLS(t *testing.T, write bool, helloID ClientHelloID) {
+func (test *clientTest) runUTLS(t *testing.T, write bool, helloID ClientHelloID, omitSNIExtension bool) {
 	checkOpenSSLVersion(t)
 
 	var clientConn, serverConn net.Conn
@@ -409,6 +421,14 @@ func (test *clientTest) runUTLS(t *testing.T, write bool, helloID ClientHelloID)
 		return
 	}
 	client := UClient(clientConn, config, helloID)
+
+	if omitSNIExtension {
+		if err := client.RemoveSNIExtension(); err != nil {
+			t.Error("Failed to remove SNI extension")
+			return
+		}
+	}
+
 	if strings.HasPrefix(test.name, "TLSv12-UTLS-setclienthello-") {
 		err := client.BuildHandshakeState()
 		if err != nil {
