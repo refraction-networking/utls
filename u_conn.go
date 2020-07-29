@@ -30,6 +30,8 @@ type UConn struct {
 	GetSessionID func(ticket []byte) [32]byte
 
 	greaseSeed [ssl_grease_last_index]uint16
+
+	omitSNIExtension bool
 }
 
 // UClient returns a new uTLS client, with behavior depending on clientHelloID.
@@ -77,6 +79,9 @@ func (uconn *UConn) BuildHandshakeState() error {
 			err := uconn.applyPresetByID(uconn.ClientHelloID)
 			if err != nil {
 				return err
+			}
+			if uconn.omitSNIExtension {
+				uconn.removeSNIExtension()
 			}
 		}
 
@@ -160,6 +165,26 @@ func (uconn *UConn) SetSNI(sni string) {
 			sniExt.ServerName = hname
 		}
 	}
+}
+
+// RemoveSNIExtension removes SNI from the list of extensions sent in ClientHello
+// It returns an error when used with HelloGolang ClientHelloID
+func (uconn *UConn) RemoveSNIExtension() error {
+	if uconn.ClientHelloID == HelloGolang {
+		return fmt.Errorf("Cannot call RemoveSNIExtension on a UConn with a HelloGolang ClientHelloID")
+	}
+	uconn.omitSNIExtension = true
+	return nil
+}
+
+func (uconn *UConn) removeSNIExtension() {
+	filteredExts := make([]TLSExtension, 0, len(uconn.Extensions))
+	for _, e := range uconn.Extensions {
+		if _, ok := e.(*SNIExtension); !ok {
+			filteredExts = append(filteredExts, e)
+		}
+	}
+	uconn.Extensions = filteredExts
 }
 
 // Handshake runs the client handshake using given clientHandshakeState
