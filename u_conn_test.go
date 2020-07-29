@@ -159,6 +159,21 @@ func TestUTLSHelloRetryRequest(t *testing.T) {
 	runUTLSClientTestTLS13(t, test, helloID)
 }
 
+func TestUTLSRemoveSNIExtension(t *testing.T) {
+	helloID := HelloChrome_70
+
+	config := getUTLSTestConfig()
+
+	opensslCipherName := "ECDHE-RSA-AES128-GCM-SHA256"
+	test := &clientTest{
+		name:   "UTLS-" + opensslCipherName + "-" + helloID.Str() + "-OmitSNI",
+		args:   []string{"-cipher", opensslCipherName},
+		config: config,
+	}
+
+	runUTLSClientTestForVersion(t, test, "TLSv12-", "-tls1_2", helloID, true)
+}
+
 /*
 *
  HELPER FUNCTIONS BELOW
@@ -364,35 +379,23 @@ func testUTLSHandshakeClientECDHE_ECDSA_WITH_CHACHA20_POLY1305(t *testing.T, hel
 	runUTLSClientTestTLS12(t, test, helloID)
 }
 
-func runUTLSClientTestForVersion(t *testing.T, template *clientTest, prefix, option string, helloID ClientHelloID) {
-	run := func(omitSNI bool) {
-		test := *template
-		// clone the test template config so we can successfully re-run
-		templateConfig := *template.config // nolint
-		test.config = &templateConfig
-		test.name = prefix + test.name
-		if omitSNI {
-			test.name = test.name + "-OmitSNI"
-		}
-		if len(test.args) == 0 {
-			test.args = defaultClientCommand
-		}
-		test.args = append([]string(nil), test.args...)
-		test.args = append(test.args, option)
-		test.runUTLS(t, *update, helloID, omitSNI)
+func runUTLSClientTestForVersion(t *testing.T, template *clientTest, prefix, option string, helloID ClientHelloID, omitSNI bool) {
+	test := *template
+	test.name = prefix + test.name
+	if len(test.args) == 0 {
+		test.args = defaultClientCommand
 	}
-	run(false)
-	if helloID != HelloGolang {
-		run(true)
-	}
+	test.args = append([]string(nil), test.args...)
+	test.args = append(test.args, option)
+	test.runUTLS(t, *update, helloID, false)
 }
 
 func runUTLSClientTestTLS12(t *testing.T, template *clientTest, helloID ClientHelloID) {
-	runUTLSClientTestForVersion(t, template, "TLSv12-", "-tls1_2", helloID)
+	runUTLSClientTestForVersion(t, template, "TLSv12-", "-tls1_2", helloID, false)
 }
 
 func runUTLSClientTestTLS13(t *testing.T, template *clientTest, helloID ClientHelloID) {
-	runUTLSClientTestForVersion(t, template, "TLSv13-", "-tls1_3", helloID)
+	runUTLSClientTestForVersion(t, template, "TLSv13-", "-tls1_3", helloID, false)
 }
 
 func (test *clientTest) runUTLS(t *testing.T, write bool, helloID ClientHelloID, omitSNIExtension bool) {

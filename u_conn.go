@@ -167,8 +167,8 @@ func (uconn *UConn) SetSNI(sni string) {
 	}
 }
 
-// RemoveSNIExtension will cause the UConn connection client hello to not include a SNI extension
-// This only applies to non-HelloGolang ClientHelloIDs
+// RemoveSNIExtension removes SNI from the list of extensions sent in ClientHello
+// It returns an error when used with HelloGolang ClientHelloID
 func (uconn *UConn) RemoveSNIExtension() error {
 	if uconn.ClientHelloID == HelloGolang {
 		return fmt.Errorf("Cannot call RemoveSNIExtension on a UConn with a HelloGolang ClientHelloID")
