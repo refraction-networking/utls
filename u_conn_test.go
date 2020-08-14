@@ -7,6 +7,7 @@ package tls
 import (
 	"bytes"
 	"crypto/tls"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
@@ -16,6 +17,28 @@ import (
 	"testing"
 	"time"
 )
+
+// helloStrategy is a sum type interface which allows us to pass either a ClientHelloID or a ClientHelloSpec and then act accordingly
+type helloStrategy interface {
+	helloName() string
+}
+
+type helloID struct {
+	id ClientHelloID
+}
+
+func (hid *helloID) helloName() string {
+	return hid.id.Str()
+}
+
+type helloSpec struct {
+	name string
+	spec *ClientHelloSpec
+}
+
+func (hs *helloSpec) helloName() string {
+	return hs.name
+}
 
 func TestUTLSMarshalNoOp(t *testing.T) {
 	str := "We rely on clientHelloMsg.marshal() not doing anything if clientHelloMsg.raw is set"
@@ -32,146 +55,329 @@ func TestUTLSMarshalNoOp(t *testing.T) {
 }
 
 func TestUTLSHandshakeClientParrotGolang(t *testing.T) {
-	helloID := HelloGolang
+	hello := &helloID{HelloGolang}
 
-	testUTLSHandshakeClientECDHE_ECDSA_WITH_CHACHA20_POLY1305(t, helloID)
-	testUTLSHandshakeClientECDHE_RSA_WITH_CHACHA20_POLY1305(t, helloID)
+	testUTLSHandshakeClientECDHE_ECDSA_WITH_CHACHA20_POLY1305(t, hello)
+	testUTLSHandshakeClientECDHE_RSA_WITH_CHACHA20_POLY1305(t, hello)
 
-	testUTLSHandshakeClientECDHE_RSA_AES128_GCM_SHA256(t, helloID)
-	testUTLSHandshakeClientECDHE_ECDSA_AES128_GCM_SHA256(t, helloID)
-	testUTLSHandshakeClientECDHE_RSA_AES256_CBC_SHA(t, helloID)
-	testUTLSHandshakeClientECDHE_ECDSA_AES256_CBC_SHA(t, helloID)
-	testUTLSHandshakeClientECDHE_RSA_AES128_CBC_SHA(t, helloID)
-	testUTLSHandshakeClientECDHE_ECDSA_AES128_CBC_SHA(t, helloID)
+	testUTLSHandshakeClientECDHE_RSA_AES128_GCM_SHA256(t, hello)
+	testUTLSHandshakeClientECDHE_ECDSA_AES128_GCM_SHA256(t, hello)
+	testUTLSHandshakeClientECDHE_RSA_AES256_CBC_SHA(t, hello)
+	testUTLSHandshakeClientECDHE_ECDSA_AES256_CBC_SHA(t, hello)
+	testUTLSHandshakeClientECDHE_RSA_AES128_CBC_SHA(t, hello)
+	testUTLSHandshakeClientECDHE_ECDSA_AES128_CBC_SHA(t, hello)
 
-	testUTLSHandshakeClientRSA_AES128_GCM_SHA256(t, helloID)
+	testUTLSHandshakeClientRSA_AES128_GCM_SHA256(t, hello)
 }
 
 func TestUTLSHandshakeClientParrotChrome_70(t *testing.T) {
-	helloID := HelloChrome_70
+	hello := &helloID{HelloChrome_70}
 
-	testUTLSHandshakeClientTLS13_AES_128_GCM_SHA256(t, helloID)
-	testUTLSHandshakeClientTLS13_AES_256_GCM_SHA384(t, helloID)
-	testUTLSHandshakeClientTLS13_CHACHA20_POLY1305_SHA256(t, helloID)
-	//testUTLSHandshakeClientECDHE_ECDSA_AES128_GCM_SHA256(t, helloID)
-	testUTLSHandshakeClientECDHE_RSA_AES128_GCM_SHA256(t, helloID)
-	//testUTLSHandshakeClientECDHE_ECDSA_AES256_GCM_SHA256(t, helloID)
-	testUTLSHandshakeClientECDHE_RSA_AES256_GCM_SHA256(t, helloID)
+	testUTLSHandshakeClientTLS13_AES_128_GCM_SHA256(t, hello)
+	testUTLSHandshakeClientTLS13_AES_256_GCM_SHA384(t, hello)
+	testUTLSHandshakeClientTLS13_CHACHA20_POLY1305_SHA256(t, hello)
+	//testUTLSHandshakeClientECDHE_ECDSA_AES128_GCM_SHA256(t, hello)
+	testUTLSHandshakeClientECDHE_RSA_AES128_GCM_SHA256(t, hello)
+	//testUTLSHandshakeClientECDHE_ECDSA_AES256_GCM_SHA256(t, hello)
+	testUTLSHandshakeClientECDHE_RSA_AES256_GCM_SHA256(t, hello)
 
-	//testUTLSHandshakeClientECDHE_ECDSA_WITH_CHACHA20_POLY1305(t, helloID)
-	testUTLSHandshakeClientECDHE_RSA_WITH_CHACHA20_POLY1305(t, helloID)
+	//testUTLSHandshakeClientECDHE_ECDSA_WITH_CHACHA20_POLY1305(t, hello)
+	testUTLSHandshakeClientECDHE_RSA_WITH_CHACHA20_POLY1305(t, hello)
 
-	testUTLSHandshakeClientECDHE_RSA_AES128_CBC_SHA(t, helloID)
-	testUTLSHandshakeClientECDHE_RSA_AES256_CBC_SHA(t, helloID)
+	testUTLSHandshakeClientECDHE_RSA_AES128_CBC_SHA(t, hello)
+	testUTLSHandshakeClientECDHE_RSA_AES256_CBC_SHA(t, hello)
 
-	testUTLSHandshakeClientRSA_AES128_GCM_SHA256(t, helloID)
+	testUTLSHandshakeClientRSA_AES128_GCM_SHA256(t, hello)
 }
 
 func TestUTLSHandshakeClientParrotChrome_58(t *testing.T) {
-	helloID := HelloChrome_58
+	hello := &helloID{HelloChrome_58}
 	// TODO: EC tests below are disabled because latest version of reference OpenSSL doesn't support p256 nor p384
 	// nor X25519 and I can't find configuration flag to enable it. Therefore I can't record replays.
 
-	//testUTLSHandshakeClientECDHE_ECDSA_AES128_GCM_SHA256(t, helloID)
-	testUTLSHandshakeClientECDHE_RSA_AES128_GCM_SHA256(t, helloID)
-	//testUTLSHandshakeClientECDHE_ECDSA_AES256_GCM_SHA256(t, helloID)
-	testUTLSHandshakeClientECDHE_RSA_AES256_GCM_SHA256(t, helloID)
+	//testUTLSHandshakeClientECDHE_ECDSA_AES128_GCM_SHA256(t, hello)
+	testUTLSHandshakeClientECDHE_RSA_AES128_GCM_SHA256(t, hello)
+	//testUTLSHandshakeClientECDHE_ECDSA_AES256_GCM_SHA256(t, hello)
+	testUTLSHandshakeClientECDHE_RSA_AES256_GCM_SHA256(t, hello)
 
-	//testUTLSHandshakeClientECDHE_ECDSA_WITH_CHACHA20_POLY1305(t, helloID)
-	testUTLSHandshakeClientECDHE_RSA_WITH_CHACHA20_POLY1305(t, helloID)
+	//testUTLSHandshakeClientECDHE_ECDSA_WITH_CHACHA20_POLY1305(t, hello)
+	testUTLSHandshakeClientECDHE_RSA_WITH_CHACHA20_POLY1305(t, hello)
 
-	testUTLSHandshakeClientECDHE_RSA_AES128_CBC_SHA(t, helloID)
-	testUTLSHandshakeClientECDHE_RSA_AES256_CBC_SHA(t, helloID)
+	testUTLSHandshakeClientECDHE_RSA_AES128_CBC_SHA(t, hello)
+	testUTLSHandshakeClientECDHE_RSA_AES256_CBC_SHA(t, hello)
 
-	testUTLSHandshakeClientRSA_AES128_GCM_SHA256(t, helloID)
+	testUTLSHandshakeClientRSA_AES128_GCM_SHA256(t, hello)
 }
 
 func TestUTLSHandshakeClientParrotFirefox_63(t *testing.T) {
-	helloID := HelloFirefox_63
+	hello := &helloID{HelloFirefox_63}
 
-	testUTLSHandshakeClientTLS13_AES_128_GCM_SHA256(t, helloID)
-	testUTLSHandshakeClientTLS13_AES_256_GCM_SHA384(t, helloID)
-	testUTLSHandshakeClientTLS13_CHACHA20_POLY1305_SHA256(t, helloID)
+	testUTLSHandshakeClientTLS13_AES_128_GCM_SHA256(t, hello)
+	testUTLSHandshakeClientTLS13_AES_256_GCM_SHA384(t, hello)
+	testUTLSHandshakeClientTLS13_CHACHA20_POLY1305_SHA256(t, hello)
 
-	testUTLSHandshakeClientECDHE_ECDSA_AES128_GCM_SHA256(t, helloID)
-	testUTLSHandshakeClientECDHE_RSA_AES128_GCM_SHA256(t, helloID)
+	testUTLSHandshakeClientECDHE_ECDSA_AES128_GCM_SHA256(t, hello)
+	testUTLSHandshakeClientECDHE_RSA_AES128_GCM_SHA256(t, hello)
 
-	testUTLSHandshakeClientECDHE_ECDSA_WITH_CHACHA20_POLY1305(t, helloID)
-	testUTLSHandshakeClientECDHE_RSA_WITH_CHACHA20_POLY1305(t, helloID)
+	testUTLSHandshakeClientECDHE_ECDSA_WITH_CHACHA20_POLY1305(t, hello)
+	testUTLSHandshakeClientECDHE_RSA_WITH_CHACHA20_POLY1305(t, hello)
 
-	//testUTLSHandshakeClientECDHE_ECDSA_AES256_GCM_SHA256(t, helloID) TODO: enable when OpenSSL supports it
-	testUTLSHandshakeClientECDHE_RSA_AES256_GCM_SHA256(t, helloID)
+	//testUTLSHandshakeClientECDHE_ECDSA_AES256_GCM_SHA256(t, hello) TODO: enable when OpenSSL supports it
+	testUTLSHandshakeClientECDHE_RSA_AES256_GCM_SHA256(t, hello)
 
-	testUTLSHandshakeClientECDHE_ECDSA_AES256_CBC_SHA(t, helloID)
-	testUTLSHandshakeClientECDHE_ECDSA_AES128_CBC_SHA(t, helloID)
+	testUTLSHandshakeClientECDHE_ECDSA_AES256_CBC_SHA(t, hello)
+	testUTLSHandshakeClientECDHE_ECDSA_AES128_CBC_SHA(t, hello)
 
-	testUTLSHandshakeClientECDHE_RSA_AES256_CBC_SHA(t, helloID)
-	testUTLSHandshakeClientECDHE_RSA_AES128_CBC_SHA(t, helloID)
+	testUTLSHandshakeClientECDHE_RSA_AES256_CBC_SHA(t, hello)
+	testUTLSHandshakeClientECDHE_RSA_AES128_CBC_SHA(t, hello)
 }
 
 func TestUTLSHandshakeClientParrotFirefox_55(t *testing.T) {
-	helloID := HelloFirefox_55
+	hello := &helloID{HelloFirefox_55}
 
-	testUTLSHandshakeClientECDHE_ECDSA_AES128_GCM_SHA256(t, helloID)
-	testUTLSHandshakeClientECDHE_RSA_AES128_GCM_SHA256(t, helloID)
+	testUTLSHandshakeClientECDHE_ECDSA_AES128_GCM_SHA256(t, hello)
+	testUTLSHandshakeClientECDHE_RSA_AES128_GCM_SHA256(t, hello)
 
-	testUTLSHandshakeClientECDHE_ECDSA_WITH_CHACHA20_POLY1305(t, helloID)
-	testUTLSHandshakeClientECDHE_RSA_WITH_CHACHA20_POLY1305(t, helloID)
+	testUTLSHandshakeClientECDHE_ECDSA_WITH_CHACHA20_POLY1305(t, hello)
+	testUTLSHandshakeClientECDHE_RSA_WITH_CHACHA20_POLY1305(t, hello)
 
-	//testUTLSHandshakeClientECDHE_ECDSA_AES256_GCM_SHA256(t, helloID) TODO: enable when OpenSSL supports it
-	testUTLSHandshakeClientECDHE_RSA_AES256_GCM_SHA256(t, helloID)
+	//testUTLSHandshakeClientECDHE_ECDSA_AES256_GCM_SHA256(t, hello) TODO: enable when OpenSSL supports it
+	testUTLSHandshakeClientECDHE_RSA_AES256_GCM_SHA256(t, hello)
 
-	testUTLSHandshakeClientECDHE_ECDSA_AES256_CBC_SHA(t, helloID)
-	testUTLSHandshakeClientECDHE_ECDSA_AES128_CBC_SHA(t, helloID)
+	testUTLSHandshakeClientECDHE_ECDSA_AES256_CBC_SHA(t, hello)
+	testUTLSHandshakeClientECDHE_ECDSA_AES128_CBC_SHA(t, hello)
 
-	testUTLSHandshakeClientECDHE_RSA_AES256_CBC_SHA(t, helloID)
-	testUTLSHandshakeClientECDHE_RSA_AES128_CBC_SHA(t, helloID)
+	testUTLSHandshakeClientECDHE_RSA_AES256_CBC_SHA(t, hello)
+	testUTLSHandshakeClientECDHE_RSA_AES128_CBC_SHA(t, hello)
 }
 
 func TestUTLSHandshakeClientParrotChrome_58_setclienthello(t *testing.T) {
-	helloID := HelloChrome_58
+	hello := &helloID{HelloChrome_58}
 	config := getUTLSTestConfig()
 
 	opensslCipherName := "ECDHE-RSA-AES128-GCM-SHA256"
 	test := &clientTest{
-		name:    "UTLS-setclienthello-" + opensslCipherName + "-" + helloID.Str(),
-		args: []string{"-cipher", opensslCipherName},
-		config:  config,
+		name:   "UTLS-setclienthello-" + opensslCipherName + "-" + hello.helloName(),
+		args:   []string{"-cipher", opensslCipherName},
+		config: config,
 	}
 
-	runUTLSClientTestTLS12(t, test, helloID)
+	runUTLSClientTestTLS12(t, test, hello)
+}
+
+func TestUTLSHandshakeClientFingerprintedSpecFromChrome_58(t *testing.T) {
+	helloID := HelloChrome_58
+	serverName := "foobar"
+	originalConfig := getUTLSTestConfig()
+	originalConfig.ServerName = serverName
+	uconn := UClient(&net.TCPConn{}, originalConfig, helloID)
+	if err := uconn.BuildHandshakeState(); err != nil {
+		t.Errorf("got error: %v; expected to succeed", err)
+	}
+
+	generatedSpec, err := FingerprintClientHello(uconn.HandshakeState.Hello.Raw)
+	if err != nil {
+		t.Errorf("got error: %v; expected to succeed", err)
+	}
+
+	hello := &helloSpec{
+		name: fmt.Sprintf("%v-fingerprinted", helloID.Str()),
+		spec: generatedSpec,
+	}
+
+	newConfig := getUTLSTestConfig()
+	newConfig.ServerName = serverName
+
+	opensslCipherName := "ECDHE-RSA-AES128-GCM-SHA256"
+	test := &clientTest{
+		name:   "UTLS-" + opensslCipherName + "-" + hello.helloName(),
+		args:   []string{"-cipher", opensslCipherName},
+		config: newConfig,
+	}
+
+	runUTLSClientTestTLS12(t, test, hello)
+}
+
+func TestUTLSHandshakeClientFingerprintedSpecFromChrome_70(t *testing.T) {
+	helloID := HelloChrome_70
+	serverName := "foobar"
+	originalConfig := getUTLSTestConfig()
+	originalConfig.ServerName = serverName
+
+	uconn := UClient(&net.TCPConn{}, originalConfig, helloID)
+	if err := uconn.BuildHandshakeState(); err != nil {
+		t.Errorf("got error: %v; expected to succeed", err)
+	}
+
+	generatedSpec, err := FingerprintClientHello(uconn.HandshakeState.Hello.Raw)
+	if err != nil {
+		t.Errorf("got error: %v; expected to succeed", err)
+	}
+
+	hello := &helloSpec{
+		name: fmt.Sprintf("%v-fingerprinted", helloID.Str()),
+		spec: generatedSpec,
+	}
+
+	newConfig := getUTLSTestConfig()
+	newConfig.ServerName = serverName
+
+	opensslCipherName := "TLS_AES_128_GCM_SHA256"
+	test := &clientTest{
+		name:   "UTLS-" + opensslCipherName + "-" + hello.helloName(),
+		args:   []string{"-ciphersuites", opensslCipherName},
+		config: newConfig,
+	}
+
+	runUTLSClientTestTLS13(t, test, hello)
+}
+
+func TestUTLSHandshakeClientFingerprintedSpecFromRaw(t *testing.T) {
+	// Handshake Protocol: Client Hello
+	//     Handshake Type: Client Hello (1)
+	//     Length: 508
+	//     Version: TLS 1.2 (0x0303)
+	//     Random: 7fd76fa530c24816ea9e4a6cf2e939f2350b9486a7bac58e…
+	//     Session ID Length: 32
+	//     Session ID: d9b01fc4f4b6fe14fe9ce652442d66588d982cb25913d866…
+	//     Cipher Suites Length: 36
+	//     Cipher Suites (18 suites)
+	//         Cipher Suite: TLS_AES_128_GCM_SHA256 (0x1301)
+	//         Cipher Suite: TLS_CHACHA20_POLY1305_SHA256 (0x1303)
+	//         Cipher Suite: TLS_AES_256_GCM_SHA384 (0x1302)
+	//         Cipher Suite: TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 (0xc02b)
+	//         Cipher Suite: TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 (0xc02f)
+	//         Cipher Suite: TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256 (0xcca9)
+	//         Cipher Suite: TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256 (0xcca8)
+	//         Cipher Suite: TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 (0xc02c)
+	//         Cipher Suite: TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 (0xc030)
+	//         Cipher Suite: TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA (0xc00a)
+	//         Cipher Suite: TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA (0xc009)
+	//         Cipher Suite: TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA (0xc013)
+	//         Cipher Suite: TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA (0xc014)
+	//         Cipher Suite: TLS_RSA_WITH_AES_128_GCM_SHA256 (0x009c)
+	//         Cipher Suite: TLS_RSA_WITH_AES_256_GCM_SHA384 (0x009d)
+	//         Cipher Suite: TLS_RSA_WITH_AES_128_CBC_SHA (0x002f)
+	//         Cipher Suite: TLS_RSA_WITH_AES_256_CBC_SHA (0x0035)
+	//         Cipher Suite: TLS_RSA_WITH_3DES_EDE_CBC_SHA (0x000a)
+	//     Compression Methods Length: 1
+	//     Compression Methods (1 method)
+	//     Extensions Length: 399
+	//     Extension: server_name (len=34)
+	//         Type: server_name (0)
+	//         Length: 34
+	//         Server Name Indication extension
+	//     Extension: extended_master_secret (len=0)
+	//         Type: extended_master_secret (23)
+	//         Length: 0
+	//     Extension: renegotiation_info (len=1)
+	//         Type: renegotiation_info (65281)
+	//         Length: 1
+	//         Renegotiation Info extension
+	//     Extension: supported_groups (len=14)
+	//         Type: supported_groups (10)
+	//         Length: 14
+	//         Supported Groups List Length: 12
+	//         Supported Groups (6 groups)
+	//     Extension: ec_point_formats (len=2)
+	//         Type: ec_point_formats (11)
+	//         Length: 2
+	//         EC point formats Length: 1
+	//         Elliptic curves point formats (1)
+	//     Extension: application_layer_protocol_negotiation (len=14)
+	//         Type: application_layer_protocol_negotiation (16)
+	//         Length: 14
+	//         ALPN Extension Length: 12
+	//         ALPN Protocol
+	//     Extension: status_request (len=5)
+	//         Type: status_request (5)
+	//         Length: 5
+	//         Certificate Status Type: OCSP (1)
+	//         Responder ID list Length: 0
+	//         Request Extensions Length: 0
+	//     Extension: key_share (len=107)
+	//         Type: key_share (51)
+	//         Length: 107
+	//         Key Share extension
+	//     Extension: supported_versions (len=5)
+	//         Type: supported_versions (43)
+	//         Length: 5
+	//         Supported Versions length: 4
+	//         Supported Version: TLS 1.3 (0x0304)
+	//         Supported Version: TLS 1.2 (0x0303)
+	//     Extension: signature_algorithms (len=24)
+	//         Type: signature_algorithms (13)
+	//         Length: 24
+	//         Signature Hash Algorithms Length: 22
+	//         Signature Hash Algorithms (11 algorithms)
+	//     Extension: record_size_limit (len=2)
+	//         Type: record_size_limit (28)
+	//         Length: 2
+	//         Record Size Limit: 16385
+	//     Extension: padding (len=143)
+	//         Type: padding (21)
+	//         Length: 143
+	//         Padding Data: 000000000000000000000000000000000000000000000000…
+	byteString := []byte("010001fc03037fd76fa530c24816ea9e4a6cf2e939f2350b9486a7bac58ece5753767fb6112420d9b01fc4f4b6fe14fe9ce652442d66588d982cb25913d866348bde54d3899abe0024130113031302c02bc02fcca9cca8c02cc030c00ac009c013c014009c009d002f0035000a0100018f00000022002000001d70656f706c652d70612e636c69656e7473362e676f6f676c652e636f6d00170000ff01000100000a000e000c001d00170018001901000101000b000201000010000e000c02683208687474702f312e310005000501000000000033006b0069001d002065e566ff33dfbeb012e3b13b87d75612bd0fbc3963673df90afed533dccc9b5400170041047fcc2666d04c31272a2e39905c771a89edf5a71dae301ec2fa0e7bc4d0e06580a0d36324e3dc4f29e200a8905badd11c00daf11588977bf501597dac5fdc55bf002b00050403040303000d0018001604030503060308040805080604010501060102030201001c000240010015008f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")
+	helloBytes := make([]byte, hex.DecodedLen(len(byteString)))
+	_, err := hex.Decode(helloBytes, byteString)
+	if err != nil {
+		t.Errorf("got error: %v; expected to succeed", err)
+		return
+	}
+
+	generatedSpec, err := FingerprintClientHello(helloBytes)
+	if err != nil {
+		t.Errorf("got error: %v; expected to succeed", err)
+	}
+
+	hello := &helloSpec{
+		name: "raw-capture-fingerprinted",
+		spec: generatedSpec,
+	}
+
+	config := getUTLSTestConfig()
+
+	opensslCipherName := "ECDHE-RSA-AES128-GCM-SHA256"
+	test := &clientTest{
+		name:   "UTLS-" + opensslCipherName + "-" + hello.helloName(),
+		args:   []string{"-cipher", opensslCipherName},
+		config: config,
+	}
+
+	runUTLSClientTestTLS12(t, test, hello)
 }
 
 // tests consistency of fingerprint after HelloRetryRequest
 // chrome 70 is used, due to only specifying X25519 in keyshare, but being able to generate P-256 curve too
 // openssl server, configured to use P-256, will send HelloRetryRequest
 func TestUTLSHelloRetryRequest(t *testing.T) {
-	helloID := HelloChrome_70
+	hello := &helloID{HelloChrome_70}
 	config := testConfig.Clone()
 	config.CurvePreferences = []CurveID{X25519, CurveP256}
 
 	test := &clientTest{
-		name:    "UTLS-HelloRetryRequest-" + helloID.Str(),
-		args: []string{"-cipher", "ECDHE-RSA-AES128-GCM-SHA256", "-curves", "P-256"},
-		config:  config,
+		name:   "UTLS-HelloRetryRequest-" + hello.helloName(),
+		args:   []string{"-cipher", "ECDHE-RSA-AES128-GCM-SHA256", "-curves", "P-256"},
+		config: config,
 	}
 
-	runUTLSClientTestTLS13(t, test, helloID)
+	runUTLSClientTestTLS13(t, test, hello)
 }
 
 func TestUTLSRemoveSNIExtension(t *testing.T) {
-	helloID := HelloChrome_70
+	hello := &helloID{HelloChrome_70}
 
 	config := getUTLSTestConfig()
 
 	opensslCipherName := "ECDHE-RSA-AES128-GCM-SHA256"
 	test := &clientTest{
-		name:   "UTLS-" + opensslCipherName + "-" + helloID.Str() + "-OmitSNI",
+		name:   "UTLS-" + opensslCipherName + "-" + hello.helloName() + "-OmitSNI",
 		args:   []string{"-cipher", opensslCipherName},
 		config: config,
 	}
 
-	runUTLSClientTestForVersion(t, test, "TLSv12-", "-tls1_2", helloID, true)
+	runUTLSClientTestForVersion(t, test, "TLSv12-", "-tls1_2", hello, true)
 }
 
 /*
@@ -194,192 +400,192 @@ func getUTLSTestConfig() *Config {
 	return testUTLSConfig
 }
 
-func testUTLSHandshakeClientECDHE_RSA_AES128_CBC_SHA(t *testing.T, helloID ClientHelloID) {
+func testUTLSHandshakeClientECDHE_RSA_AES128_CBC_SHA(t *testing.T, hello helloStrategy) {
 	config := getUTLSTestConfig()
 	opensslCipherName := "ECDHE-RSA-AES128-SHA"
 	test := &clientTest{
-		name:    "UTLS-" + opensslCipherName + "-" + helloID.Str(),
-		args: []string{"-cipher", opensslCipherName},
-		config:  config,
+		name:   "UTLS-" + opensslCipherName + "-" + hello.helloName(),
+		args:   []string{"-cipher", opensslCipherName},
+		config: config,
 	}
 
-	runUTLSClientTestTLS12(t, test, helloID)
+	runUTLSClientTestTLS12(t, test, hello)
 }
 
-func testUTLSHandshakeClientECDHE_RSA_AES256_CBC_SHA(t *testing.T, helloID ClientHelloID) {
+func testUTLSHandshakeClientECDHE_RSA_AES256_CBC_SHA(t *testing.T, hello helloStrategy) {
 	config := getUTLSTestConfig()
 	opensslCipherName := "ECDHE-RSA-AES256-SHA"
 	test := &clientTest{
-		name:    "UTLS-" + opensslCipherName + "-" + helloID.Str(),
-		args: []string{"-cipher", opensslCipherName},
-		config:  config,
+		name:   "UTLS-" + opensslCipherName + "-" + hello.helloName(),
+		args:   []string{"-cipher", opensslCipherName},
+		config: config,
 	}
 
-	runUTLSClientTestTLS12(t, test, helloID)
+	runUTLSClientTestTLS12(t, test, hello)
 }
 
-func testUTLSHandshakeClientECDHE_ECDSA_AES128_CBC_SHA(t *testing.T, helloID ClientHelloID) {
+func testUTLSHandshakeClientECDHE_ECDSA_AES128_CBC_SHA(t *testing.T, hello helloStrategy) {
 	config := getUTLSTestConfig()
 	opensslCipherName := "ECDHE-ECDSA-AES128-SHA"
 	test := &clientTest{
-		name:    "UTLS-" + opensslCipherName + "-" + helloID.Str(),
-		args: []string{"-cipher", opensslCipherName},
-		cert:    testECDSACertificate,
-		key:     testECDSAPrivateKey,
-		config:  config,
+		name:   "UTLS-" + opensslCipherName + "-" + hello.helloName(),
+		args:   []string{"-cipher", opensslCipherName},
+		cert:   testECDSACertificate,
+		key:    testECDSAPrivateKey,
+		config: config,
 	}
 
-	runUTLSClientTestTLS12(t, test, helloID)
+	runUTLSClientTestTLS12(t, test, hello)
 }
 
-func testUTLSHandshakeClientECDHE_ECDSA_AES256_CBC_SHA(t *testing.T, helloID ClientHelloID) {
+func testUTLSHandshakeClientECDHE_ECDSA_AES256_CBC_SHA(t *testing.T, hello helloStrategy) {
 	config := getUTLSTestConfig()
 	opensslCipherName := "ECDHE-ECDSA-AES256-SHA"
 	test := &clientTest{
-		name:    "UTLS-" + opensslCipherName + "-" + helloID.Str(),
-		args: []string{"-cipher", opensslCipherName},
-		cert:    testECDSACertificate,
-		key:     testECDSAPrivateKey,
-		config:  config,
+		name:   "UTLS-" + opensslCipherName + "-" + hello.helloName(),
+		args:   []string{"-cipher", opensslCipherName},
+		cert:   testECDSACertificate,
+		key:    testECDSAPrivateKey,
+		config: config,
 	}
 
-	runUTLSClientTestTLS12(t, test, helloID)
+	runUTLSClientTestTLS12(t, test, hello)
 }
 
-func testUTLSHandshakeClientRSA_AES128_GCM_SHA256(t *testing.T, helloID ClientHelloID) {
+func testUTLSHandshakeClientRSA_AES128_GCM_SHA256(t *testing.T, hello helloStrategy) {
 	config := getUTLSTestConfig()
 	opensslCipherName := "AES128-GCM-SHA256"
 	test := &clientTest{
-		name:    "UTLS-" + opensslCipherName + "-" + helloID.Str(),
-		args: []string{"-cipher", opensslCipherName},
-		config:  config,
+		name:   "UTLS-" + opensslCipherName + "-" + hello.helloName(),
+		args:   []string{"-cipher", opensslCipherName},
+		config: config,
 	}
 
-	runUTLSClientTestTLS12(t, test, helloID)
+	runUTLSClientTestTLS12(t, test, hello)
 }
 
-func testUTLSHandshakeClientECDHE_ECDSA_AES128_GCM_SHA256(t *testing.T, helloID ClientHelloID) {
+func testUTLSHandshakeClientECDHE_ECDSA_AES128_GCM_SHA256(t *testing.T, hello helloStrategy) {
 	config := getUTLSTestConfig()
 
 	opensslCipherName := "ECDHE-ECDSA-AES128-GCM-SHA256"
 	test := &clientTest{
-		name:    "UTLS-" + opensslCipherName + "-" + helloID.Str(),
-		args: []string{"-cipher", opensslCipherName},
-		cert:    testECDSACertificate,
-		key:     testECDSAPrivateKey,
-		config:  config,
+		name:   "UTLS-" + opensslCipherName + "-" + hello.helloName(),
+		args:   []string{"-cipher", opensslCipherName},
+		cert:   testECDSACertificate,
+		key:    testECDSAPrivateKey,
+		config: config,
 	}
 
-	runUTLSClientTestTLS12(t, test, helloID)
+	runUTLSClientTestTLS12(t, test, hello)
 }
 
-func testUTLSHandshakeClientECDHE_RSA_AES128_GCM_SHA256(t *testing.T, helloID ClientHelloID) {
+func testUTLSHandshakeClientECDHE_RSA_AES128_GCM_SHA256(t *testing.T, hello helloStrategy) {
 	config := getUTLSTestConfig()
 
 	opensslCipherName := "ECDHE-RSA-AES128-GCM-SHA256"
 	test := &clientTest{
-		name:    "UTLS-" + opensslCipherName + "-" + helloID.Str(),
-		args: []string{"-cipher", opensslCipherName},
-		config:  config,
+		name:   "UTLS-" + opensslCipherName + "-" + hello.helloName(),
+		args:   []string{"-cipher", opensslCipherName},
+		config: config,
 	}
 
-	runUTLSClientTestTLS12(t, test, helloID)
+	runUTLSClientTestTLS12(t, test, hello)
 }
 
-func testUTLSHandshakeClientECDHE_ECDSA_AES256_GCM_SHA256(t *testing.T, helloID ClientHelloID) {
+func testUTLSHandshakeClientECDHE_ECDSA_AES256_GCM_SHA256(t *testing.T, hello helloStrategy) {
 	config := getUTLSTestConfig()
 	opensslCipherName := "ECDHE-ECDSA-AES256-GCM-SHA256"
 	test := &clientTest{
-		name:    "UTLS-" + opensslCipherName + "-" + helloID.Str(),
-		args: []string{"-cipher", opensslCipherName},
-		cert:    testECDSACertificate,
-		key:     testECDSAPrivateKey,
-		config:  config,
+		name:   "UTLS-" + opensslCipherName + "-" + hello.helloName(),
+		args:   []string{"-cipher", opensslCipherName},
+		cert:   testECDSACertificate,
+		key:    testECDSAPrivateKey,
+		config: config,
 	}
 
-	runUTLSClientTestTLS12(t, test, helloID)
+	runUTLSClientTestTLS12(t, test, hello)
 }
 
-func testUTLSHandshakeClientECDHE_RSA_AES256_GCM_SHA256(t *testing.T, helloID ClientHelloID) {
+func testUTLSHandshakeClientECDHE_RSA_AES256_GCM_SHA256(t *testing.T, hello helloStrategy) {
 	config := getUTLSTestConfig()
 	opensslCipherName := "ECDHE-RSA-AES128-GCM-SHA256"
 	test := &clientTest{
-		name:    "UTLS-" + opensslCipherName + "-" + helloID.Str(),
-		args: []string{"-cipher", opensslCipherName},
-		config:  config,
+		name:   "UTLS-" + opensslCipherName + "-" + hello.helloName(),
+		args:   []string{"-cipher", opensslCipherName},
+		config: config,
 	}
 
-	runUTLSClientTestTLS12(t, test, helloID)
+	runUTLSClientTestTLS12(t, test, hello)
 }
 
-func testUTLSHandshakeClientTLS13_AES_128_GCM_SHA256(t *testing.T, helloID ClientHelloID) {
+func testUTLSHandshakeClientTLS13_AES_128_GCM_SHA256(t *testing.T, hello helloStrategy) {
 	config := getUTLSTestConfig()
 
 	opensslCipherName := "TLS_AES_128_GCM_SHA256"
 	test := &clientTest{
-		name:    "UTLS-" + opensslCipherName + "-" + helloID.Str(),
-		args: []string{"-ciphersuites", opensslCipherName},
-		config:  config,
+		name:   "UTLS-" + opensslCipherName + "-" + hello.helloName(),
+		args:   []string{"-ciphersuites", opensslCipherName},
+		config: config,
 	}
 
-	runUTLSClientTestTLS13(t, test, helloID)
+	runUTLSClientTestTLS13(t, test, hello)
 }
 
-func testUTLSHandshakeClientTLS13_AES_256_GCM_SHA384(t *testing.T, helloID ClientHelloID) {
+func testUTLSHandshakeClientTLS13_AES_256_GCM_SHA384(t *testing.T, hello helloStrategy) {
 	config := getUTLSTestConfig()
 
 	opensslCipherName := "TLS_AES_256_GCM_SHA384"
 	test := &clientTest{
-		name:    "UTLS-" + opensslCipherName + "-" + helloID.Str(),
-		args: []string{"-ciphersuites", opensslCipherName},
-		config:  config,
+		name:   "UTLS-" + opensslCipherName + "-" + hello.helloName(),
+		args:   []string{"-ciphersuites", opensslCipherName},
+		config: config,
 	}
 
-	runUTLSClientTestTLS13(t, test, helloID)
+	runUTLSClientTestTLS13(t, test, hello)
 }
 
-func testUTLSHandshakeClientTLS13_CHACHA20_POLY1305_SHA256(t *testing.T, helloID ClientHelloID) {
+func testUTLSHandshakeClientTLS13_CHACHA20_POLY1305_SHA256(t *testing.T, hello helloStrategy) {
 	config := getUTLSTestConfig()
 
 	opensslCipherName := "TLS_CHACHA20_POLY1305_SHA256"
 	test := &clientTest{
-		name:    "UTLS-" + opensslCipherName + "-" + helloID.Str(),
-		args: []string{"-ciphersuites", opensslCipherName},
-		config:  config,
+		name:   "UTLS-" + opensslCipherName + "-" + hello.helloName(),
+		args:   []string{"-ciphersuites", opensslCipherName},
+		config: config,
 	}
 
-	runUTLSClientTestTLS13(t, test, helloID)
+	runUTLSClientTestTLS13(t, test, hello)
 }
 
-func testUTLSHandshakeClientECDHE_RSA_WITH_CHACHA20_POLY1305(t *testing.T, helloID ClientHelloID) {
+func testUTLSHandshakeClientECDHE_RSA_WITH_CHACHA20_POLY1305(t *testing.T, hello helloStrategy) {
 	config := getUTLSTestConfig()
 	config.CipherSuites = []uint16{TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305}
 	opensslCipherName := "ECDHE-RSA-CHACHA20-POLY1305"
 	test := &clientTest{
-		name:    "UTLS-" + opensslCipherName + "-" + helloID.Str(),
-		args: []string{"-cipher", opensslCipherName},
-		config:  config,
+		name:   "UTLS-" + opensslCipherName + "-" + hello.helloName(),
+		args:   []string{"-cipher", opensslCipherName},
+		config: config,
 	}
 
-	runUTLSClientTestTLS12(t, test, helloID)
+	runUTLSClientTestTLS12(t, test, hello)
 }
 
-func testUTLSHandshakeClientECDHE_ECDSA_WITH_CHACHA20_POLY1305(t *testing.T, helloID ClientHelloID) {
+func testUTLSHandshakeClientECDHE_ECDSA_WITH_CHACHA20_POLY1305(t *testing.T, hello helloStrategy) {
 	config := getUTLSTestConfig()
 	config.CipherSuites = []uint16{TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305}
 	opensslCipherName := "ECDHE-ECDSA-CHACHA20-POLY1305"
 	test := &clientTest{
-		name:    "UTLS-" + opensslCipherName + "-" + helloID.Str(),
-		args: []string{"-cipher", opensslCipherName},
-		config:  config,
-		cert:    testECDSACertificate,
-		key:     testECDSAPrivateKey,
+		name:   "UTLS-" + opensslCipherName + "-" + hello.helloName(),
+		args:   []string{"-cipher", opensslCipherName},
+		config: config,
+		cert:   testECDSACertificate,
+		key:    testECDSAPrivateKey,
 	}
 
-	runUTLSClientTestTLS12(t, test, helloID)
+	runUTLSClientTestTLS12(t, test, hello)
 }
 
-func runUTLSClientTestForVersion(t *testing.T, template *clientTest, prefix, option string, helloID ClientHelloID, omitSNI bool) {
+func runUTLSClientTestForVersion(t *testing.T, template *clientTest, prefix, option string, hello helloStrategy, omitSNI bool) {
 	test := *template
 	test.name = prefix + test.name
 	if len(test.args) == 0 {
@@ -387,18 +593,18 @@ func runUTLSClientTestForVersion(t *testing.T, template *clientTest, prefix, opt
 	}
 	test.args = append([]string(nil), test.args...)
 	test.args = append(test.args, option)
-	test.runUTLS(t, *update, helloID, false)
+	test.runUTLS(t, *update, hello, false)
 }
 
-func runUTLSClientTestTLS12(t *testing.T, template *clientTest, helloID ClientHelloID) {
-	runUTLSClientTestForVersion(t, template, "TLSv12-", "-tls1_2", helloID, false)
+func runUTLSClientTestTLS12(t *testing.T, template *clientTest, hello helloStrategy) {
+	runUTLSClientTestForVersion(t, template, "TLSv12-", "-tls1_2", hello, false)
 }
 
-func runUTLSClientTestTLS13(t *testing.T, template *clientTest, helloID ClientHelloID) {
-	runUTLSClientTestForVersion(t, template, "TLSv13-", "-tls1_3", helloID, false)
+func runUTLSClientTestTLS13(t *testing.T, template *clientTest, hello helloStrategy) {
+	runUTLSClientTestForVersion(t, template, "TLSv13-", "-tls1_3", hello, false)
 }
 
-func (test *clientTest) runUTLS(t *testing.T, write bool, helloID ClientHelloID, omitSNIExtension bool) {
+func (test *clientTest) runUTLS(t *testing.T, write bool, hello helloStrategy, omitSNIExtension bool) {
 	checkOpenSSLVersion(t)
 
 	var clientConn, serverConn net.Conn
@@ -423,7 +629,20 @@ func (test *clientTest) runUTLS(t *testing.T, write bool, helloID ClientHelloID,
 		t.Error("Explicit config is mandatory")
 		return
 	}
-	client := UClient(clientConn, config, helloID)
+
+	var client *UConn
+	switch h := hello.(type) {
+	case *helloID:
+		client = UClient(clientConn, config, h.id)
+	case *helloSpec:
+		client = UClient(clientConn, config, HelloCustom)
+		if err := client.ApplyPreset(h.spec); err != nil {
+			t.Errorf("got error: %v; expected to succeed", err)
+			return
+		}
+	default:
+		panic("unknown helloStrategy")
+	}
 
 	if omitSNIExtension {
 		if err := client.RemoveSNIExtension(); err != nil {
