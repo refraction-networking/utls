@@ -387,7 +387,7 @@ func runUTLSClientTestForVersion(t *testing.T, template *clientTest, prefix, opt
 	}
 	test.args = append([]string(nil), test.args...)
 	test.args = append(test.args, option)
-	test.runUTLS(t, *update, helloID, false)
+	test.runUTLS(t, *update, helloID, omitSNI)
 }
 
 func runUTLSClientTestTLS12(t *testing.T, template *clientTest, helloID ClientHelloID) {
