@@ -156,7 +156,16 @@ func checkUTLSExtensionsEquality(t *testing.T, expected, actual TLSExtension) {
 			return
 		}
 	}
+}
 
+func prependRecordHeader(hello []byte) []byte {
+	l := len(hello)
+	header := []byte{
+		uint8(recordTypeHandshake), // type
+		0x03, 0x03,                 // record version doesn't really matter
+		uint8(l >> 4 & 0xf), uint8(l & 0xf), // length
+	}
+	return append(header, hello...)
 }
 
 func checkUTLSFingerPrintClientHello(t *testing.T, clientHelloID ClientHelloID, serverName string) {
@@ -167,7 +176,7 @@ func checkUTLSFingerPrintClientHello(t *testing.T, clientHelloID ClientHelloID, 
 
 	generatedUConn := UClient(&net.TCPConn{}, &Config{ServerName: "foobar"}, HelloCustom)
 	fingerprinter := &Fingerprinter{}
-	generatedSpec, err := fingerprinter.FingerprintClientHello(uconn.HandshakeState.Hello.Raw)
+	generatedSpec, err := fingerprinter.FingerprintClientHello(prependRecordHeader(uconn.HandshakeState.Hello.Raw))
 	if err != nil {
 		t.Errorf("got error: %v; expected to succeed", err)
 	}
@@ -241,13 +250,13 @@ func TestUTLSFingerprintClientHelloBluntMimicry(t *testing.T) {
 	}
 
 	f := &Fingerprinter{}
-	_, err = f.FingerprintClientHello(uconn.HandshakeState.Hello.Raw)
+	_, err = f.FingerprintClientHello(prependRecordHeader(uconn.HandshakeState.Hello.Raw))
 	if err == nil {
 		t.Errorf("expected error generating spec from client hello with GenericExtension")
 	}
 
 	f = &Fingerprinter{AllowBluntMimicry: true}
-	generatedSpec, err := f.FingerprintClientHello(uconn.HandshakeState.Hello.Raw)
+	generatedSpec, err := f.FingerprintClientHello(prependRecordHeader(uconn.HandshakeState.Hello.Raw))
 	if err != nil {
 		t.Errorf("got error: %v; expected to succeed", err)
 	}
@@ -263,6 +272,10 @@ func TestUTLSFingerprintClientHelloBluntMimicry(t *testing.T) {
 }
 
 func TestUTLSFingerprintClientHelloKeepPSK(t *testing.T) {
+	// TLSv1.3 Record Layer: Handshake Protocol: Client Hello
+	//     Content Type: Handshake (22)
+	//     Version: TLS 1.0 (0x0301)
+	//     Length: 576
 	// Handshake Protocol: Client Hello
 	// 		Handshake Type: Client Hello (1)
 	// 		Length: 572
@@ -377,7 +390,7 @@ func TestUTLSFingerprintClientHelloKeepPSK(t *testing.T) {
 	// 				Length: 267
 	// 				Pre-Shared Key extension
 
-	byteString := []byte("0100023c03035cef5aa9122008e37f0f74d717cd4ae0f745daba4292e6fbca3cd5bf9123498f208c4aa23444084eeb70097efe0b8f6e3a56c717abd67505c950aab314de59bd8f00204a4a130113021303c02bc02fc02cc030cca9cca8c013c014009c009d002f0035010001d33a3a0000000000160014000011656467656170692e736c61636b2e636f6d00170000ff01000100000a000a0008dada001d00170018000b00020100002300000010000e000c02683208687474702f312e31000500050100000000000d0012001004030804040105030805050108060601001200000033002b0029dada000100001d0020e35e636d4e2dcd5f39309170285dab92dbe81fefe4926826cec1ef881321687e002d00020101002b000b0a2a2a0304030303020301001b00030200024a4a0001000029010b00e600e017fab59672c1966ae78fc4dacd7efb42e735de956e3f96d342bb8e63a5233ce21c92d6d75036601d74ccbc3ca0085f3ac2ebbd83da13501ac3c6d612bcb453fb206a39a8112d768bea1976d7c14e6de9aa0ee70ea732554d3c57d1a993f1044a46c1fb371811039ef30582cacf41bd497121d67793b8ee4df7a60d525f7df052fd66cda7f141bb553d9253816752d923ac7c71426179db4f26a7d42f0d65a2dd2dbaafb86fa17b2da23fd57c5064c76551cfda86304051231e4da9e697fedbcb5ae8cb2f6cb92f71164acf2edff5bccc1266cd648a53cc46262eabf40727bcb6958a3d1300212083e99d791672d39919dcb387f2fa7aeee938ec32ecf4b861306f7df4f9a8a746")
+	byteString := []byte("16030102400100023c03035cef5aa9122008e37f0f74d717cd4ae0f745daba4292e6fbca3cd5bf9123498f208c4aa23444084eeb70097efe0b8f6e3a56c717abd67505c950aab314de59bd8f00204a4a130113021303c02bc02fc02cc030cca9cca8c013c014009c009d002f0035010001d33a3a0000000000160014000011656467656170692e736c61636b2e636f6d00170000ff01000100000a000a0008dada001d00170018000b00020100002300000010000e000c02683208687474702f312e31000500050100000000000d0012001004030804040105030805050108060601001200000033002b0029dada000100001d0020e35e636d4e2dcd5f39309170285dab92dbe81fefe4926826cec1ef881321687e002d00020101002b000b0a2a2a0304030303020301001b00030200024a4a0001000029010b00e600e017fab59672c1966ae78fc4dacd7efb42e735de956e3f96d342bb8e63a5233ce21c92d6d75036601d74ccbc3ca0085f3ac2ebbd83da13501ac3c6d612bcb453fb206a39a8112d768bea1976d7c14e6de9aa0ee70ea732554d3c57d1a993f1044a46c1fb371811039ef30582cacf41bd497121d67793b8ee4df7a60d525f7df052fd66cda7f141bb553d9253816752d923ac7c71426179db4f26a7d42f0d65a2dd2dbaafb86fa17b2da23fd57c5064c76551cfda86304051231e4da9e697fedbcb5ae8cb2f6cb92f71164acf2edff5bccc1266cd648a53cc46262eabf40727bcb6958a3d1300212083e99d791672d39919dcb387f2fa7aeee938ec32ecf4b861306f7df4f9a8a746")
 
 	helloBytes := make([]byte, hex.DecodedLen(len(byteString)))
 	_, err := hex.Decode(helloBytes, byteString)
@@ -420,7 +433,7 @@ func TestUTLSHandshakeClientFingerprintedSpecFromChrome_58(t *testing.T) {
 	}
 
 	f := &Fingerprinter{}
-	generatedSpec, err := f.FingerprintClientHello(uconn.HandshakeState.Hello.Raw)
+	generatedSpec, err := f.FingerprintClientHello(prependRecordHeader(uconn.HandshakeState.Hello.Raw))
 	if err != nil {
 		t.Errorf("got error: %v; expected to succeed", err)
 	}
@@ -455,7 +468,7 @@ func TestUTLSHandshakeClientFingerprintedSpecFromChrome_70(t *testing.T) {
 	}
 
 	f := &Fingerprinter{}
-	generatedSpec, err := f.FingerprintClientHello(uconn.HandshakeState.Hello.Raw)
+	generatedSpec, err := f.FingerprintClientHello(prependRecordHeader(uconn.HandshakeState.Hello.Raw))
 	if err != nil {
 		t.Errorf("got error: %v; expected to succeed", err)
 	}
@@ -479,6 +492,10 @@ func TestUTLSHandshakeClientFingerprintedSpecFromChrome_70(t *testing.T) {
 }
 
 func TestUTLSHandshakeClientFingerprintedSpecFromRaw(t *testing.T) {
+	// TLSv1.3 Record Layer: Handshake Protocol: Client Hello
+	//     Content Type: Handshake (22)
+	//     Version: TLS 1.0 (0x0301)
+	//     Length: 512
 	// Handshake Protocol: Client Hello
 	//     Handshake Type: Client Hello (1)
 	//     Length: 508
@@ -564,7 +581,7 @@ func TestUTLSHandshakeClientFingerprintedSpecFromRaw(t *testing.T) {
 	//         Type: padding (21)
 	//         Length: 143
 	//         Padding Data: 000000000000000000000000000000000000000000000000…
-	byteString := []byte("010001fc03037fd76fa530c24816ea9e4a6cf2e939f2350b9486a7bac58ece5753767fb6112420d9b01fc4f4b6fe14fe9ce652442d66588d982cb25913d866348bde54d3899abe0024130113031302c02bc02fcca9cca8c02cc030c00ac009c013c014009c009d002f0035000a0100018f00000022002000001d70656f706c652d70612e636c69656e7473362e676f6f676c652e636f6d00170000ff01000100000a000e000c001d00170018001901000101000b000201000010000e000c02683208687474702f312e310005000501000000000033006b0069001d002065e566ff33dfbeb012e3b13b87d75612bd0fbc3963673df90afed533dccc9b5400170041047fcc2666d04c31272a2e39905c771a89edf5a71dae301ec2fa0e7bc4d0e06580a0d36324e3dc4f29e200a8905badd11c00daf11588977bf501597dac5fdc55bf002b00050403040303000d0018001604030503060308040805080604010501060102030201001c000240010015008f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")
+	byteString := []byte("1603010200010001fc03037fd76fa530c24816ea9e4a6cf2e939f2350b9486a7bac58ece5753767fb6112420d9b01fc4f4b6fe14fe9ce652442d66588d982cb25913d866348bde54d3899abe0024130113031302c02bc02fcca9cca8c02cc030c00ac009c013c014009c009d002f0035000a0100018f00000022002000001d70656f706c652d70612e636c69656e7473362e676f6f676c652e636f6d00170000ff01000100000a000e000c001d00170018001901000101000b000201000010000e000c02683208687474702f312e310005000501000000000033006b0069001d002065e566ff33dfbeb012e3b13b87d75612bd0fbc3963673df90afed533dccc9b5400170041047fcc2666d04c31272a2e39905c771a89edf5a71dae301ec2fa0e7bc4d0e06580a0d36324e3dc4f29e200a8905badd11c00daf11588977bf501597dac5fdc55bf002b00050403040303000d0018001604030503060308040805080604010501060102030201001c000240010015008f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")
 	helloBytes := make([]byte, hex.DecodedLen(len(byteString)))
 	_, err := hex.Decode(helloBytes, byteString)
 	if err != nil {

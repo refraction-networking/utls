@@ -30,19 +30,36 @@ type Fingerprinter struct {
 // If the ClientHello passed in has extensions that are not recognized or cannot be handled
 // it will return a non-nil error and a nil *ClientHelloSpec value
 //
-// The data should be the ClientHello record as produced by crypto/tls.clientHelloMsg.marshal()
-// ie. it should not contain the full tls record, just the handshake message as outlined in
+// The data should be the full tls record, including the record type/version/length header
+// as well as the handshake type/length/version header
+// https://tools.ietf.org/html/rfc5246#section-6.2
 // https://tools.ietf.org/html/rfc5246#section-7.4
 func (f *Fingerprinter) FingerprintClientHello(data []byte) (*ClientHelloSpec, error) {
 	clientHelloSpec := &ClientHelloSpec{}
-
-	var vers uint16
-
 	s := cryptobyte.String(data)
-	if !s.Skip(4) || // message type and uint24 length field
-		!s.ReadUint16(&vers) || !s.Skip(32) { // 32 byte random
-		return nil, errors.New("unable to read message type, length, and random")
+
+	var contentType uint8
+	if !s.ReadUint8(&contentType) || // record type
+		!s.Skip(2) || !s.Skip(2) { // record version and length
+		return nil, errors.New("unable to read record type, version, and length")
 	}
+
+	if recordType(contentType) != recordTypeHandshake {
+		return nil, errors.New("record is not a handshake")
+	}
+
+	var handshakeVersion uint16
+	var handshakeType uint8
+
+	if !s.ReadUint8(&handshakeType) || !s.Skip(3) || // message type and 3 byte length
+		!s.ReadUint16(&handshakeVersion) || !s.Skip(32) { // 32 byte random
+		return nil, errors.New("unable to read handshake message type, length, and random")
+	}
+
+	if handshakeType != typeClientHello {
+		return nil, errors.New("handshake message is not a ClientHello")
+	}
+
 	var ignoredSessionID cryptobyte.String
 	if !s.ReadUint8LengthPrefixed(&ignoredSessionID) {
 		return nil, errors.New("unable to read session id")
