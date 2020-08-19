@@ -22,6 +22,7 @@ func TestUTLSIsGrease(t *testing.T) {
 		{0x1a2a, false},
 		{0xdeed, false},
 		{0xb1b1, false},
+		{0x0b0b, false},
 	}
 
 	for _, testCase := range testMap {

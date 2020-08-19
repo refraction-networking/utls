@@ -163,8 +163,8 @@ const GREASE_PLACEHOLDER = 0x0a0a
 
 func isGREASEUint16(v uint16) bool {
 	// First byte is same as second byte
-	// and has same bits set as 0x0a0a
-	return ((v >> 8) == v&0xff) && v&0x0a0a == 0x0a0a
+	// and lowest nibble is 0xa
+	return ((v >> 8) == v&0xff) && v&0xf == 0xa
 }
 
 func unGREASEUint16(v uint16) uint16 {
