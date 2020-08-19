@@ -175,7 +175,8 @@ func TestUTLSHandshakeClientFingerprintedSpecFromChrome_58(t *testing.T) {
 		t.Errorf("got error: %v; expected to succeed", err)
 	}
 
-	generatedSpec, err := FingerprintClientHello(uconn.HandshakeState.Hello.Raw)
+	f := &Fingerprinter{}
+	generatedSpec, err := f.FingerprintClientHello(uconn.HandshakeState.Hello.Raw)
 	if err != nil {
 		t.Errorf("got error: %v; expected to succeed", err)
 	}
@@ -209,7 +210,8 @@ func TestUTLSHandshakeClientFingerprintedSpecFromChrome_70(t *testing.T) {
 		t.Errorf("got error: %v; expected to succeed", err)
 	}
 
-	generatedSpec, err := FingerprintClientHello(uconn.HandshakeState.Hello.Raw)
+	f := &Fingerprinter{}
+	generatedSpec, err := f.FingerprintClientHello(uconn.HandshakeState.Hello.Raw)
 	if err != nil {
 		t.Errorf("got error: %v; expected to succeed", err)
 	}
@@ -326,7 +328,8 @@ func TestUTLSHandshakeClientFingerprintedSpecFromRaw(t *testing.T) {
 		return
 	}
 
-	generatedSpec, err := FingerprintClientHello(helloBytes)
+	f := &Fingerprinter{}
+	generatedSpec, err := f.FingerprintClientHello(helloBytes)
 	if err != nil {
 		t.Errorf("got error: %v; expected to succeed", err)
 	}
