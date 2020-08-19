@@ -14,19 +14,24 @@ import (
 
 // Fingerprinter is a struct largely for holding options for the FingerprintClientHello func
 type Fingerprinter struct {
-	// KeepPSK will ensure that PSK extensions are passed along into the resulting ClientHelloSpec
+	// KeepPSK will ensure that PSK extensions are passed along into the resulting ClientHelloSpec as-is
 	KeepPSK bool
-	// AllowBluntMimicry will ensure that unknown extensions are passed along into the resulting ClientHelloSpec
-	// WARNING: there could be numerous subtle issues with ClientHelloSpecs that are generated with this flag
+	// AllowBluntMimicry will ensure that unknown extensions are
+	// passed along into the resulting ClientHelloSpec as-is
+	// WARNING: there could be numerous subtle issues with ClientHelloSpecs
+	// that are generated with this flag which could compromise security and/or mimicry
 	AllowBluntMimicry bool
 }
 
-// FingerprintClientHello returns a ClientHelloSpec which is based on the ClientHello that is passed in as the data argument
+// FingerprintClientHello returns a ClientHelloSpec which is based on the
+// ClientHello that is passed in as the data argument
 //
-// If the ClientHello passed in has extensions that are not recognized or cannot be handled, it will return a non-nil error and a nil *ClientHelloSpec value
+// If the ClientHello passed in has extensions that are not recognized or cannot be handled
+// it will return a non-nil error and a nil *ClientHelloSpec value
 //
 // The data should be the ClientHello record as produced by crypto/tls.clientHelloMsg.marshal()
-// ie. it should not contain the full tls record, just the handshake message as outlined in https://tools.ietf.org/html/rfc5246#section-7.4
+// ie. it should not contain the full tls record, just the handshake message as outlined in
+// https://tools.ietf.org/html/rfc5246#section-7.4
 func (f *Fingerprinter) FingerprintClientHello(data []byte) (*ClientHelloSpec, error) {
 	clientHelloSpec := &ClientHelloSpec{}
 
