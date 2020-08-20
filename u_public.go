@@ -421,6 +421,16 @@ func (chm *clientHelloMsg) getPublicPtr() *ClientHelloMsg {
 	}
 }
 
+// UnmarshalClientHello allows external code to parse raw client hellos.
+// It returns nil on failure.
+func UnmarshalClientHello(data []byte) *ClientHelloMsg {
+	m := &clientHelloMsg{}
+	if m.unmarshal(data) {
+		return m.getPublicPtr()
+	}
+	return nil
+}
+
 // A CipherSuite is a specific combination of key agreement, cipher and MAC
 // function. All cipher suites currently assume RSA key agreement.
 type CipherSuite struct {
