@@ -182,10 +182,6 @@ func DecryptTicketWith(encrypted []byte, config *Config) (plaintext []byte, used
 		return nil, false
 	}
 
-	if len(encrypted) < ticketKeyNameLen+aes.BlockSize+sha256.Size {
-		return nil, false
-	}
-
 	keyName := encrypted[:ticketKeyNameLen]
 	iv := encrypted[ticketKeyNameLen : ticketKeyNameLen+aes.BlockSize]
 	macBytes := encrypted[len(encrypted)-sha256.Size:]
