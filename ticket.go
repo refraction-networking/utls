@@ -177,6 +177,12 @@ func (c *Conn) decryptTicket(encrypted []byte) (plaintext []byte, usedOldKey boo
 	return DecryptTicketWith(encrypted, tks)
 }
 
+// DecryptTicketWith decrypts an encrypted session ticket
+// using a TicketKeys (ie []TicketKey) struct
+//
+// usedOldKey will be true if the key used for decryption is
+// not the first in the []TicketKey slice
+//
 // [UTLS] changed to be made public and take a TicketKeys instead of use a Conn receiver
 func DecryptTicketWith(encrypted []byte, tks TicketKeys) (plaintext []byte, usedOldKey bool) {
 	if len(encrypted) < ticketKeyNameLen+aes.BlockSize+sha256.Size {
