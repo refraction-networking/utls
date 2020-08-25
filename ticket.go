@@ -173,11 +173,12 @@ func (c *Conn) encryptTicket(state []byte) ([]byte, error) {
 
 // [UTLS] changed to use exported DecryptTicketWith func below
 func (c *Conn) decryptTicket(encrypted []byte) (plaintext []byte, usedOldKey bool) {
-	return DecryptTicketWith(encrypted, c.config)
+	tks := ticketKeys(c.config.ticketKeys()).ToPublic()
+	return DecryptTicketWith(encrypted, tks)
 }
 
-// [UTLS] changed to be made public and take a Config struct instead of use a Conn receiver
-func DecryptTicketWith(encrypted []byte, config *Config) (plaintext []byte, usedOldKey bool) {
+// [UTLS] changed to be made public and take a TicketKeys instead of use a Conn receiver
+func DecryptTicketWith(encrypted []byte, tks TicketKeys) (plaintext []byte, usedOldKey bool) {
 	if len(encrypted) < ticketKeyNameLen+aes.BlockSize+sha256.Size {
 		return nil, false
 	}
@@ -187,7 +188,9 @@ func DecryptTicketWith(encrypted []byte, config *Config) (plaintext []byte, used
 	macBytes := encrypted[len(encrypted)-sha256.Size:]
 	ciphertext := encrypted[ticketKeyNameLen+aes.BlockSize : len(encrypted)-sha256.Size]
 
-	keys := config.ticketKeys()
+	// keys := c.config.ticketKeys() // [UTLS] keys are received as a function argument
+
+	keys := tks.toPrivate()
 	keyIndex := -1
 	for i, candidateKey := range keys {
 		if bytes.Equal(keyName, candidateKey.keyName[:]) {
