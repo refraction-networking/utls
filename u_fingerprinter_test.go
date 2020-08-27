@@ -132,7 +132,8 @@ func checkUTLSExtensionsEquality(t *testing.T, expected, actual TLSExtension) {
 			actualExtension := expected.(*KeyShareExtension)
 			for i, expectedKeyShare := range expectedExtension.KeyShares {
 				actualKeyShare := actualExtension.KeyShares[i]
-				if bytes.Equal(actualKeyShare.Data, expectedKeyShare.Data) {
+				// KeyShare data is unique per connection
+				if actualKeyShare.Group == expectedKeyShare.Group {
 					continue
 				}
 				if isGREASEUint16(uint16(expectedKeyShare.Group)) && isGREASEUint16(uint16(actualKeyShare.Group)) {
@@ -602,12 +603,12 @@ func TestUTLSHandshakeClientFingerprintedSpecFromRaw(t *testing.T) {
 
 	config := getUTLSTestConfig()
 
-	opensslCipherName := "ECDHE-RSA-AES128-GCM-SHA256"
+	opensslCipherName := "TLS_AES_128_GCM_SHA256"
 	test := &clientTest{
 		name:   "UTLS-" + opensslCipherName + "-" + hello.helloName(),
-		args:   []string{"-cipher", opensslCipherName},
+		args:   []string{"-ciphersuites", opensslCipherName},
 		config: config,
 	}
 
-	runUTLSClientTestTLS12(t, test, hello)
+	runUTLSClientTestTLS13(t, test, hello)
 }

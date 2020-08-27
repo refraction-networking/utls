@@ -262,6 +262,11 @@ func (f *Fingerprinter) FingerprintClientHello(data []byte) (*ClientHelloSpec, e
 					return nil, errors.New("unable to read key share extension data")
 				}
 				ks.Group = CurveID(unGREASEUint16(group))
+				// if not GREASE, key share data will be discarded
+				// as it should be generated per connection
+				if ks.Group != GREASE_PLACEHOLDER {
+					ks.Data = nil
+				}
 				keyShares = append(keyShares, ks)
 			}
 			clientHelloSpec.Extensions = append(clientHelloSpec.Extensions, &KeyShareExtension{keyShares})
