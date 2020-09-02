@@ -633,15 +633,15 @@ func TicketKeyFromBytes(b [32]byte) TicketKey {
 func (tk ticketKey) ToPublic() TicketKey {
 	return TicketKey{
 		KeyName: tk.keyName,
-		AesKey: tk.aesKey,
+		AesKey:  tk.aesKey,
 		HmacKey: tk.hmacKey,
 	}
 }
 
-func (TK TicketKey) toPrivate() ticketKey {
+func (TK TicketKey) ToPrivate() ticketKey {
 	return ticketKey{
 		keyName: TK.KeyName,
-		aesKey: TK.AesKey,
+		aesKey:  TK.AesKey,
 		hmacKey: TK.HmacKey,
 	}
 }
@@ -654,10 +654,10 @@ func (tks ticketKeys) ToPublic() []TicketKey {
 	return TKS
 }
 
-func (TKS TicketKeys) toPrivate() []ticketKey {
+func (TKS TicketKeys) ToPrivate() []ticketKey {
 	var tks []ticketKey
 	for _, TK := range TKS {
-		tks = append(tks, TK.toPrivate())
+		tks = append(tks, TK.ToPrivate())
 	}
 	return tks
 }

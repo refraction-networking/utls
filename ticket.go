@@ -171,7 +171,7 @@ func (c *Conn) encryptTicket(state []byte) ([]byte, error) {
 	return encrypted, nil
 }
 
-// [UTLS] changed to use exported DecryptTicketWith func below
+// [uTLS] changed to use exported DecryptTicketWith func below
 func (c *Conn) decryptTicket(encrypted []byte) (plaintext []byte, usedOldKey bool) {
 	tks := ticketKeys(c.config.ticketKeys()).ToPublic()
 	return DecryptTicketWith(encrypted, tks)
@@ -183,7 +183,7 @@ func (c *Conn) decryptTicket(encrypted []byte) (plaintext []byte, usedOldKey boo
 // usedOldKey will be true if the key used for decryption is
 // not the first in the []TicketKey slice
 //
-// [UTLS] changed to be made public and take a TicketKeys instead of use a Conn receiver
+// [uTLS] changed to be made public and take a TicketKeys instead of use a Conn receiver
 func DecryptTicketWith(encrypted []byte, tks TicketKeys) (plaintext []byte, usedOldKey bool) {
 	if len(encrypted) < ticketKeyNameLen+aes.BlockSize+sha256.Size {
 		return nil, false
@@ -194,9 +194,9 @@ func DecryptTicketWith(encrypted []byte, tks TicketKeys) (plaintext []byte, used
 	macBytes := encrypted[len(encrypted)-sha256.Size:]
 	ciphertext := encrypted[ticketKeyNameLen+aes.BlockSize : len(encrypted)-sha256.Size]
 
-	// keys := c.config.ticketKeys() // [UTLS] keys are received as a function argument
+	// keys := c.config.ticketKeys() // [uTLS] keys are received as a function argument
 
-	keys := tks.toPrivate()
+	keys := tks.ToPrivate()
 	keyIndex := -1
 	for i, candidateKey := range keys {
 		if bytes.Equal(keyName, candidateKey.keyName[:]) {
