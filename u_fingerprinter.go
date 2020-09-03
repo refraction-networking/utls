@@ -22,6 +22,9 @@ type Fingerprinter struct {
 	// WARNING: there could be numerous subtle issues with ClientHelloSpecs
 	// that are generated with this flag which could compromise security and/or mimicry
 	AllowBluntMimicry bool
+	// DisableSecretsRegeneration will use the key share client data captured from the
+	// fingerprint instead of regenerating it
+	DisableSecretsRegeneration bool
 }
 
 // FingerprintClientHello returns a ClientHelloSpec which is based on the
@@ -262,9 +265,9 @@ func (f *Fingerprinter) FingerprintClientHello(data []byte) (*ClientHelloSpec, e
 					return nil, errors.New("unable to read key share extension data")
 				}
 				ks.Group = CurveID(unGREASEUint16(group))
-				// if not GREASE, key share data will be discarded
-				// as it should be generated per connection
-				if ks.Group != GREASE_PLACEHOLDER {
+				// if not GREASE, key share data will be discarded as it should
+				// be generated per connection unless DisableSecretsRegeneration is set
+				if ks.Group != GREASE_PLACEHOLDER && !f.DisableSecretsRegeneration {
 					ks.Data = nil
 				}
 				keyShares = append(keyShares, ks)
