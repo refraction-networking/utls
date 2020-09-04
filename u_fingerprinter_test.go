@@ -272,6 +272,83 @@ func TestUTLSFingerprintClientHelloBluntMimicry(t *testing.T) {
 	t.Errorf("generated ClientHelloSpec with BluntMimicry did not correctly carry over generic extension")
 }
 
+func TestUTLSFingerprintClientHelloAlwaysAddPadding(t *testing.T) {
+	serverName := "foobar"
+
+	specWithoutPadding, err := utlsIdToSpec(HelloIOS_12_1)
+	specWithPadding, err := utlsIdToSpec(HelloChrome_83)
+	if err != nil {
+		t.Errorf("got error: %v; expected to succeed", err)
+	}
+
+	uconnWithoutPadding := UClient(&net.TCPConn{}, &Config{ServerName: serverName}, HelloCustom)
+	uconnWithPadding := UClient(&net.TCPConn{}, &Config{ServerName: serverName}, HelloCustom)
+
+	if err := uconnWithoutPadding.ApplyPreset(&specWithoutPadding); err != nil {
+		t.Errorf("got error: %v; expected to succeed", err)
+	}
+	if err := uconnWithoutPadding.BuildHandshakeState(); err != nil {
+		t.Errorf("got error: %v; expected to succeed", err)
+	}
+
+	if err := uconnWithPadding.ApplyPreset(&specWithPadding); err != nil {
+		t.Errorf("got error: %v; expected to succeed", err)
+	}
+	if err := uconnWithPadding.BuildHandshakeState(); err != nil {
+		t.Errorf("got error: %v; expected to succeed", err)
+	}
+
+	f := &Fingerprinter{}
+	fingerprintedWithoutPadding, err := f.FingerprintClientHello(prependRecordHeader(uconnWithoutPadding.HandshakeState.Hello.Raw))
+	if err != nil {
+		t.Errorf("got error: %v; expected to succeed", err)
+	}
+
+	for _, ext := range fingerprintedWithoutPadding.Extensions {
+		if _, ok := ext.(*UtlsPaddingExtension); ok {
+			t.Errorf("padding extension should not be present on fingerprinted ClientHelloSpec without AlwaysAddPadding set")
+			break
+		}
+	}
+
+	f = &Fingerprinter{AlwaysAddPadding: true}
+	generatedSpec, err := f.FingerprintClientHello(prependRecordHeader(uconnWithoutPadding.HandshakeState.Hello.Raw))
+	if err != nil {
+		t.Errorf("got error: %v; expected to succeed", err)
+	}
+
+	hasPadding := false
+	for _, ext := range generatedSpec.Extensions {
+		if _, ok := ext.(*UtlsPaddingExtension); ok {
+			hasPadding = true
+			break
+		}
+	}
+	if !hasPadding {
+		t.Errorf("expected padding extension on fingerprinted ClientHelloSpec with AlwaysAddPadding set")
+	}
+
+	f = &Fingerprinter{AlwaysAddPadding: true}
+	generatedSpec, err = f.FingerprintClientHello(prependRecordHeader(uconnWithPadding.HandshakeState.Hello.Raw))
+	if err != nil {
+		t.Errorf("got error: %v; expected to succeed", err)
+	}
+
+	hasPadding = false
+	for _, ext := range generatedSpec.Extensions {
+		if _, ok := ext.(*UtlsPaddingExtension); ok {
+			if hasPadding {
+				t.Errorf("found double padding extension on fingerprinted ClientHelloSpec with AlwaysAddPadding set")
+			}
+
+			hasPadding = true
+		}
+	}
+	if !hasPadding {
+		t.Errorf("expected padding extension on fingerprinted ClientHelloSpec with AlwaysAddPadding set")
+	}
+}
+
 func TestUTLSFingerprintClientHelloKeepPSK(t *testing.T) {
 	// TLSv1.3 Record Layer: Handshake Protocol: Client Hello
 	//     Content Type: Handshake (22)

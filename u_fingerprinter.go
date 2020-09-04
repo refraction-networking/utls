@@ -25,6 +25,12 @@ type Fingerprinter struct {
 	// DisableSecretsRegeneration will use the key share client data captured from the
 	// fingerprint instead of regenerating it
 	DisableSecretsRegeneration bool
+	// AlwaysAddPadding will always add a UtlsPaddingExtension with BoringPaddingStyle
+	// at the end of the extensions list if it isn't found in the fingerprinted hello.
+	// This could be useful in scenarios where the hello you are fingerprinting does not
+	// have any padding, but you suspect that other changes you make to the final hello
+	// (including things like different SNI lengths) would cause padding to be necessary
+	AlwaysAddPadding bool
 }
 
 // FingerprintClientHello returns a ClientHelloSpec which is based on the
@@ -326,6 +332,19 @@ func (f *Fingerprinter) FingerprintClientHello(data []byte) (*ClientHelloSpec, e
 			}
 
 			continue
+		}
+	}
+
+	if f.AlwaysAddPadding {
+		alreadyHasPadding := false
+		for _, ext := range clientHelloSpec.Extensions {
+			if _, ok := ext.(*UtlsPaddingExtension); ok {
+				alreadyHasPadding = true
+				break
+			}
+		}
+		if !alreadyHasPadding {
+			clientHelloSpec.Extensions = append(clientHelloSpec.Extensions, &UtlsPaddingExtension{GetPaddingLen: BoringPaddingStyle})
 		}
 	}
 
