@@ -622,3 +622,52 @@ func (css *ClientSessionState) SetServerCertificates(ServerCertificates []*x509.
 func (css *ClientSessionState) SetVerifiedChains(VerifiedChains [][]*x509.Certificate) {
 	css.verifiedChains = VerifiedChains
 }
+
+// TicketKey is the internal representation of a session ticket key.
+type TicketKey struct {
+	// KeyName is an opaque byte string that serves to identify the session
+	// ticket key. It's exposed as plaintext in every session ticket.
+	KeyName [ticketKeyNameLen]byte
+	AesKey  [16]byte
+	HmacKey [16]byte
+}
+
+type TicketKeys []TicketKey
+type ticketKeys []ticketKey
+
+func TicketKeyFromBytes(b [32]byte) TicketKey {
+	tk := ticketKeyFromBytes(b)
+	return tk.ToPublic()
+}
+
+func (tk ticketKey) ToPublic() TicketKey {
+	return TicketKey{
+		KeyName: tk.keyName,
+		AesKey:  tk.aesKey,
+		HmacKey: tk.hmacKey,
+	}
+}
+
+func (TK TicketKey) ToPrivate() ticketKey {
+	return ticketKey{
+		keyName: TK.KeyName,
+		aesKey:  TK.AesKey,
+		hmacKey: TK.HmacKey,
+	}
+}
+
+func (tks ticketKeys) ToPublic() []TicketKey {
+	var TKS []TicketKey
+	for _, ks := range tks {
+		TKS = append(TKS, ks.ToPublic())
+	}
+	return TKS
+}
+
+func (TKS TicketKeys) ToPrivate() []ticketKey {
+	var tks []ticketKey
+	for _, TK := range TKS {
+		tks = append(tks, TK.ToPrivate())
+	}
+	return tks
+}
