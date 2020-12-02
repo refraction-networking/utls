@@ -48,8 +48,9 @@ func (f *Fingerprinter) FingerprintClientHello(data []byte) (*ClientHelloSpec, e
 	s := cryptobyte.String(data)
 
 	var contentType uint8
+	var recordVersion uint16
 	if !s.ReadUint8(&contentType) || // record type
-		!s.Skip(2) || !s.Skip(2) { // record version and length
+		!s.ReadUint16(&recordVersion) || !s.Skip(2) { // record version and length
 		return nil, errors.New("unable to read record type, version, and length")
 	}
 
@@ -68,6 +69,9 @@ func (f *Fingerprinter) FingerprintClientHello(data []byte) (*ClientHelloSpec, e
 	if handshakeType != typeClientHello {
 		return nil, errors.New("handshake message is not a ClientHello")
 	}
+
+	clientHelloSpec.TLSVersMin = recordVersion
+	clientHelloSpec.TLSVersMax = handshakeVersion
 
 	var ignoredSessionID cryptobyte.String
 	if !s.ReadUint8LengthPrefixed(&ignoredSessionID) {
@@ -254,6 +258,9 @@ func (f *Fingerprinter) FingerprintClientHello(data []byte) (*ClientHelloSpec, e
 				supportedVersions = append(supportedVersions, unGREASEUint16(vers))
 			}
 			clientHelloSpec.Extensions = append(clientHelloSpec.Extensions, &SupportedVersionsExtension{supportedVersions})
+			// If SupportedVersionsExtension is present, use that instead of record+handshake versions
+			clientHelloSpec.TLSVersMin = 0
+			clientHelloSpec.TLSVersMax = 0
 
 		case extensionKeyShare:
 			// RFC 8446, Section 4.2.8
