@@ -289,6 +289,10 @@ func (f *Fingerprinter) FingerprintClientHello(data []byte) (*ClientHelloSpec, e
 
 		case extensionPSKModes:
 			// RFC 8446, Section 4.2.9
+			// TODO: PSK Modes have their own form of GREASE-ing which is not currently implemented
+			// the current functionality will NOT re-GREASE/re-randomize these values when using a fingerprinted spec
+			// https://github.com/refraction-networking/utls/pull/58#discussion_r522354105
+			// https://tools.ietf.org/html/draft-ietf-tls-grease-01#section-2
 			pskModes := []uint8{}
 			if !readUint8LengthPrefixed(&extData, &pskModes) {
 				return nil, errors.New("unable to read PSK extension data")
