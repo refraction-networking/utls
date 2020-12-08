@@ -22,9 +22,6 @@ type Fingerprinter struct {
 	// WARNING: there could be numerous subtle issues with ClientHelloSpecs
 	// that are generated with this flag which could compromise security and/or mimicry
 	AllowBluntMimicry bool
-	// DisableSecretsRegeneration will use the key share client data captured from the
-	// fingerprint instead of regenerating it
-	DisableSecretsRegeneration bool
 	// AlwaysAddPadding will always add a UtlsPaddingExtension with BoringPaddingStyle
 	// at the end of the extensions list if it isn't found in the fingerprinted hello.
 	// This could be useful in scenarios where the hello you are fingerprinting does not
@@ -279,8 +276,8 @@ func (f *Fingerprinter) FingerprintClientHello(data []byte) (*ClientHelloSpec, e
 				}
 				ks.Group = CurveID(unGREASEUint16(group))
 				// if not GREASE, key share data will be discarded as it should
-				// be generated per connection unless DisableSecretsRegeneration is set
-				if ks.Group != GREASE_PLACEHOLDER && !f.DisableSecretsRegeneration {
+				// be generated per connection
+				if ks.Group != GREASE_PLACEHOLDER {
 					ks.Data = nil
 				}
 				keyShares = append(keyShares, ks)
