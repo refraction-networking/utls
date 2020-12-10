@@ -102,6 +102,26 @@ you can set UConn.HandshakeStateBuilt = true, and marshal clientHello into UConn
 In this case you will be responsible for modifying other parts of Config and ClientHelloMsg to reflect your setup
 and not confuse "crypto/tls", which will be processing response from server.
 
+### Fingerprinting Captured Client Hello
+You can use a captured client hello to generate new ones that mimic/have the same properties as the original.
+The generated client hellos _should_ look like they were generated from the same client software as the original fingerprinted bytes.
+In order to do this:
+1) Create a `ClientHelloSpec` from the raw bytes of the original client hello
+2) Use `HelloCustom` as an argument for `UClient()` to get empty config
+3) Use `ApplyPreset` with the generated `ClientHelloSpec` to set the appropriate connection properties
+```
+uConn := UClient(&net.TCPConn{}, nil, HelloCustom)
+fingerprinter := &Fingerprinter{}
+generatedSpec, err := fingerprinter.FingerprintClientHello(rawCapturedClientHelloBytes)
+if err != nil {
+  panic("fingerprinting failed: %v", err)
+}
+if err := uConn.ApplyPreset(generatedSpec); err != nil {
+  panic("applying generated spec failed: %v", err)
+}
+```
+The `rawCapturedClientHelloBytes` should be the full tls record, including the record type/version/length header.
+
 ## Roller
 
 A simple wrapper, that allows to easily use multiple latest(auto-updated) fingerprints.

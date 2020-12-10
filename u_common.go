@@ -162,6 +162,20 @@ var (
 // https://tools.ietf.org/html/draft-ietf-tls-grease-01
 const GREASE_PLACEHOLDER = 0x0a0a
 
+func isGREASEUint16(v uint16) bool {
+	// First byte is same as second byte
+	// and lowest nibble is 0xa
+	return ((v >> 8) == v&0xff) && v&0xf == 0xa
+}
+
+func unGREASEUint16(v uint16) uint16 {
+	if isGREASEUint16(v) {
+		return GREASE_PLACEHOLDER
+	} else {
+		return v
+	}
+}
+
 // utlsMacSHA384 returns a SHA-384 based MAC. These are only supported in TLS 1.2
 // so the given version is ignored.
 func utlsMacSHA384(version uint16, key []byte) macFunction {
