@@ -375,7 +375,7 @@ func (txp *UHTTPTransport) connCacheDialTLSH2(
 	if conn := txp.connCachePop(address); conn != nil {
 		return conn, nil
 	}
-	uhttpLog.Printf("uhttp: h2: cache miss for %s", address)
+	uhttpLog.Printf("uhttp: h2: connCache miss for %s", address)
 	return nil, errUHTTPNoCachedConn
 }
 
@@ -545,6 +545,9 @@ func (txp *UHTTPTransport) CloseIdleConnections() {
 	// transport goes out of scope. In such a case,
 	// we clearly want to get rid of the cached conn,
 	// otherwise we would leak the open conns.
+	if txp.cleartext != nil {
+		txp.cleartext.CloseIdleConnections()
+	}
 	if txp.https != nil {
 		txp.https.CloseIdleConnections()
 	}
