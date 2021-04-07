@@ -98,6 +98,14 @@ func (hs *serverHandshakeState) handshake() error {
 	} else {
 		// The client didn't include a session ticket, or it wasn't
 		// valid so we do a full handshake.
+		saveStatefulSession := c.config.SessionIdEnabled && c.config.ServerSessionCache != nil && !(hs.clientHello.ticketSupported && !c.config.SessionTicketsDisabled)
+
+		if saveStatefulSession {
+			if err := hs.createSessionId(); err != nil {
+				return err
+			}
+		}
+
 		if err := hs.pickCipherSuite(); err != nil {
 			return err
 		}
@@ -114,6 +122,9 @@ func (hs *serverHandshakeState) handshake() error {
 		c.buffering = true
 		if err := hs.sendSessionTicket(); err != nil {
 			return err
+		}
+		if saveStatefulSession {
+			hs.saveStatefulSession()
 		}
 		if err := hs.sendFinished(nil); err != nil {
 			return err
@@ -328,19 +339,38 @@ func (hs *serverHandshakeState) pickCipherSuite() error {
 func (hs *serverHandshakeState) checkForResumption() bool {
 	c := hs.c
 
-	if c.config.SessionTicketsDisabled {
-		return false
-	}
+	if len(hs.clientHello.sessionTicket) > 0 {
 
-	plaintext, usedOldKey := c.decryptTicket(hs.clientHello.sessionTicket)
-	if plaintext == nil {
+		if c.config.SessionTicketsDisabled {
+			return false
+		}
+
+		plaintext, usedOldKey := c.decryptTicket(hs.clientHello.sessionTicket)
+		if plaintext == nil {
+			return false
+		}
+		hs.sessionState = &sessionState{usedOldKey: usedOldKey}
+		ok := hs.sessionState.unmarshal(plaintext)
+		if !ok {
+			return false
+		}
+
+		return hs.verifyResumptionState()
+
+	} else if c.config.SessionIdEnabled && c.config.ServerSessionCache != nil && len(hs.clientHello.sessionId) > 0 {
+		session, ok := c.config.ServerSessionCache.Get(string(hs.clientHello.sessionId))
+		if !ok || session == nil {
+			return false
+		}
+		hs.sessionState = &session.sessionState
+		return hs.verifyResumptionState()
+	} else {
 		return false
 	}
-	hs.sessionState = &sessionState{usedOldKey: usedOldKey}
-	ok := hs.sessionState.unmarshal(plaintext)
-	if !ok {
-		return false
-	}
+}
+
+func (hs *serverHandshakeState) verifyResumptionState() bool {
+	c := hs.c
 
 	// Never resume a session for a different TLS version.
 	if c.vers != hs.sessionState.vers {
@@ -650,6 +680,35 @@ func (hs *serverHandshakeState) readFinished(out []byte) error {
 	return nil
 }
 
+func (hs *serverHandshakeState) createSessionId() error {
+	c := hs.c
+	hs.hello.sessionId = make([]byte, 32)
+	_, err := io.ReadFull(c.config.rand(), hs.hello.sessionId)
+
+	return err
+
+}
+func (hs *serverHandshakeState) saveStatefulSession() {
+	c := hs.c
+	state := ServerSessionState{hs.createSessionState()}
+	c.config.ServerSessionCache.Put(string(hs.hello.sessionId), &state)
+}
+
+func (hs *serverHandshakeState) createSessionState() sessionState {
+	c := hs.c
+	var certsFromClient [][]byte
+	for _, cert := range c.peerCertificates {
+		certsFromClient = append(certsFromClient, cert.Raw)
+	}
+	return sessionState{
+		vers:         c.vers,
+		cipherSuite:  hs.suite.id,
+		masterSecret: hs.masterSecret,
+		certificates: certsFromClient,
+	}
+
+}
+
 func (hs *serverHandshakeState) sendSessionTicket() error {
 	if !hs.hello.ticketSupported {
 		return nil
@@ -658,16 +717,7 @@ func (hs *serverHandshakeState) sendSessionTicket() error {
 	c := hs.c
 	m := new(newSessionTicketMsg)
 
-	var certsFromClient [][]byte
-	for _, cert := range c.peerCertificates {
-		certsFromClient = append(certsFromClient, cert.Raw)
-	}
-	state := sessionState{
-		vers:         c.vers,
-		cipherSuite:  hs.suite.id,
-		masterSecret: hs.masterSecret,
-		certificates: certsFromClient,
-	}
+	state := hs.createSessionState()
 	var err error
 	m.ticket, err = c.encryptTicket(state.marshal())
 	if err != nil {

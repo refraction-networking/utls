@@ -220,7 +220,7 @@ Some customizations(such as setting session ticket/clientHello) have easy-to-use
     sessionState := utls.MakeClientSessionState(sessionTicket, uint16(tls.VersionTLS12),
         tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
         masterSecret,
-        nil, nil)
+        nil, nil, nil)
     tlsConn.SetSessionState(sessionState)
 ```
 

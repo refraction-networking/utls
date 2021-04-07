@@ -268,6 +268,9 @@ type ClientSessionState struct {
 	nonce  []byte    // Ticket nonce sent by the server, to derive PSK
 	useBy  time.Time // Expiration of the ticket lifetime as set by the server
 	ageAdd uint32    // Random obfuscation factor for sending the ticket age
+
+	// Session Id fields < TLS1.3
+	sessionId []uint8 // session id for resumption. either len(sessionTicket) > 0 or len(sessionId) > 0
 }
 
 // ClientSessionCache is a cache of ClientSessionState objects that can be used
@@ -286,6 +289,16 @@ type ClientSessionCache interface {
 	// more than one session ticket. If called with a nil *ClientSessionState,
 	// it should remove the cache entry.
 	Put(sessionKey string, cs *ClientSessionState)
+}
+
+type ServerSessionState struct {
+	sessionState
+}
+
+type ServerSessionCache interface {
+	Get(sessionKey string) (session *ServerSessionState, ok bool)
+
+	Put(sessionKey string, session *ServerSessionState)
 }
 
 // SignatureScheme identifies a signature algorithm supported by TLS. See
@@ -541,6 +554,8 @@ type Config struct {
 	// also disabled if ClientSessionCache is nil.
 	SessionTicketsDisabled bool
 
+	SessionIdEnabled bool
+
 	// SessionTicketKey is used by TLS servers to provide session resumption.
 	// See RFC 5077 and the PSK mode of RFC 8446. If zero, it will be filled
 	// with random data before the first server handshake.
@@ -554,6 +569,10 @@ type Config struct {
 	// ClientSessionCache is a cache of ClientSessionState entries for TLS
 	// session resumption. It is only used by clients.
 	ClientSessionCache ClientSessionCache
+
+	// ServerSessionCache is a cache of ServerSessionState entries for TLS
+	// session resumption. It is only used by servers.
+	ServerSessionCache ServerSessionCache
 
 	// MinVersion contains the minimum SSL/TLS version that is acceptable.
 	// If zero, then TLS 1.0 is taken as the minimum.
@@ -665,6 +684,8 @@ func (c *Config) Clone() *Config {
 		DynamicRecordSizingDisabled: c.DynamicRecordSizingDisabled,
 		Renegotiation:               c.Renegotiation,
 		KeyLogWriter:                c.KeyLogWriter,
+		SessionIdEnabled:            c.SessionIdEnabled,
+		ServerSessionCache:          c.ServerSessionCache,
 		sessionTicketKeys:           sessionTicketKeys,
 	}
 }

@@ -864,6 +864,78 @@ func TestClientKeyUpdate(t *testing.T) {
 	runClientTestTLS13(t, test)
 }
 
+type serverSessionCache struct {
+	cache map[string]*ServerSessionState
+}
+
+func newServerSessionCache() *serverSessionCache {
+	return &serverSessionCache{cache: make(map[string]*ServerSessionState)}
+}
+
+func (sc *serverSessionCache) Get(key string) (*ServerSessionState, bool) {
+	r, ok := sc.cache[key]
+	return r, ok
+}
+
+func (sc *serverSessionCache) Put(key string, state *ServerSessionState) {
+	sc.cache[key] = state
+}
+
+func TestSessionIDResumption(t *testing.T) {
+	t.Run("NoClientTicketsNoServerTickets", func(t *testing.T) { testSessionIdResumption(t, false, false) })
+	t.Run("ClientTicketsNoServerTickets", func(t *testing.T) { testSessionIdResumption(t, true, false) })
+	t.Run("NoClientTicketsServerTickets", func(t *testing.T) { testSessionIdResumption(t, false, true) })
+}
+
+func testSessionIdResumption(t *testing.T, clientTickets bool, serverTickets bool) {
+	cache := newServerSessionCache()
+	serverConfig := &Config{
+		Certificates:           testConfig.Certificates,
+		MaxVersion:             VersionTLS12,
+		SessionTicketsDisabled: !serverTickets,
+		SessionIdEnabled:       true,
+		ServerSessionCache:     cache,
+	}
+
+	clientConfig := &Config{
+		InsecureSkipVerify:     true,
+		MaxVersion:             VersionTLS12,
+		ClientSessionCache:     NewLRUClientSessionCache(32),
+		SessionTicketsDisabled: !clientTickets,
+		SessionIdEnabled:       true,
+	}
+
+	serverState, clientState, err := testHandshake(t, clientConfig, serverConfig)
+	if err != nil {
+		t.Fatalf("handshake failed: %s", err)
+	}
+
+	if serverState.DidResume {
+		t.Fatalf("server resumed")
+	}
+
+	if clientState.DidResume {
+		t.Fatalf("client resumed")
+	}
+
+	serverState, clientState, err = testHandshake(t, clientConfig, serverConfig)
+	if err != nil {
+		t.Fatalf("handshake failed: %s", err)
+	}
+
+	if !serverState.DidResume {
+		t.Fatalf("server failed resume")
+	}
+
+	if !clientState.DidResume {
+		t.Fatalf("client failed resumed")
+	}
+
+	if len(cache.cache) != 1 {
+		t.Fatalf("expected session id in client cache")
+	}
+}
+
 func TestResumption(t *testing.T) {
 	t.Run("TLSv12", func(t *testing.T) { testResumption(t, VersionTLS12) })
 	t.Run("TLSv13", func(t *testing.T) { testResumption(t, VersionTLS13) })
