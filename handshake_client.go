@@ -221,11 +221,11 @@ func (c *Conn) clientHandshake() (err error) {
 
 func (c *Conn) loadSession(hello *clientHelloMsg) (cacheKey string,
 	session *ClientSessionState, earlySecret, binderKey []byte) {
-	if c.config.SessionTicketsDisabled || c.config.ClientSessionCache == nil {
+	if (c.config.SessionTicketsDisabled && !c.config.SessionIdEnabled) || c.config.ClientSessionCache == nil {
 		return "", nil, nil, nil
 	}
 
-	hello.ticketSupported = true
+	hello.ticketSupported = !c.config.SessionTicketsDisabled && c.config.ClientSessionCache != nil
 
 	if hello.supportedVersions[0] == VersionTLS13 {
 		// Require DHE on resumption as it guarantees forward secrecy against
@@ -244,6 +244,14 @@ func (c *Conn) loadSession(hello *clientHelloMsg) (cacheKey string,
 	cacheKey = clientSessionCacheKey(c.conn.RemoteAddr(), c.config)
 	session, ok := c.config.ClientSessionCache.Get(cacheKey)
 	if !ok || session == nil {
+		return cacheKey, nil, nil, nil
+	}
+
+	if c.config.SessionTicketsDisabled && len(session.sessionTicket) > 0 {
+		return cacheKey, nil, nil, nil
+	}
+
+	if !c.config.SessionIdEnabled && len(session.sessionId) > 0 {
 		return cacheKey, nil, nil, nil
 	}
 
@@ -285,8 +293,21 @@ func (c *Conn) loadSession(hello *clientHelloMsg) (cacheKey string,
 			return cacheKey, nil, nil, nil
 		}
 
-		hello.sessionTicket = session.sessionTicket
+		if len(session.sessionTicket) > 0 {
+			hello.sessionTicket = session.sessionTicket
+		} else if len(session.sessionId) > 0 {
+			hello.sessionId = session.sessionId
+		} else {
+			// misconfigured session
+			return cacheKey, nil, nil, nil
+		}
+
 		return
+	}
+
+	if len(session.sessionTicket) == 0 {
+		// TLS13 must be session tickets
+		return cacheKey, nil, nil, nil
 	}
 
 	// Check that the session ticket is not expired.
@@ -410,6 +431,7 @@ func (hs *clientHandshakeState) handshake() error {
 			return err
 		}
 		c.clientFinishedIsFirst = true
+		hs.saveSessionID()
 		if err := hs.readSessionTicket(); err != nil {
 			return err
 		}
@@ -751,6 +773,42 @@ func (hs *clientHandshakeState) readFinished(out []byte) error {
 	hs.finishedHash.Write(serverFinished.marshal())
 	copy(out, verify)
 	return nil
+}
+
+func (hs *clientHandshakeState) saveSessionID() {
+	// precondition: this is not a resumed session
+	// if it is a resumed session, then if its resumed due to a session
+	// ticket then we do not want to update hs.session incorrectly with
+	// a sessionid because the sessionid in this case would be the 'ticket'
+	// sessionid.
+	//
+	// if it is a resumed session via a sessionId in this case we do not
+	// need update hs.session. this is because all 6 variables are guaranteed
+	// to be the same.
+
+	// Note: this is also a handshake for less than TLS1.3 so we don't have
+	// to worry about TLS1.3 not supporting session id based resumption
+
+	if hs.serverHello.ticketSupported {
+		// if the server sent ticket extension then there is no point
+		// in doing the work to save the sessionid because it will be
+		// overwritten when we receive the NewSessionTicket from the
+		// server
+		return
+	}
+
+	c := hs.c
+	if c.config.SessionIdEnabled && len(hs.serverHello.sessionId) > 0 {
+		hs.session = &ClientSessionState{
+			sessionId:          hs.serverHello.sessionId,
+			vers:               c.vers,
+			cipherSuite:        hs.suite.id,
+			masterSecret:       hs.masterSecret,
+			serverCertificates: c.peerCertificates,
+			verifiedChains:     c.verifiedChains,
+		}
+	}
+
 }
 
 func (hs *clientHandshakeState) readSessionTicket() error {

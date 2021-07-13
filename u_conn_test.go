@@ -9,6 +9,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
@@ -37,6 +38,66 @@ type helloSpec struct {
 
 func (hs *helloSpec) helloName() string {
 	return hs.name
+}
+
+func TestUTLSParrotSessionIDResumption(t *testing.T) {
+	testUTLSParrotSessionResumption(t, false, false, true)
+	testUTLSParrotSessionResumption(t, true, false, true)
+}
+
+func TestUTLSParrotSessionTicketResumption(t *testing.T) {
+	testUTLSParrotSessionResumption(t, true, true, false)
+}
+
+func testUTLSParrotSessionResumption(t *testing.T, clientSessionTicketsEnabled bool, serverSessionTicketsEnabled bool, sessionIdEnabled bool) {
+
+	cache := newServerSessionCache()
+	serverConfig := &Config{
+		Certificates:           testConfig.Certificates,
+		MaxVersion:             VersionTLS12,
+		SessionTicketsDisabled: !serverSessionTicketsEnabled,
+		SessionIdEnabled:       true,
+		ServerSessionCache:     cache,
+	}
+
+	clientSessionCache := NewLRUClientSessionCache(32)
+	clientConfig := &Config{
+		InsecureSkipVerify:     true,
+		ClientSessionCache:     clientSessionCache,
+		SessionTicketsDisabled: !clientSessionTicketsEnabled,
+		SessionIdEnabled:       true,
+		ServerName:             "test",
+	}
+
+	serverState, clientState, err := testUTLSHandshake(t, clientConfig, serverConfig, iOSSpec(clientSessionTicketsEnabled))
+	if err != nil {
+		t.Fatalf("handshake failed: %s", err)
+	}
+
+	if serverState.DidResume {
+		t.Fatalf("server resumed")
+	}
+
+	if clientState.DidResume {
+		t.Fatalf("client resumed")
+	}
+
+	serverState, clientState, err = testUTLSHandshake(t, clientConfig, serverConfig, iOSSpec(clientSessionTicketsEnabled))
+	if err != nil {
+		t.Fatalf("handshake failed: %s", err)
+	}
+
+	if !serverState.DidResume {
+		t.Fatalf("server failed resume")
+	}
+
+	if !clientState.DidResume {
+		t.Fatalf("client failed resumed")
+	}
+
+	if sessionIdEnabled && len(cache.cache) != 1 {
+		t.Fatalf("expected session id in server cache")
+	}
 }
 
 func TestUTLSMarshalNoOp(t *testing.T) {
@@ -700,4 +761,139 @@ func TestUTLSMakeConnWithCompleteHandshake(t *testing.T) {
 	}
 
 	serverTls.Write(serverMsg)
+}
+
+func testUTLSHandshake(t *testing.T, clientConfig, serverConfig *Config, spec *ClientHelloSpec) (serverState, clientState ConnectionState, err error) {
+	// we defensively clone client config because uTLS handshake modifies the config
+	// this breaks parrots that use the grease extension
+
+	clientConfig = clientConfig.Clone()
+	c, s := localPipe(t)
+	errChan := make(chan error)
+	go func() {
+		cli := UClient(c, clientConfig, HelloCustom)
+
+		if err := cli.ApplyPreset(spec); err != nil {
+			errChan <- fmt.Errorf("apply preset: %v", err)
+			c.Close()
+			return
+		}
+
+		err := cli.Handshake()
+		if err != nil {
+			errChan <- fmt.Errorf("client: %v", err)
+			c.Close()
+			return
+		}
+		defer cli.Close()
+		clientState = cli.ConnectionState()
+		buf, err := ioutil.ReadAll(cli)
+		if err != nil {
+			t.Errorf("failed to call cli.Read: %v", err)
+		}
+		if got := string(buf); got != opensslSentinel {
+			t.Errorf("read %q from TLS connection, but expected %q", got, opensslSentinel)
+		}
+
+		errChan <- nil
+	}()
+	server := Server(s, serverConfig)
+	err = server.Handshake()
+	if err == nil {
+		serverState = server.ConnectionState()
+		if _, err := io.WriteString(server, opensslSentinel); err != nil {
+			t.Errorf("failed to call server.Write: %v", err)
+		}
+
+		if err := server.Close(); err != nil {
+			t.Errorf("failed to call server.Close: %v", err)
+		}
+
+		err = <-errChan
+	} else {
+		s.Close()
+		<-errChan
+	}
+	return
+}
+
+func iOSSpec(sessionTicketsEnabled bool) *ClientHelloSpec {
+
+	extensions := []TLSExtension{
+		&UtlsGREASEExtension{},
+		&SNIExtension{},
+		&UtlsExtendedMasterSecretExtension{},
+		&RenegotiationInfoExtension{Renegotiation: RenegotiateOnceAsClient},
+		&SupportedCurvesExtension{[]CurveID{
+			CurveID(GREASE_PLACEHOLDER),
+			X25519,
+			CurveP256,
+			CurveP384,
+			CurveP521,
+		}},
+		&SupportedPointsExtension{SupportedPoints: []byte{
+			0x00, // pointFormatUncompressed
+		}},
+		&ALPNExtension{AlpnProtocols: []string{"h2", "http/1.1"}},
+		&StatusRequestExtension{},
+		&SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []SignatureScheme{
+			ECDSAWithP256AndSHA256,
+			PSSWithSHA256,
+			PKCS1WithSHA256,
+			ECDSAWithP384AndSHA384,
+			ECDSAWithSHA1,
+			PSSWithSHA384,
+			PSSWithSHA384,
+			PKCS1WithSHA384,
+			PSSWithSHA512,
+			PKCS1WithSHA512,
+			PKCS1WithSHA1,
+		}},
+		&SCTExtension{},
+		&KeyShareExtension{[]KeyShare{
+			{Group: CurveID(GREASE_PLACEHOLDER), Data: []byte{0}},
+			{Group: X25519},
+		}},
+		&PSKKeyExchangeModesExtension{[]uint8{
+			PskModeDHE,
+		}},
+		&SupportedVersionsExtension{[]uint16{
+			GREASE_PLACEHOLDER,
+			VersionTLS13,
+			VersionTLS12,
+		}},
+		&UtlsGREASEExtension{},
+		&UtlsPaddingExtension{GetPaddingLen: BoringPaddingStyle},
+	}
+
+	if sessionTicketsEnabled {
+		extensions = append(extensions, &SessionTicketExtension{})
+	}
+
+	return &ClientHelloSpec{
+		CipherSuites: []uint16{
+			GREASE_PLACEHOLDER,
+			TLS_AES_128_GCM_SHA256,
+			TLS_AES_256_GCM_SHA384,
+			TLS_CHACHA20_POLY1305_SHA256,
+			TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+			TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+			TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
+			TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+			TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+			TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
+			DISABLED_TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384,
+			TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,
+			TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
+			TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
+			DISABLED_TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384,
+			TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,
+			TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+			TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+		},
+		CompressionMethods: []byte{
+			0x00, // compressionNone
+		},
+		Extensions: extensions,
+	}
 }

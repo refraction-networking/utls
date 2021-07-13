@@ -620,6 +620,16 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 	// Check whether NPN extension actually exists
 	var haveNPN bool
 
+	if session == nil && uconn.config.ClientSessionCache != nil {
+		cacheKey := clientSessionCacheKey(uconn.RemoteAddr(), uconn.config)
+		session, _ = uconn.config.ClientSessionCache.Get(cacheKey)
+		// TODO: use uconn.loadSession(hello.getPrivateObj()) to support TLS 1.3 PSK-style resumption
+	}
+	err = uconn.SetSessionState(session)
+	if err != nil {
+		return err
+	}
+
 	// reGrease, and point things to each other
 	for _, e := range uconn.Extensions {
 		switch ext := e.(type) {
@@ -638,16 +648,6 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 				return errors.New("at most 2 grease extensions are supported")
 			}
 			grease_extensions_seen += 1
-		case *SessionTicketExtension:
-			if session == nil && uconn.config.ClientSessionCache != nil {
-				cacheKey := clientSessionCacheKey(uconn.RemoteAddr(), uconn.config)
-				session, _ = uconn.config.ClientSessionCache.Get(cacheKey)
-				// TODO: use uconn.loadSession(hello.getPrivateObj()) to support TLS 1.3 PSK-style resumption
-			}
-			err := uconn.SetSessionState(session)
-			if err != nil {
-				return err
-			}
 		case *SupportedCurvesExtension:
 			for i := range ext.Curves {
 				if ext.Curves[i] == GREASE_PLACEHOLDER {

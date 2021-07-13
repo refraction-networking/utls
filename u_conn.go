@@ -98,41 +98,50 @@ func (uconn *UConn) BuildHandshakeState() error {
 	return nil
 }
 
-// SetSessionState sets the session ticket, which may be preshared or fake.
-// If session is nil, the body of session ticket extension will be unset,
+// SetSessionState sets the session ticket or session id, which may be preshared or fake.
+// If session is nil and a ticket extension exists, the body of session ticket extension will be unset,
 // but the extension itself still MAY be present for mimicking purposes.
 // Session tickets to be reused - use same cache on following connections.
 func (uconn *UConn) SetSessionState(session *ClientSessionState) error {
+
 	uconn.HandshakeState.Session = session
 	var sessionTicket []uint8
 	if session != nil {
 		sessionTicket = session.sessionTicket
 	}
-	uconn.HandshakeState.Hello.TicketSupported = true
-	uconn.HandshakeState.Hello.SessionTicket = sessionTicket
+	var sessionTicketExtension *SessionTicketExtension = nil
 
 	for _, ext := range uconn.Extensions {
 		st, ok := ext.(*SessionTicketExtension)
 		if !ok {
 			continue
 		}
-		st.Session = session
-		if session != nil {
-			if len(session.SessionTicket()) > 0 {
-				if uconn.GetSessionID != nil {
-					sid := uconn.GetSessionID(session.SessionTicket())
-					uconn.HandshakeState.Hello.SessionId = sid[:]
-					return nil
+		sessionTicketExtension = st
+	}
+
+	if sessionTicketExtension != nil {
+		uconn.HandshakeState.Hello.TicketSupported = true
+		if len(sessionTicket) > 0 {
+			uconn.HandshakeState.Hello.SessionTicket = sessionTicket
+			if uconn.GetSessionID == nil {
+				var sessionID [32]byte
+				_, err := io.ReadFull(uconn.config.rand(), sessionID[:])
+
+				if err != nil {
+					return err
 				}
+				uconn.HandshakeState.Hello.SessionId = sessionID[:]
+			} else {
+				sid := uconn.GetSessionID(sessionTicket)
+				uconn.HandshakeState.Hello.SessionId = sid[:]
 			}
-			var sessionID [32]byte
-			_, err := io.ReadFull(uconn.config.rand(), sessionID[:])
-			if err != nil {
-				return err
-			}
-			uconn.HandshakeState.Hello.SessionId = sessionID[:]
 		}
-		return nil
+		sessionTicketExtension.Session = session
+	}
+
+	if session != nil && len(session.sessionId) > 0 {
+		uconn.HandshakeState.Hello.SessionId = session.sessionId[:]
+		uconn.HandshakeState.Session = session
 	}
 	return nil
 }

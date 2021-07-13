@@ -564,14 +564,20 @@ func MakeClientSessionState(
 	CipherSuite uint16,
 	MasterSecret []byte,
 	ServerCertificates []*x509.Certificate,
-	VerifiedChains [][]*x509.Certificate) *ClientSessionState {
+	VerifiedChains [][]*x509.Certificate,
+	SessionId []uint8) *ClientSessionState {
 	css := ClientSessionState{sessionTicket: SessionTicket,
 		vers:               Vers,
 		cipherSuite:        CipherSuite,
 		masterSecret:       MasterSecret,
 		serverCertificates: ServerCertificates,
-		verifiedChains:     VerifiedChains}
+		verifiedChains:     VerifiedChains,
+		sessionId:          SessionId}
 	return &css
+}
+
+func (css *ClientSessionState) SessionId() []uint8 {
+	return css.sessionId
 }
 
 // Encrypted ticket used for session resumption with server
