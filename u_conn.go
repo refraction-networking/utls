@@ -32,6 +32,11 @@ type UConn struct {
 	greaseSeed [ssl_grease_last_index]uint16
 
 	omitSNIExtension bool
+
+	// certCompressionAlgs represents the set of advertised certificate compression
+	// algorithms, as specified in the ClientHello. This is only relevant client-side, for the
+	// server certificate. All other forms of certificate compression are unsupported.
+	certCompressionAlgs []CertCompressionAlgo
 }
 
 // UClient returns a new uTLS client, with behavior depending on clientHelloID.
