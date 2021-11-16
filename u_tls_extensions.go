@@ -499,6 +499,51 @@ func (e *UtlsPaddingExtension) Read(b []byte) (int, error) {
 	return e.Len(), io.EOF
 }
 
+// UtlsCompressCertExtension is only implemented client-side, for server certificates. Alternate
+// certificate message formats (https://datatracker.ietf.org/doc/html/rfc7250) are not supported.
+//
+// See https://datatracker.ietf.org/doc/html/rfc8879#section-3
+type UtlsCompressCertExtension struct {
+	Algorithms []CertCompressionAlgo
+}
+
+func (e *UtlsCompressCertExtension) writeToUConn(uc *UConn) error {
+	uc.certCompressionAlgs = e.Algorithms
+	return nil
+}
+
+func (e *UtlsCompressCertExtension) Len() int {
+	return 4 + 1 + (2 * len(e.Algorithms))
+}
+
+func (e *UtlsCompressCertExtension) Read(b []byte) (int, error) {
+	if len(b) < e.Len() {
+		return 0, io.ErrShortBuffer
+	}
+	b[0] = byte(utlsExtensionCompressCertificate >> 8)
+	b[1] = byte(utlsExtensionCompressCertificate & 0xff)
+
+	extLen := 2 * len(e.Algorithms)
+	if extLen > 255 {
+		return 0, errors.New("too many certificate compression methods")
+	}
+
+	// Extension data length.
+	b[2] = byte((extLen + 1) >> 8)
+	b[3] = byte((extLen + 1) & 0xff)
+
+	// Methods length.
+	b[4] = byte(extLen)
+
+	i := 5
+	for _, compMethod := range e.Algorithms {
+		b[i] = byte(compMethod >> 8)
+		b[i+1] = byte(compMethod)
+		i += 2
+	}
+	return e.Len(), io.EOF
+}
+
 // https://github.com/google/boringssl/blob/7d7554b6b3c79e707e25521e61e066ce2b996e4c/ssl/t1_lib.c#L2803
 func BoringPaddingStyle(unpaddedLen int) (int, bool) {
 	if unpaddedLen > 0xff && unpaddedLen < 0x200 {
@@ -686,44 +731,6 @@ func (e *FakeChannelIDExtension) Read(b []byte) (int, error) {
 	b[0] = byte(fakeExtensionChannelID >> 8)
 	b[1] = byte(fakeExtensionChannelID & 0xff)
 	// The length is 0
-	return e.Len(), io.EOF
-}
-
-type FakeCertCompressionAlgsExtension struct {
-	Methods []CertCompressionAlgo
-}
-
-func (e *FakeCertCompressionAlgsExtension) writeToUConn(uc *UConn) error {
-	return nil
-}
-
-func (e *FakeCertCompressionAlgsExtension) Len() int {
-	return 4 + 1 + (2 * len(e.Methods))
-}
-
-func (e *FakeCertCompressionAlgsExtension) Read(b []byte) (int, error) {
-	if len(b) < e.Len() {
-		return 0, io.ErrShortBuffer
-	}
-	// https://tools.ietf.org/html/draft-balfanz-tls-channelid-00
-	b[0] = byte(fakeCertCompressionAlgs >> 8)
-	b[1] = byte(fakeCertCompressionAlgs & 0xff)
-
-	extLen := 2 * len(e.Methods)
-	if extLen > 255 {
-		return 0, errors.New("too many certificate compression methods")
-	}
-
-	b[2] = byte((extLen + 1) >> 8)
-	b[3] = byte((extLen + 1) & 0xff)
-	b[4] = byte(extLen)
-
-	i := 5
-	for _, compMethod := range e.Methods {
-		b[i] = byte(compMethod >> 8)
-		b[i+1] = byte(compMethod)
-		i += 2
-	}
 	return e.Len(), io.EOF
 }
 
