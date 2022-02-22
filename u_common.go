@@ -158,10 +158,16 @@ var (
 	HelloChrome_70   = ClientHelloID{helloChrome, "70", nil}
 	HelloChrome_72   = ClientHelloID{helloChrome, "72", nil}
 	HelloChrome_83   = ClientHelloID{helloChrome, "83", nil}
+	HelloChrome_87   = ClientHelloID{helloChrome, "87", nil}
+	HelloChrome_96   = ClientHelloID{helloChrome, "96", nil}
 
 	HelloIOS_Auto = HelloIOS_12_1
 	HelloIOS_11_1 = ClientHelloID{helloIOS, "111", nil} // legacy "111" means 11.1
 	HelloIOS_12_1 = ClientHelloID{helloIOS, "12.1", nil}
+	HelloIOS_13   = ClientHelloID{helloIOS, "13", nil}
+	HelloIOS_14   = ClientHelloID{helloIOS, "14", nil}
+
+	HelloAndroid_11_OkHttp = ClientHelloID{helloAndroid, "11", nil}
 )
 
 // based on spec's GreaseStyle, GREASE_PLACEHOLDER may be replaced by another GREASE value
