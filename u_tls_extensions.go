@@ -281,6 +281,52 @@ func (e *ALPNExtension) Read(b []byte) (int, error) {
 	return e.Len(), io.EOF
 }
 
+type ALPSExtension struct {
+	SupportedProtocols []string
+}
+
+func (e *ALPSExtension) writeToUConn(uc *UConn) error {
+	return nil
+}
+
+func (e *ALPSExtension) Len() int {
+	bLen := 2 + 2 + 2 // Type + Length + ALPS Extension length
+	for _, s := range e.SupportedProtocols {
+		bLen += 1 + len(s) // Supported ALPN Length + actual length of protocol
+	}
+	return bLen
+}
+
+func (e *ALPSExtension) Read(b []byte) (int, error) {
+	if len(b) < e.Len() {
+		return 0, io.ErrShortBuffer
+	}
+
+	// Read Type.
+	b[0] = byte(extensionALPS >> 8)   // hex: 44 dec: 68
+	b[1] = byte(extensionALPS & 0xff) // hex: 69 dec: 105
+
+	lengths := b[2:] // get the remaining buffer without Type
+	b = b[6:]        // set the buffer to the buffer without Type, Length and ALPS Extension Length (so only the Supported ALPN list remains)
+
+	stringsLength := 0
+	for _, s := range e.SupportedProtocols {
+		l := len(s)            // Supported ALPN Length
+		b[0] = byte(l)         // Supported ALPN Length in bytes hex: 02 dec: 2
+		copy(b[1:], s)         // copy the Supported ALPN as bytes to the buffer
+		b = b[1+l:]            // set the buffer to the buffer without the Supported ALPN Length and Supported ALPN (so we can continue to the next protocol in this loop)
+		stringsLength += 1 + l // Supported ALPN Length (the field itself) + Supported ALPN Length (the value)
+	}
+
+	lengths[2] = byte(stringsLength >> 8) // ALPS Extension Length hex: 00 dec: 0
+	lengths[3] = byte(stringsLength)      // ALPS Extension Length hex: 03 dec: 3
+	stringsLength += 2                    // plus ALPS Extension Length field length
+	lengths[0] = byte(stringsLength >> 8) // Length hex:00 dec: 0
+	lengths[1] = byte(stringsLength)      // Length hex: 05 dec: 5
+
+	return e.Len(), io.EOF
+}
+
 type SCTExtension struct {
 }
 
