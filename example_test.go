@@ -7,8 +7,8 @@ package tls_test
 import (
 	"crypto/tls"
 	"crypto/x509"
+	http "github.com/Noooste/fhttp"
 	"log"
-	"net/http"
 	"net/http/httptest"
 	"os"
 	"time"
