@@ -286,9 +286,30 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 		}, nil
 
 	case HelloChrome_100:
+		signatureScheme := []SignatureScheme{
+			ECDSAWithP256AndSHA256,
+			ECDSAWithP384AndSHA384,
+			ECDSAWithP521AndSHA512,
+			PSSWithSHA256,
+			PSSWithSHA384,
+			PSSWithSHA512,
+			0x0809,
+			0x080a,
+			0x080b,
+			PKCS1WithSHA256,
+			PKCS1WithSHA384,
+			PKCS1WithSHA512,
+			0x0402,
+			0x0303,
+			0x0301,
+			0x0302,
+			0x0203,
+			0x0201,
+			0x0202,
+		}
 		return ClientHelloSpec{
 			CipherSuites: []uint16{
-				0x3A3A,
+				GREASE_PLACEHOLDER,
 				TLS_AES_128_GCM_SHA256,
 				TLS_AES_256_GCM_SHA384,
 				TLS_CHACHA20_POLY1305_SHA256,
@@ -312,9 +333,9 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&UtlsGREASEExtension{},
 				&SNIExtension{},
 				&UtlsExtendedMasterSecretExtension{},
-				&RenegotiationInfoExtension{Renegotiation: RenegotiateOnceAsClient},
+				&RenegotiationInfoExtension{},
 				&SupportedCurvesExtension{[]CurveID{
-					CurveID(0x6A6A),
+					GREASE_PLACEHOLDER,
 					X25519,
 					CurveP256,
 					CurveP384,
@@ -325,16 +346,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&SessionTicketExtension{},
 				&ALPNExtension{AlpnProtocols: []string{"h2", "http/1.1"}},
 				&StatusRequestExtension{},
-				&SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []SignatureScheme{
-					ECDSAWithP256AndSHA256,
-					PSSWithSHA256,
-					PKCS1WithSHA256,
-					ECDSAWithP384AndSHA384,
-					PSSWithSHA384,
-					PKCS1WithSHA384,
-					PSSWithSHA512,
-					PKCS1WithSHA512,
-				}},
+				&SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: signatureScheme},
 				&SCTExtension{},
 				&KeyShareExtension{[]KeyShare{
 					{Group: CurveID(GREASE_PLACEHOLDER), Data: []byte{0}},
@@ -344,7 +356,6 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 					PskModeDHE,
 				}},
 				&SupportedVersionsExtension{[]uint16{
-					GREASE_PLACEHOLDER,
 					VersionTLS13,
 					VersionTLS12,
 					VersionTLS11,
@@ -354,6 +365,11 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 					CertCompressionBrotli,
 				}},
 				&UtlsGREASEExtension{},
+				&ApplicationSettingsExtension{
+					SupportedALPNList: []string{
+						"h2",
+					},
+				},
 				&UtlsPaddingExtension{GetPaddingLen: BoringPaddingStyle},
 			},
 		}, nil
