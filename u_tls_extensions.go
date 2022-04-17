@@ -856,7 +856,7 @@ func (e *ApplicationSettingsExtension) writeToUConn(uc *UConn) error {
 func (e *ApplicationSettingsExtension) Len() int {
 	result := 7
 	for _, element := range e.SupportedALPNList {
-		result += len(element) * 2
+		result += len(element)
 	}
 	return result
 }
@@ -867,25 +867,23 @@ func (e *ApplicationSettingsExtension) Read(b []byte) (int, error) {
 	}
 
 	b[0] = byte(extensionApplicationSettings >> 8)
-	b[1] = byte(extensionApplicationSettings & 0x44)
+	b[1] = byte(0x69)
+	b[2] = 0
+	b[4] = 0
 
-	lengths := b[2:]
-	b = b[6:]
+	currentIndex := 6
 
-	stringsLength := 0
-	for _, s := range e.SupportedALPNList {
-		l := len(s)
-		b[0] = byte(l)
-		copy(b[1:], s)
-		b = b[1+l:]
-		stringsLength += 1 + l
+	for _, alpn := range e.SupportedALPNList {
+		b[currentIndex] = byte(len(alpn))
+		currentIndex++
+		for _, char := range alpn {
+			b[currentIndex] = byte(char)
+			currentIndex++
+		}
 	}
 
-	lengths[2] = byte(stringsLength >> 8)
-	lengths[3] = byte(stringsLength)
-	stringsLength += 2
-	lengths[0] = byte(stringsLength >> 8)
-	lengths[1] = byte(stringsLength)
+	b[3] = byte(currentIndex - 4)
+	b[5] = byte(currentIndex - 6)
 
 	return e.Len(), io.EOF
 }
