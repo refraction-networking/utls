@@ -755,19 +755,19 @@ func (e *FakeRecordSizeLimitExtension) Read(b []byte) (int, error) {
 	return e.Len(), io.EOF
 }
 
-type DelegatesCredentialsExtension struct {
-	AlgorithmsSignature []int16
+type DelegatedCredentialsExtension struct {
+	AlgorithmsSignature []SignatureScheme
 }
 
-func (e *DelegatesCredentialsExtension) writeToUConn(uc *UConn) error {
+func (e *DelegatedCredentialsExtension) writeToUConn(uc *UConn) error {
 	return nil
 }
 
-func (e *DelegatesCredentialsExtension) Len() int {
+func (e *DelegatedCredentialsExtension) Len() int {
 	return 6 + 2*len(e.AlgorithmsSignature)
 }
 
-func (e *DelegatesCredentialsExtension) Read(b []byte) (int, error) {
+func (e *DelegatedCredentialsExtension) Read(b []byte) (int, error) {
 	if len(b) < e.Len() {
 		return 0, io.ErrShortBuffer
 	}

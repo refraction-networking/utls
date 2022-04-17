@@ -522,12 +522,12 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&SessionTicketExtension{},
 				&ALPNExtension{AlpnProtocols: []string{"h2", "http/1.1"}}, //application_layer_protocol_negotiation
 				&StatusRequestExtension{},
-				&DelegatesCredentialsExtension{
-					AlgorithmsSignature: []int16{ //signature_algorithms
-						0x403,
-						0x503,
-						0x603,
-						0x203,
+				&DelegatedCredentialsExtension{
+					AlgorithmsSignature: []SignatureScheme{ //signature_algorithms
+						ECDSAWithP256AndSHA256,
+						ECDSAWithP384AndSHA384,
+						ECDSAWithP521AndSHA512,
+						ECDSAWithSHA1,
 					},
 				},
 				&KeyShareExtension{[]KeyShare{
