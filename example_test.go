@@ -7,11 +7,12 @@ package tls_test
 import (
 	"crypto/tls"
 	"crypto/x509"
-	http "github.com/Noooste/fhttp"
 	"log"
 	"net/http/httptest"
 	"os"
 	"time"
+
+	http "github.com/Danny-Dasilva/fhttp"
 )
 
 // zeroSource is an io.Reader that returns an unlimited number of zero bytes.

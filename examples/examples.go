@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"encoding/hex"
 	"fmt"
-	http "github.com/Noooste/fhttp"
 	"net"
 	"net/http/httputil"
 	"net/url"
 	"time"
+
+	http "github.com/Danny-Dasilva/fhttp"
+	tls "github.com/Danny-Dasilva/utls"
 
 	"golang.org/x/net/http2"
 )
