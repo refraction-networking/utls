@@ -49,29 +49,43 @@ type SNIExtension struct {
 
 func (e *SNIExtension) writeToUConn(uc *UConn) error {
 	uc.config.ServerName = e.ServerName
-	uc.HandshakeState.Hello.ServerName = e.ServerName
+	hostName := hostnameInSNI(e.ServerName)
+	uc.HandshakeState.Hello.ServerName = hostName
+
 	return nil
 }
 
 func (e *SNIExtension) Len() int {
-	return 4 + 2 + 1 + 2 + len(e.ServerName)
+	// Literal IP addresses, absolute FQDNs, and empty strings are not permitted as SNI values.
+	// See RFC 6066, Section 3.
+	hostName := hostnameInSNI(e.ServerName)
+	if len(hostName) == 0 {
+		return 0
+	}
+	return 4 + 2 + 1 + 2 + len(hostName)
 }
 
 func (e *SNIExtension) Read(b []byte) (int, error) {
+	// Literal IP addresses, absolute FQDNs, and empty strings are not permitted as SNI values.
+	// See RFC 6066, Section 3.
+	hostName := hostnameInSNI(e.ServerName)
+	if len(hostName) == 0 {
+		return 0, io.EOF
+	}
 	if len(b) < e.Len() {
 		return 0, io.ErrShortBuffer
 	}
 	// RFC 3546, section 3.1
 	b[0] = byte(extensionServerName >> 8)
 	b[1] = byte(extensionServerName)
-	b[2] = byte((len(e.ServerName) + 5) >> 8)
-	b[3] = byte((len(e.ServerName) + 5))
-	b[4] = byte((len(e.ServerName) + 3) >> 8)
-	b[5] = byte(len(e.ServerName) + 3)
+	b[2] = byte((len(hostName) + 5) >> 8)
+	b[3] = byte((len(hostName) + 5))
+	b[4] = byte((len(hostName) + 3) >> 8)
+	b[5] = byte(len(hostName) + 3)
 	// b[6] Server Name Type: host_name (0)
-	b[7] = byte(len(e.ServerName) >> 8)
-	b[8] = byte(len(e.ServerName))
-	copy(b[9:], []byte(e.ServerName))
+	b[7] = byte(len(hostName) >> 8)
+	b[8] = byte(len(hostName))
+	copy(b[9:], []byte(hostName))
 	return e.Len(), io.EOF
 }
 

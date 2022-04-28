@@ -196,6 +196,38 @@ func TestUTLSRemoveSNIExtension(t *testing.T) {
 	runUTLSClientTestForVersion(t, test, "TLSv12-", "-tls1_2", hello, true)
 }
 
+func TestUTLSServerNameIP(t *testing.T) {
+	hello := &helloID{HelloChrome_70}
+
+	config := getUTLSTestConfig()
+	config.ServerName = "1.1.1.1"
+
+	opensslCipherName := "ECDHE-RSA-AES128-GCM-SHA256"
+	test := &clientTest{
+		name:   "UTLS-" + opensslCipherName + "-" + hello.helloName() + "-ServerNameIP",
+		args:   []string{"-cipher", opensslCipherName},
+		config: config,
+	}
+
+	runUTLSClientTestForVersion(t, test, "TLSv12-", "-tls1_2", hello, true)
+}
+
+func TestUTLSEmptyServerName(t *testing.T) {
+	hello := &helloID{HelloChrome_70}
+
+	config := getUTLSTestConfig()
+	config.ServerName = ""
+
+	opensslCipherName := "ECDHE-RSA-AES128-GCM-SHA256"
+	test := &clientTest{
+		name:   "UTLS-" + opensslCipherName + "-" + hello.helloName() + "-EmptyServerName",
+		args:   []string{"-cipher", opensslCipherName},
+		config: config,
+	}
+
+	runUTLSClientTestForVersion(t, test, "TLSv12-", "-tls1_2", hello, true)
+}
+
 /*
 *
  HELPER FUNCTIONS BELOW
@@ -212,6 +244,7 @@ func getUTLSTestConfig() *Config {
 		MinVersion:         VersionSSL30,
 		MaxVersion:         VersionTLS13,
 		CipherSuites:       allCipherSuites(),
+		ServerName:         "foobar.com",
 	}
 	return testUTLSConfig
 }
