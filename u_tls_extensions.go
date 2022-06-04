@@ -750,43 +750,6 @@ func (e *FakeChannelIDExtension) Read(b []byte) (int, error) {
 	return e.Len(), io.EOF
 }
 
-type FakeCertCompressionAlgsExtension struct {
-	Methods []CertCompressionAlgo
-}
-
-func (e *FakeCertCompressionAlgsExtension) writeToUConn(uc *UConn) error {
-	return nil
-}
-
-func (e *FakeCertCompressionAlgsExtension) Len() int {
-	return 4 + 1 + (2 * len(e.Methods))
-}
-
-func (e *FakeCertCompressionAlgsExtension) Read(b []byte) (int, error) {
-	if len(b) < e.Len() {
-		return 0, io.ErrShortBuffer
-	}
-	// https://tools.ietf.org/html/draft-balfanz-tls-channelid-00
-	b[0] = byte(fakeCertCompressionAlgs >> 8)
-	b[1] = byte(fakeCertCompressionAlgs & 0xff)
-
-	extLen := 2 * len(e.Methods)
-	if extLen > 255 {
-		return 0, errors.New("too many certificate compression methods")
-	}
-
-	b[2] = byte((extLen + 1) >> 8)
-	b[3] = byte((extLen + 1) & 0xff)
-	b[4] = byte(extLen)
-
-	i := 5
-	for _, compMethod := range e.Methods {
-		b[i] = byte(compMethod >> 8)
-		b[i+1] = byte(compMethod)
-		i += 2
-	}
-	return e.Len(), io.EOF
-}
 
 type FakeRecordSizeLimitExtension struct {
 	Limit uint16
