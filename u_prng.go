@@ -3,7 +3,7 @@
  * All rights reserved.
  *
  * Released under utls licence:
- * https://github.com/refraction-networking/utls/blob/master/LICENSE
+ * https://github.com/Danny-Dasilva/utls/blob/master/LICENSE
  */
 
 // This code is a pared down version of:

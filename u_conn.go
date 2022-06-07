@@ -32,6 +32,8 @@ type UConn struct {
 	greaseSeed [ssl_grease_last_index]uint16
 
 	omitSNIExtension bool
+	extCompressCerts bool
+
 }
 
 // UClient returns a new uTLS client, with behavior depending on clientHelloID.
