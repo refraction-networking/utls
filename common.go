@@ -18,7 +18,6 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"internal/godebug"
 	"io"
 	"net"
 	"strings"
@@ -100,6 +99,7 @@ const (
 	extensionCertificateAuthorities  uint16 = 47
 	extensionSignatureAlgorithmsCert uint16 = 50
 	extensionKeyShare                uint16 = 51
+	extensionNextProtoNeg            uint16 = 13172 // not IANA assigned
 	extensionRenegotiationInfo       uint16 = 0xff01
 )
 
@@ -975,7 +975,8 @@ var supportedVersions = []uint16{
 }
 
 // debugEnableTLS10 enables TLS 1.0. See issue 45428.
-var debugEnableTLS10 = godebug.Get("tls10default") == "1"
+// [uTLS] disabled TLS 1.0
+var debugEnableTLS10 = false
 
 // roleClient and roleServer are meant to call supportedVersions and parents
 // with more readability at the callsite.

@@ -15,8 +15,9 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"hash"
-	"internal/cpu"
 	"runtime"
+
+	"github.com/refraction-networking/utls/cpu"
 
 	"golang.org/x/crypto/chacha20poly1305"
 )
@@ -624,6 +625,12 @@ func cipherSuiteByID(id uint16) *cipherSuite {
 		}
 	}
 	return nil
+}
+
+func CheckCipherSuites() {
+	for _, cipherSuite := range utlsSupportedCipherSuites {
+		fmt.Printf("Unmatched CipherSuite: %x\n", cipherSuite.id)
+	}
 }
 
 func mutualCipherSuiteTLS13(have []uint16, want uint16) *cipherSuiteTLS13 {

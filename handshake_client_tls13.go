@@ -36,7 +36,7 @@ type clientHandshakeStateTLS13 struct {
 	masterSecret  []byte
 	trafficSecret []byte // client_application_traffic_secret_0
 
-	uconn *UConn // [UTLS]
+	uconn *UConn // [uTLS]
 }
 
 // handshake requires hs.c, hs.hello, hs.serverHello, hs.ecdheParams, and,
@@ -264,7 +264,7 @@ func (hs *clientHandshakeStateTLS13) processHelloRetryRequest() error {
 		}
 	}
 
-	// [UTLS SECTION BEGINS]
+	// [uTLS SECTION BEGINS]
 	// crypto/tls code above this point had changed crypto/tls structures in accordance with HRR, and is about
 	// to call default marshaller.
 	// Instead, we fill uTLS-specific structs and call uTLS marshaller.
@@ -318,13 +318,13 @@ func (hs *clientHandshakeStateTLS13) processHelloRetryRequest() error {
 							hs.uconn.Extensions[cookieIndex:]...)...)
 				}
 			}
-			if err = hs.uconn.MarshalClientHello(); err != nil {
+			if err := hs.uconn.MarshalClientHello(); err != nil {
 				return err
 			}
 			hs.hello.raw = hs.uconn.HandshakeState.Hello.Raw
 		}
 	}
-	// [UTLS SECTION ENDS]
+	// [uTLS SECTION ENDS]
 
 	hs.transcript.Write(hs.hello.marshal())
 	if _, err := c.writeRecord(recordTypeHandshake, hs.hello.marshal()); err != nil {

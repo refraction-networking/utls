@@ -7,9 +7,9 @@
 package cpu_test
 
 import (
-	. "internal/cpu"
-	"internal/godebug"
 	"testing"
+
+	. "github.com/refraction-networking/utls/cpu"
 )
 
 func TestX86ifAVX2hasAVX(t *testing.T) {
@@ -25,9 +25,9 @@ func TestDisableSSE3(t *testing.T) {
 func TestSSE3DebugOption(t *testing.T) {
 	MustHaveDebugOptionsSupport(t)
 
-	if godebug.Get("cpu.sse3") != "off" {
-		t.Skipf("skipping test: GODEBUG=cpu.sse3=off not set")
-	}
+	// if godebug.Get("cpu.sse3") != "off" {
+	t.Skipf("skipping test: GODEBUG=cpu.sse3=off not set")
+	// }
 
 	want := false
 	if got := X86.HasSSE3; got != want {

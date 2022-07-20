@@ -85,7 +85,7 @@ type clientHelloMsg struct {
 	secureRenegotiation              []byte
 	alpnProtocols                    []string
 	scts                             bool
-	ems                              bool // [UTLS] actually implemented due to its prevalence
+	ems                              bool // [uTLS] actually implemented due to its prevalence
 	supportedVersions                []uint16
 	cookie                           []byte
 	keyShares                        []keyShare
@@ -93,6 +93,9 @@ type clientHelloMsg struct {
 	pskModes                         []uint8
 	pskIdentities                    []pskIdentity
 	pskBinders                       [][]byte
+
+	// [uTLS]
+	nextProtoNeg bool
 }
 
 func (m *clientHelloMsg) marshal() []byte {
@@ -612,6 +615,10 @@ type serverHelloMsg struct {
 	// HelloRetryRequest extensions
 	cookie        []byte
 	selectedGroup CurveID
+
+	// [uTLS]
+	nextProtoNeg bool
+	nextProtos   []string
 }
 
 func (m *serverHelloMsg) marshal() []byte {

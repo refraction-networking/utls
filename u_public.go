@@ -18,10 +18,10 @@ import (
 //   - clientHandshakeStateTLS13 (TLS 1.3)
 // uTLS will call .handshake() on one of these private internal states,
 // to perform TLS handshake using standard crypto/tls implementation.
-type ClientHandshakeState struct {
+type PubClientHandshakeState struct {
 	C            *Conn
-	ServerHello  *ServerHelloMsg
-	Hello        *ClientHelloMsg
+	ServerHello  *PubServerHelloMsg
+	Hello        *PubClientHelloMsg
 	MasterSecret []byte
 	Session      *ClientSessionState
 
@@ -33,7 +33,7 @@ type ClientHandshakeState struct {
 
 // TLS 1.3 only
 type TLS13OnlyState struct {
-	Suite         *CipherSuiteTLS13
+	Suite         *PubCipherSuiteTLS13
 	EcdheParams   EcdheParameters
 	EarlySecret   []byte
 	BinderKey     []byte
@@ -47,10 +47,10 @@ type TLS13OnlyState struct {
 // TLS 1.2 and before only
 type TLS12OnlyState struct {
 	FinishedHash FinishedHash
-	Suite        CipherSuite
+	Suite        PubCipherSuite
 }
 
-func (chs *ClientHandshakeState) toPrivate13() *clientHandshakeStateTLS13 {
+func (chs *PubClientHandshakeState) toPrivate13() *clientHandshakeStateTLS13 {
 	if chs == nil {
 		return nil
 	} else {
@@ -77,7 +77,7 @@ func (chs *ClientHandshakeState) toPrivate13() *clientHandshakeStateTLS13 {
 	}
 }
 
-func (chs13 *clientHandshakeStateTLS13) toPublic13() *ClientHandshakeState {
+func (chs13 *clientHandshakeStateTLS13) toPublic13() *PubClientHandshakeState {
 	if chs13 == nil {
 		return nil
 	} else {
@@ -92,7 +92,7 @@ func (chs13 *clientHandshakeStateTLS13) toPublic13() *ClientHandshakeState {
 			TrafficSecret: chs13.trafficSecret,
 			Transcript:    chs13.transcript,
 		}
-		return &ClientHandshakeState{
+		return &PubClientHandshakeState{
 			C:           chs13.c,
 			ServerHello: chs13.serverHello.getPublicPtr(),
 			Hello:       chs13.hello.getPublicPtr(),
@@ -108,7 +108,7 @@ func (chs13 *clientHandshakeStateTLS13) toPublic13() *ClientHandshakeState {
 	}
 }
 
-func (chs *ClientHandshakeState) toPrivate12() *clientHandshakeState {
+func (chs *PubClientHandshakeState) toPrivate12() *clientHandshakeState {
 	if chs == nil {
 		return nil
 	} else {
@@ -128,7 +128,7 @@ func (chs *ClientHandshakeState) toPrivate12() *clientHandshakeState {
 	}
 }
 
-func (chs12 *clientHandshakeState) toPublic12() *ClientHandshakeState {
+func (chs12 *clientHandshakeState) toPublic12() *PubClientHandshakeState {
 	if chs12 == nil {
 		return nil
 	} else {
@@ -136,7 +136,7 @@ func (chs12 *clientHandshakeState) toPublic12() *ClientHandshakeState {
 			Suite:        chs12.suite.getPublicObj(),
 			FinishedHash: chs12.finishedHash.getPublicObj(),
 		}
-		return &ClientHandshakeState{
+		return &PubClientHandshakeState{
 			C:           chs12.c,
 			ServerHello: chs12.serverHello.getPublicPtr(),
 			Hello:       chs12.hello.getPublicPtr(),
@@ -195,18 +195,18 @@ func (crm *CertificateRequestMsgTLS13) toPrivate() *certificateRequestMsgTLS13 {
 	}
 }
 
-type CipherSuiteTLS13 struct {
+type PubCipherSuiteTLS13 struct {
 	Id     uint16
 	KeyLen int
 	Aead   func(key, fixedNonce []byte) aead
 	Hash   crypto.Hash
 }
 
-func (c *cipherSuiteTLS13) toPublic() *CipherSuiteTLS13 {
+func (c *cipherSuiteTLS13) toPublic() *PubCipherSuiteTLS13 {
 	if c == nil {
 		return nil
 	} else {
-		return &CipherSuiteTLS13{
+		return &PubCipherSuiteTLS13{
 			Id:     c.id,
 			KeyLen: c.keyLen,
 			Aead:   c.aead,
@@ -215,7 +215,7 @@ func (c *cipherSuiteTLS13) toPublic() *CipherSuiteTLS13 {
 	}
 }
 
-func (c *CipherSuiteTLS13) toPrivate() *cipherSuiteTLS13 {
+func (c *PubCipherSuiteTLS13) toPrivate() *cipherSuiteTLS13 {
 	if c == nil {
 		return nil
 	} else {
@@ -228,7 +228,7 @@ func (c *CipherSuiteTLS13) toPrivate() *cipherSuiteTLS13 {
 	}
 }
 
-type ServerHelloMsg struct {
+type PubServerHelloMsg struct {
 	Raw                          []byte
 	Vers                         uint16
 	Random                       []byte
@@ -255,7 +255,7 @@ type ServerHelloMsg struct {
 
 }
 
-func (shm *ServerHelloMsg) getPrivatePtr() *serverHelloMsg {
+func (shm *PubServerHelloMsg) getPrivatePtr() *serverHelloMsg {
 	if shm == nil {
 		return nil
 	} else {
@@ -285,11 +285,11 @@ func (shm *ServerHelloMsg) getPrivatePtr() *serverHelloMsg {
 	}
 }
 
-func (shm *serverHelloMsg) getPublicPtr() *ServerHelloMsg {
+func (shm *serverHelloMsg) getPublicPtr() *PubServerHelloMsg {
 	if shm == nil {
 		return nil
 	} else {
-		return &ServerHelloMsg{
+		return &PubServerHelloMsg{
 			Raw:                          shm.raw,
 			Vers:                         shm.vers,
 			Random:                       shm.random,
@@ -315,7 +315,7 @@ func (shm *serverHelloMsg) getPublicPtr() *ServerHelloMsg {
 	}
 }
 
-type ClientHelloMsg struct {
+type PubClientHelloMsg struct {
 	Raw                          []byte
 	Vers                         uint16
 	Random                       []byte
@@ -326,7 +326,7 @@ type ClientHelloMsg struct {
 	ServerName                   string
 	OcspStapling                 bool
 	Scts                         bool
-	Ems                          bool // [UTLS] actually implemented due to its prevalence
+	Ems                          bool // [uTLS] actually implemented due to its prevalence
 	SupportedCurves              []CurveID
 	SupportedPoints              []uint8
 	TicketSupported              bool
@@ -347,7 +347,7 @@ type ClientHelloMsg struct {
 	PskBinders                       [][]byte
 }
 
-func (chm *ClientHelloMsg) getPrivatePtr() *clientHelloMsg {
+func (chm *PubClientHelloMsg) getPrivatePtr() *clientHelloMsg {
 	if chm == nil {
 		return nil
 	} else {
@@ -384,11 +384,11 @@ func (chm *ClientHelloMsg) getPrivatePtr() *clientHelloMsg {
 	}
 }
 
-func (chm *clientHelloMsg) getPublicPtr() *ClientHelloMsg {
+func (chm *clientHelloMsg) getPublicPtr() *PubClientHelloMsg {
 	if chm == nil {
 		return nil
 	} else {
-		return &ClientHelloMsg{
+		return &PubClientHelloMsg{
 			Raw:                          chm.raw,
 			Vers:                         chm.vers,
 			Random:                       chm.random,
@@ -423,7 +423,7 @@ func (chm *clientHelloMsg) getPublicPtr() *ClientHelloMsg {
 
 // UnmarshalClientHello allows external code to parse raw client hellos.
 // It returns nil on failure.
-func UnmarshalClientHello(data []byte) *ClientHelloMsg {
+func UnmarshalClientHello(data []byte) *PubClientHelloMsg {
 	m := &clientHelloMsg{}
 	if m.unmarshal(data) {
 		return m.getPublicPtr()
@@ -433,7 +433,7 @@ func UnmarshalClientHello(data []byte) *ClientHelloMsg {
 
 // A CipherSuite is a specific combination of key agreement, cipher and MAC
 // function. All cipher suites currently assume RSA key agreement.
-type CipherSuite struct {
+type PubCipherSuite struct {
 	Id uint16
 	// the lengths, in bytes, of the key material needed for each component.
 	KeyLen int
@@ -443,11 +443,11 @@ type CipherSuite struct {
 	// flags is a bitmask of the suite* values, above.
 	Flags  int
 	Cipher func(key, iv []byte, isRead bool) interface{}
-	Mac    func(version uint16, macKey []byte) macFunction
+	Mac    func(macKey []byte) hash.Hash
 	Aead   func(key, fixedNonce []byte) aead
 }
 
-func (cs *CipherSuite) getPrivatePtr() *cipherSuite {
+func (cs *PubCipherSuite) getPrivatePtr() *cipherSuite {
 	if cs == nil {
 		return nil
 	} else {
@@ -465,11 +465,11 @@ func (cs *CipherSuite) getPrivatePtr() *cipherSuite {
 	}
 }
 
-func (cs *cipherSuite) getPublicObj() CipherSuite {
+func (cs *cipherSuite) getPublicObj() PubCipherSuite {
 	if cs == nil {
-		return CipherSuite{}
+		return PubCipherSuite{}
 	} else {
-		return CipherSuite{
+		return PubCipherSuite{
 			Id:     cs.id,
 			KeyLen: cs.keyLen,
 			MacLen: cs.macLen,
@@ -636,7 +636,10 @@ type TicketKeys []TicketKey
 type ticketKeys []ticketKey
 
 func TicketKeyFromBytes(b [32]byte) TicketKey {
-	tk := ticketKeyFromBytes(b)
+	// [uTLS]
+	// empty config is required
+	config := &Config{}
+	tk := config.ticketKeyFromBytes(b)
 	return tk.ToPublic()
 }
 

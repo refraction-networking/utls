@@ -7,10 +7,12 @@ package tls
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/cipher"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"net"
 	"strconv"
@@ -24,7 +26,7 @@ type UConn struct {
 	ClientHelloID ClientHelloID
 
 	ClientHelloBuilt bool
-	HandshakeState   ClientHandshakeState
+	HandshakeState   PubClientHandshakeState
 
 	// sessionID may or may not depend on ticket; nil => random
 	GetSessionID func(ticket []byte) [32]byte
@@ -41,9 +43,10 @@ func UClient(conn net.Conn, config *Config, clientHelloID ClientHelloID) *UConn 
 		config = &Config{}
 	}
 	tlsConn := Conn{conn: conn, config: config, isClient: true}
-	handshakeState := ClientHandshakeState{C: &tlsConn, Hello: &ClientHelloMsg{}}
+	handshakeState := PubClientHandshakeState{C: &tlsConn, Hello: &PubClientHelloMsg{}}
 	uconn := UConn{Conn: &tlsConn, ClientHelloID: clientHelloID, HandshakeState: handshakeState}
 	uconn.HandshakeState.uconn = &uconn
+	uconn.handshakeFn = uconn.clientHandshake
 	return &uconn
 }
 
@@ -190,6 +193,63 @@ func (uconn *UConn) removeSNIExtension() {
 // Handshake runs the client handshake using given clientHandshakeState
 // Requires hs.hello, and, optionally, hs.session to be set.
 func (c *UConn) Handshake() error {
+	return c.HandshakeContext(context.Background())
+}
+
+// HandshakeContext runs the client or server handshake
+// protocol if it has not yet been run.
+//
+// The provided Context must be non-nil. If the context is canceled before
+// the handshake is complete, the handshake is interrupted and an error is returned.
+// Once the handshake has completed, cancellation of the context will not affect the
+// connection.
+func (c *UConn) HandshakeContext(ctx context.Context) error {
+	// Delegate to unexported method for named return
+	// without confusing documented signature.
+	return c.handshakeContext(ctx)
+}
+
+func (c *UConn) handshakeContext(ctx context.Context) (ret error) {
+	// Fast sync/atomic-based exit if there is no handshake in flight and the
+	// last one succeeded without an error. Avoids the expensive context setup
+	// and mutex for most Read and Write calls.
+	if c.handshakeComplete() {
+		return nil
+	}
+
+	handshakeCtx, cancel := context.WithCancel(ctx)
+	// Note: defer this before starting the "interrupter" goroutine
+	// so that we can tell the difference between the input being canceled and
+	// this cancellation. In the former case, we need to close the connection.
+	defer cancel()
+
+	// Start the "interrupter" goroutine, if this context might be canceled.
+	// (The background context cannot).
+	//
+	// The interrupter goroutine waits for the input context to be done and
+	// closes the connection if this happens before the function returns.
+	if ctx.Done() != nil {
+		done := make(chan struct{})
+		interruptRes := make(chan error, 1)
+		defer func() {
+			close(done)
+			if ctxErr := <-interruptRes; ctxErr != nil {
+				// Return context error to user.
+				ret = ctxErr
+			}
+		}()
+		go func() {
+			select {
+			case <-handshakeCtx.Done():
+				// Close the connection, discarding the error
+				_ = c.conn.Close()
+				interruptRes <- handshakeCtx.Err()
+			case <-done:
+				interruptRes <- nil
+			}
+		}()
+	}
+
 	c.handshakeMutex.Lock()
 	defer c.handshakeMutex.Unlock()
 
@@ -203,18 +263,15 @@ func (c *UConn) Handshake() error {
 	c.in.Lock()
 	defer c.in.Unlock()
 
+	// [uTLS section begins]
 	if c.isClient {
-		// [uTLS section begins]
 		err := c.BuildHandshakeState()
 		if err != nil {
 			return err
 		}
-		// [uTLS section ends]
-
-		c.handshakeErr = c.clientHandshake()
-	} else {
-		c.handshakeErr = c.serverHandshake()
 	}
+	// [uTLS section ends]
+	c.handshakeErr = c.handshakeFn(handshakeCtx)
 	if c.handshakeErr == nil {
 		c.handshakes++
 	} else {
@@ -237,7 +294,7 @@ func (c *UConn) Write(b []byte) (int, error) {
 	for {
 		x := atomic.LoadInt32(&c.activeCall)
 		if x&1 != 0 {
-			return 0, errClosed
+			return 0, net.ErrClosed
 		}
 		if atomic.CompareAndSwapInt32(&c.activeCall, x, x+2) {
 			defer atomic.AddInt32(&c.activeCall, -2)
@@ -290,7 +347,7 @@ func (c *UConn) Write(b []byte) (int, error) {
 
 // clientHandshakeWithOneState checks that exactly one expected state is set (1.2 or 1.3)
 // and performs client TLS handshake with that state
-func (c *UConn) clientHandshake() (err error) {
+func (c *UConn) clientHandshake(ctx context.Context) (err error) {
 	// [uTLS section begins]
 	hello := c.HandshakeState.Hello.getPrivatePtr()
 	defer func() { c.HandshakeState.Hello = hello.getPublicPtr() }()
@@ -384,6 +441,7 @@ func (c *UConn) clientHandshake() (err error) {
 			hs13.earlySecret = earlySecret
 			hs13.binderKey = binderKey
 		}
+		hs13.ctx = ctx
 		// In TLS 1.3, session tickets are delivered after the handshake.
 		err = hs13.handshake()
 		if handshakeState := hs13.toPublic13(); handshakeState != nil {
@@ -395,6 +453,7 @@ func (c *UConn) clientHandshake() (err error) {
 	hs12 := c.HandshakeState.toPrivate12()
 	hs12.serverHello = serverHello
 	hs12.hello = hello
+	hs12.ctx = ctx
 	err = hs12.handshake()
 	if handshakeState := hs12.toPublic12(); handshakeState != nil {
 		c.HandshakeState = *handshakeState
@@ -599,12 +658,12 @@ func MakeConnWithCompleteHandshake(tcpConn net.Conn, version uint16, cipherSuite
 			cs.macLen, cs.keyLen, cs.ivLen)
 
 	var clientCipher, serverCipher interface{}
-	var clientHash, serverHash macFunction
+	var clientHash, serverHash hash.Hash
 	if cs.cipher != nil {
 		clientCipher = cs.cipher(clientKey, clientIV, true /* for reading */)
-		clientHash = cs.mac(version, clientMAC)
+		clientHash = cs.mac(clientMAC)
 		serverCipher = cs.cipher(serverKey, serverIV, false /* not for reading */)
-		serverHash = cs.mac(version, serverMAC)
+		serverHash = cs.mac(serverMAC)
 	} else {
 		clientCipher = cs.aead(clientKey, clientIV)
 		serverCipher = cs.aead(serverKey, serverIV)
@@ -619,7 +678,7 @@ func MakeConnWithCompleteHandshake(tcpConn net.Conn, version uint16, cipherSuite
 	}
 
 	// skip the handshake states
-	tlsConn.handshakeStatus = 1
+	atomic.StoreUint32(&tlsConn.handshakeStatus, 1)
 	tlsConn.cipherSuite = cipherSuite
 	tlsConn.haveVers = true
 	tlsConn.vers = version
