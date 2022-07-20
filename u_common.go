@@ -19,11 +19,16 @@ const (
 	utlsExtensionPadding              uint16 = 21
 	utlsExtensionExtendedMasterSecret uint16 = 23 // https://tools.ietf.org/html/rfc7627
 
+	// https://datatracker.ietf.org/doc/html/rfc8879#section-7.1
+	utlsExtensionCompressCertificate uint16 = 27
+
 	// extensions with 'fake' prefix break connection, if server echoes them back
 	fakeExtensionChannelID uint16 = 30032 // not IANA assigned
 
-	fakeCertCompressionAlgs uint16 = 0x001b
-	fakeRecordSizeLimit     uint16 = 0x001c
+	fakeRecordSizeLimit uint16 = 0x001c
+
+	// https://datatracker.ietf.org/doc/html/rfc8879#section-7.2
+	typeCompressedCertificate uint8 = 25
 )
 
 const (
@@ -37,11 +42,11 @@ const (
 	FAKE_OLD_TLS_DHE_RSA_WITH_CHACHA20_POLY1305_SHA256 = uint16(0xcc15) // we can try to craft these ciphersuites
 	FAKE_TLS_DHE_RSA_WITH_AES_128_GCM_SHA256           = uint16(0x009e) // from existing pieces, if needed
 
-	FAKE_TLS_DHE_RSA_WITH_AES_128_CBC_SHA  = uint16(0x0033)
-	FAKE_TLS_DHE_RSA_WITH_AES_256_CBC_SHA  = uint16(0x0039)
-	FAKE_TLS_DHE_RSA_WITH_AES_256_GCM_SHA384  = uint16(0x009f)
-	FAKE_TLS_RSA_WITH_RC4_128_MD5          = uint16(0x0004)
-	FAKE_TLS_EMPTY_RENEGOTIATION_INFO_SCSV = uint16(0x00ff)
+	FAKE_TLS_DHE_RSA_WITH_AES_128_CBC_SHA    = uint16(0x0033)
+	FAKE_TLS_DHE_RSA_WITH_AES_256_CBC_SHA    = uint16(0x0039)
+	FAKE_TLS_DHE_RSA_WITH_AES_256_GCM_SHA384 = uint16(0x009f)
+	FAKE_TLS_RSA_WITH_RC4_128_MD5            = uint16(0x0004)
+	FAKE_TLS_EMPTY_RENEGOTIATION_INFO_SCSV   = uint16(0x00ff)
 )
 
 // newest signatures
@@ -65,6 +70,7 @@ type CertCompressionAlgo uint16
 const (
 	CertCompressionZlib   CertCompressionAlgo = 0x0001
 	CertCompressionBrotli CertCompressionAlgo = 0x0002
+	CertCompressionZstd   CertCompressionAlgo = 0x0003
 )
 
 const (

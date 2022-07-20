@@ -303,7 +303,22 @@ func (f *Fingerprinter) FingerprintClientHello(data []byte) (*ClientHelloSpec, e
 		case utlsExtensionPadding:
 			clientHelloSpec.Extensions = append(clientHelloSpec.Extensions, &UtlsPaddingExtension{GetPaddingLen: BoringPaddingStyle})
 
-		case fakeExtensionChannelID, fakeCertCompressionAlgs, fakeRecordSizeLimit:
+		case utlsExtensionCompressCertificate:
+			methods := []CertCompressionAlgo{}
+			methodsRaw := new(cryptobyte.String)
+			if !extData.ReadUint8LengthPrefixed(methodsRaw) {
+				return nil, errors.New("unable to read cert compression algorithms extension data")
+			}
+			for !methodsRaw.Empty() {
+				var method uint16
+				if !methodsRaw.ReadUint16(&method) {
+					return nil, errors.New("unable to read cert compression algorithms extension data")
+				}
+				methods = append(methods, CertCompressionAlgo(method))
+			}
+			clientHelloSpec.Extensions = append(clientHelloSpec.Extensions, &UtlsCompressCertExtension{methods})
+
+		case fakeExtensionChannelID, fakeRecordSizeLimit:
 			clientHelloSpec.Extensions = append(clientHelloSpec.Extensions, &GenericExtension{extension, extData})
 
 		case extensionPreSharedKey:
