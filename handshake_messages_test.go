@@ -35,6 +35,7 @@ var tests = []any{
 	&newSessionTicketMsgTLS13{},
 	&certificateRequestMsgTLS13{},
 	&certificateMsgTLS13{},
+	&compressedCertificateMsg{}, // [UTLS]
 }
 
 func TestMarshalUnmarshal(t *testing.T) {
@@ -400,6 +401,15 @@ func (*certificateMsgTLS13) Generate(rand *rand.Rand, size int) reflect.Value {
 				m.certificate.SignedCertificateTimestamps, randomBytes(rand.Intn(500)+1, rand))
 		}
 	}
+	return reflect.ValueOf(m)
+}
+
+// [UTLS]
+func (*compressedCertificateMsg) Generate(rand *rand.Rand, size int) reflect.Value {
+	m := &compressedCertificateMsg{}
+	m.algorithm = uint16(rand.Intn(2 << 15))
+	m.uncompressedLength = uint32(rand.Intn(2 << 23))
+	m.compressedCertificateMessage = randomBytes(rand.Intn(500)+1, rand)
 	return reflect.ValueOf(m)
 }
 

@@ -20,11 +20,16 @@ const (
 	utlsExtensionPadding              uint16 = 21
 	utlsExtensionExtendedMasterSecret uint16 = 23 // https://tools.ietf.org/html/rfc7627
 
+	// https://datatracker.ietf.org/doc/html/rfc8879#section-7.1
+	utlsExtensionCompressCertificate uint16 = 27
+
 	// extensions with 'fake' prefix break connection, if server echoes them back
 	fakeExtensionChannelID uint16 = 30032 // not IANA assigned
 
-	fakeCertCompressionAlgs uint16 = 0x001b
-	fakeRecordSizeLimit     uint16 = 0x001c
+	fakeRecordSizeLimit uint16 = 0x001c
+
+	// https://datatracker.ietf.org/doc/html/rfc8879#section-7.2
+	typeCompressedCertificate uint8 = 25
 )
 
 const (
@@ -66,6 +71,7 @@ type CertCompressionAlgo uint16
 const (
 	CertCompressionZlib   CertCompressionAlgo = 0x0001
 	CertCompressionBrotli CertCompressionAlgo = 0x0002
+	CertCompressionZstd   CertCompressionAlgo = 0x0003
 )
 
 const (
