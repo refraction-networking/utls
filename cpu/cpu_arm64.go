@@ -2,44 +2,27 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// +build arm64
-
 package cpu
 
-const CacheLineSize = 64
+const CacheLinePadSize = 64
 
-// arm64 doesn't have a 'cpuid' equivalent, so we rely on HWCAP/HWCAP2.
-// These are linknamed in runtime/os_linux_arm64.go and are initialized by
-// archauxv().
-var arm64_hwcap uint
-var arm64_hwcap2 uint
+func doinit() {
+	options = []option{
+		{Name: "aes", Feature: &ARM64.HasAES},
+		{Name: "pmull", Feature: &ARM64.HasPMULL},
+		{Name: "sha1", Feature: &ARM64.HasSHA1},
+		{Name: "sha2", Feature: &ARM64.HasSHA2},
+		{Name: "crc32", Feature: &ARM64.HasCRC32},
+		{Name: "atomics", Feature: &ARM64.HasATOMICS},
+		{Name: "cpuid", Feature: &ARM64.HasCPUID},
+		{Name: "isNeoverseN1", Feature: &ARM64.IsNeoverseN1},
+		{Name: "isZeus", Feature: &ARM64.IsZeus},
+	}
 
-// HWCAP/HWCAP2 bits. These are exposed by Linux.
-const (
-	_ARM64_FEATURE_HAS_FP      = (1 << 0)
-	_ARM64_FEATURE_HAS_ASIMD   = (1 << 1)
-	_ARM64_FEATURE_HAS_EVTSTRM = (1 << 2)
-	_ARM64_FEATURE_HAS_AES     = (1 << 3)
-	_ARM64_FEATURE_HAS_PMULL   = (1 << 4)
-	_ARM64_FEATURE_HAS_SHA1    = (1 << 5)
-	_ARM64_FEATURE_HAS_SHA2    = (1 << 6)
-	_ARM64_FEATURE_HAS_CRC32   = (1 << 7)
-	_ARM64_FEATURE_HAS_ATOMICS = (1 << 8)
-)
-
-func init() {
-	// HWCAP feature bits
-	ARM64.HasFP = isSet(arm64_hwcap, _ARM64_FEATURE_HAS_FP)
-	ARM64.HasASIMD = isSet(arm64_hwcap, _ARM64_FEATURE_HAS_ASIMD)
-	ARM64.HasEVTSTRM = isSet(arm64_hwcap, _ARM64_FEATURE_HAS_EVTSTRM)
-	ARM64.HasAES = isSet(arm64_hwcap, _ARM64_FEATURE_HAS_AES)
-	ARM64.HasPMULL = isSet(arm64_hwcap, _ARM64_FEATURE_HAS_PMULL)
-	ARM64.HasSHA1 = isSet(arm64_hwcap, _ARM64_FEATURE_HAS_SHA1)
-	ARM64.HasSHA2 = isSet(arm64_hwcap, _ARM64_FEATURE_HAS_SHA2)
-	ARM64.HasCRC32 = isSet(arm64_hwcap, _ARM64_FEATURE_HAS_CRC32)
-	ARM64.HasATOMICS = isSet(arm64_hwcap, _ARM64_FEATURE_HAS_ATOMICS)
+	// arm64 uses different ways to detect CPU features at runtime depending on the operating system.
+	osInit()
 }
 
-func isSet(hwc uint, value uint) bool {
-	return hwc&value != 0
-}
+func getisar0() uint64
+
+func getMIDR() uint64
