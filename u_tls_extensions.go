@@ -356,15 +356,15 @@ func (e *ALPNExtension) Read(b []byte) (int, error) {
 	return e.Len(), io.EOF
 }
 
-type ALPSExtension struct {
+type ApplicationSettingsExtension struct {
 	SupportedProtocols []string
 }
 
-func (e *ALPSExtension) writeToUConn(uc *UConn) error {
+func (e *ApplicationSettingsExtension) writeToUConn(uc *UConn) error {
 	return nil
 }
 
-func (e *ALPSExtension) Len() int {
+func (e *ApplicationSettingsExtension) Len() int {
 	bLen := 2 + 2 + 2 // Type + Length + ALPS Extension length
 	for _, s := range e.SupportedProtocols {
 		bLen += 1 + len(s) // Supported ALPN Length + actual length of protocol
@@ -372,7 +372,7 @@ func (e *ALPSExtension) Len() int {
 	return bLen
 }
 
-func (e *ALPSExtension) Read(b []byte) (int, error) {
+func (e *ApplicationSettingsExtension) Read(b []byte) (int, error) {
 	if len(b) < e.Len() {
 		return 0, io.ErrShortBuffer
 	}
@@ -909,47 +909,5 @@ func (e *DelegatedCredentialsExtension) Read(b []byte) (int, error) {
 		b[6+2*i] = byte(sigAndHash >> 8)
 		b[7+2*i] = byte(sigAndHash)
 	}
-	return e.Len(), io.EOF
-}
-
-type ApplicationSettingsExtension struct {
-	SupportedALPNList []string
-}
-
-func (e *ApplicationSettingsExtension) writeToUConn(uc *UConn) error {
-	return nil
-}
-
-func (e *ApplicationSettingsExtension) Len() int {
-	result := 6 //id + first length + second length
-	for _, element := range e.SupportedALPNList {
-		result += 1 + len(element) //byte for string length + allocation for string in bytes
-	}
-	return result
-}
-
-func (e *ApplicationSettingsExtension) Read(b []byte) (int, error) {
-	if len(b) < e.Len() {
-		return 0, io.ErrShortBuffer
-	}
-
-	b[0] = byte(extensionApplicationSettings >> 8)
-	b[1] = byte(0x69)
-	currentIndex := 6
-
-	for _, alpn := range e.SupportedALPNList {
-		b[currentIndex] = byte(len(alpn)) //set length of string in bytes
-		currentIndex++
-		for _, char := range alpn {
-			b[currentIndex] = byte(char) //convert char to byte
-			currentIndex++
-		}
-	}
-
-	b[2] = 0x00
-	b[3] = byte(e.Len() - 4) //len minus id and itself (2+2)
-	b[4] = 0x00
-	b[5] = byte(e.Len() - 6) //len minus id big length and itself 5 (2+2+2)
-
 	return e.Len(), io.EOF
 }

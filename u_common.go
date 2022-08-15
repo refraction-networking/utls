@@ -146,14 +146,15 @@ var (
 	HelloRandomizedNoALPN = ClientHelloID{helloRandomizedNoALPN, helloAutoVers, nil}
 
 	// The rest will will parrot given browser.
-	HelloFirefox_Auto = HelloFirefox_99
+	HelloFirefox_Auto = HelloFirefox_102
 	HelloFirefox_55   = ClientHelloID{helloFirefox, "55", nil}
 	HelloFirefox_56   = ClientHelloID{helloFirefox, "56", nil}
 	HelloFirefox_63   = ClientHelloID{helloFirefox, "63", nil}
 	HelloFirefox_65   = ClientHelloID{helloFirefox, "65", nil}
 	HelloFirefox_99   = ClientHelloID{helloFirefox, "99", nil}
+	HelloFirefox_102  = ClientHelloID{helloFirefox, "102", nil}
 
-	HelloChrome_Auto = HelloChrome_100
+	HelloChrome_Auto = HelloChrome_102
 	HelloChrome_58   = ClientHelloID{helloChrome, "58", nil}
 	HelloChrome_62   = ClientHelloID{helloChrome, "62", nil}
 	HelloChrome_70   = ClientHelloID{helloChrome, "70", nil}
@@ -161,9 +162,10 @@ var (
 	HelloChrome_83   = ClientHelloID{helloChrome, "83", nil}
 	HelloChrome_87   = ClientHelloID{helloChrome, "87", nil}
 	HelloChrome_96   = ClientHelloID{helloChrome, "96", nil}
-	HelloChrome_100  = ClientHelloID{helloFirefox, "100", nil}
+	HelloChrome_100  = ClientHelloID{helloChrome, "100", nil}
+	HelloChrome_102  = ClientHelloID{helloChrome, "102", nil}
 
-	HelloIOS_Auto = HelloIOS_12_1
+	HelloIOS_Auto = HelloIOS_14
 	HelloIOS_11_1 = ClientHelloID{helloIOS, "111", nil} // legacy "111" means 11.1
 	HelloIOS_12_1 = ClientHelloID{helloIOS, "12.1", nil}
 	HelloIOS_13   = ClientHelloID{helloIOS, "13", nil}
