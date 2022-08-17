@@ -97,7 +97,6 @@ const (
 	extensionKeyShare                uint16 = 51
 	extensionNextProtoNeg            uint16 = 13172 // not IANA assigned
 	extensionALPS                    uint16 = 17513
-	extensionApplicationSettings     uint16 = 0x4469
 	extensionRenegotiationInfo       uint16 = 0xff01
 )
 

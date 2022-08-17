@@ -1528,6 +1528,32 @@ func (uconn *UConn) generateRandomizedSpec() (ClientHelloSpec, error) {
 			Versions: makeSupportedVersions(p.TLSVersMin, p.TLSVersMax),
 		}
 		p.Extensions = append(p.Extensions, &ks, &pskExchangeModes, &supportedVersionsExt)
+
+		// Randomly add an ALPS extension. ALPS is TLS 1.3-only and may only
+		// appear when an ALPN extension is present
+		// (https://datatracker.ietf.org/doc/html/draft-vvv-tls-alps-01#section-3).
+		// ALPS is a draft specification at this time, but appears in
+		// Chrome/BoringSSL.
+		if WithALPN {
+
+			// ALPS is a new addition to generateRandomizedSpec. Use a salted
+			// seed to create a new, independent PRNG, so that a seed used
+			// with the previous version of generateRandomizedSpec will
+			// produce the exact same spec as long as ALPS isn't selected.
+			r, err := newPRNGWithSaltedSeed(uconn.ClientHelloID.Seed, "ALPS")
+			if err != nil {
+				return p, err
+			}
+			if r.FlipWeightedCoin(0.33) {
+				// As with the ALPN case above, default to something popular
+				// (unlike ALPN, ALPS can't yet be specified in uconn.config).
+				alps := &ApplicationSettingsExtension{SupportedProtocols: []string{"h2"}}
+				p.Extensions = append(p.Extensions, alps)
+			}
+		}
+
+		// TODO: randomly add DelegatedCredentialsExtension, once it is
+		// sufficiently popular.
 	}
 	r.rand.Shuffle(len(p.Extensions), func(i, j int) {
 		p.Extensions[i], p.Extensions[j] = p.Extensions[j], p.Extensions[i]
