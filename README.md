@@ -161,6 +161,70 @@ To reuse tickets, create a shared cache and set it on current and further config
 func (uconn *UConn) SetSessionCache(cache ClientSessionCache)
 ```
 
+## Custom TLS extensions
+If you want to add your own fake (placeholder, without added functionality) extension for mimicry purposes, you can embed `*tls.GenericExtension` into your own struct and override `Len()` and `Read()` methods. For example, [DelegatedCredentials](https://datatracker.ietf.org/doc/draft-ietf-tls-subcerts/) extension can be implemented as follows:
+
+```Golang
+const FakeDelegatedCredentials uint16 = 0x0022
+
+type FakeDelegatedCredentialsExtension struct {
+	*tls.GenericExtension
+	SignatureAlgorithms []tls.SignatureScheme
+}
+
+func (e *FakeDelegatedCredentialsExtension) Len() int {
+	return 6 + 2*len(e.SignatureAlgorithms)
+}
+
+func (e *FakeDelegatedCredentialsExtension) Read(b []byte) (n int, err error) {
+	if len(b) < e.Len() {
+		return 0, io.ErrShortBuffer
+	}
+	offset := 0
+	appendUint16 := func(val uint16) {
+		b[offset] = byte(val >> 8)
+		b[offset+1] = byte(val & 0xff)
+		offset += 2
+	}
+
+	// Extension type
+	appendUint16(fakeDelegatedCredentials)
+
+	// Extension data length
+	appendUint16(uint16(len(e.SignatureAlgorithms)) + 2)
+
+	// Algorithms list length
+	appendUint16(uint16(len(e.SignatureAlgorithms)))
+
+	// Algorithms list
+	for _, a := range e.SignatureAlgorithms {
+		appendUint16(uint16(a))
+	}
+	return e.Len(), io.EOF
+}
+```
+
+Then it can be used just like normal extension:
+
+```Golang
+&tls.ClientHelloSpec{
+	//...
+	Extensions: []tls.TLSExtension{
+		//...
+		&FakeDelegatedCredentialsExtension{
+			SignatureAlgorithms: []tls.SignatureScheme{
+				tls.ECDSAWithP256AndSHA256,
+				tls.ECDSAWithP384AndSHA384,
+				tls.ECDSAWithP521AndSHA512,
+				tls.ECDSAWithSHA1,
+			},
+		},
+		//...
+	}
+	//...
+}
+```
+
 # Client Hello IDs
 See full list of `clientHelloID` values [here](https://godoc.org/github.com/refraction-networking/utls#ClientHelloID).  
 There are different behaviors you can get, depending  on your `clientHelloID`:
