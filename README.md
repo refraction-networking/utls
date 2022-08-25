@@ -190,11 +190,13 @@ func (e *FakeDelegatedCredentialsExtension) Read(b []byte) (n int, err error) {
 	// Extension type
 	appendUint16(fakeDelegatedCredentials)
 
+	algosLength := 2 * len(e.SignatureAlgorithms)
+
 	// Extension data length
-	appendUint16(uint16(len(e.SignatureAlgorithms)) + 2)
+	appendUint16(uint16(algosLength) + 2)
 
 	// Algorithms list length
-	appendUint16(uint16(len(e.SignatureAlgorithms)))
+	appendUint16(uint16(algosLength))
 
 	// Algorithms list
 	for _, a := range e.SignatureAlgorithms {
