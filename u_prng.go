@@ -19,6 +19,7 @@ import (
 	"math/rand"
 	"sync"
 
+	"golang.org/x/crypto/hkdf"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -37,6 +38,21 @@ func NewPRNGSeed() (*PRNGSeed, error) {
 		return nil, err
 	}
 	return seed, nil
+}
+
+// newSaltedPRNGSeed creates a new seed derived from an existing seed and a
+// salt. A HKDF is applied to the seed and salt.
+//
+// newSaltedPRNGSeed is intended for use cases where a single seed needs to be
+// used in distinct contexts to produce independent random streams.
+func newSaltedPRNGSeed(seed *PRNGSeed, salt string) (*PRNGSeed, error) {
+	saltedSeed := new(PRNGSeed)
+	_, err := io.ReadFull(
+		hkdf.New(sha3.New256, seed[:], []byte(salt), nil), saltedSeed[:])
+	if err != nil {
+		return nil, err
+	}
+	return saltedSeed, nil
 }
 
 // prng is a seeded, unbiased PRNG based on SHAKE256. that is suitable for use
@@ -76,6 +92,16 @@ func newPRNGWithSeed(seed *PRNGSeed) (*prng, error) {
 	}
 	p.rand = rand.New(p)
 	return p, nil
+}
+
+// newPRNGWithSaltedSeed initializes a new PRNG using a seed derived from an
+// existing seed and a salt with NewSaltedSeed.
+func newPRNGWithSaltedSeed(seed *PRNGSeed, salt string) (*prng, error) {
+	saltedSeed, err := newSaltedPRNGSeed(seed, salt)
+	if err != nil {
+		return nil, err
+	}
+	return newPRNGWithSeed(saltedSeed)
 }
 
 // Read reads random bytes from the PRNG stream into b. Read conforms to
