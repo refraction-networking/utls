@@ -58,11 +58,14 @@ func UClient(conn net.Conn, config *Config, clientHelloID ClientHelloID) *UConn 
 // BuildHandshakeState behavior varies based on ClientHelloID and
 // whether it was already called before.
 // If HelloGolang:
-//   [only once] make default ClientHello and overwrite existing state
+//
+//	[only once] make default ClientHello and overwrite existing state
+//
 // If any other mimicking ClientHelloID is used:
-//   [only once] make ClientHello based on ID and overwrite existing state
-//   [each call] apply uconn.Extensions config to internal crypto/tls structures
-//   [each call] marshal ClientHello.
+//
+//	[only once] make ClientHello based on ID and overwrite existing state
+//	[each call] apply uconn.Extensions config to internal crypto/tls structures
+//	[each call] marshal ClientHello.
 //
 // BuildHandshakeState is automatically called before uTLS performs handshake,
 // amd should only be called explicitly to inspect/change fields of
@@ -575,9 +578,9 @@ func (uconn *UConn) GetOutKeystream(length int) ([]byte, error) {
 
 // SetTLSVers sets min and max TLS version in all appropriate places.
 // Function will use first non-zero version parsed in following order:
-//   1) Provided minTLSVers, maxTLSVers
-//   2) specExtensions may have SupportedVersionsExtension
-//   3) [default] min = TLS 1.0, max = TLS 1.2
+//  1. Provided minTLSVers, maxTLSVers
+//  2. specExtensions may have SupportedVersionsExtension
+//  3. [default] min = TLS 1.0, max = TLS 1.2
 //
 // Error is only returned if things are in clearly undesirable state
 // to help user fix them.
@@ -653,50 +656,51 @@ func (uconn *UConn) GetUnderlyingConn() net.Conn {
 func MakeConnWithCompleteHandshake(tcpConn net.Conn, version uint16, cipherSuite uint16, masterSecret []byte, clientRandom []byte, serverRandom []byte, isClient bool) *Conn {
 	tlsConn := &Conn{conn: tcpConn, config: &Config{}, isClient: isClient}
 	cs := cipherSuiteByID(cipherSuite)
-	if cs == nil {
+	if cs != nil {
+		// This is mostly borrowed from establishKeys()
+		clientMAC, serverMAC, clientKey, serverKey, clientIV, serverIV :=
+			keysFromMasterSecret(version, cs, masterSecret, clientRandom, serverRandom,
+				cs.macLen, cs.keyLen, cs.ivLen)
+
+		var clientCipher, serverCipher interface{}
+		var clientHash, serverHash hash.Hash
+		if cs.cipher != nil {
+			clientCipher = cs.cipher(clientKey, clientIV, true /* for reading */)
+			clientHash = cs.mac(clientMAC)
+			serverCipher = cs.cipher(serverKey, serverIV, false /* not for reading */)
+			serverHash = cs.mac(serverMAC)
+		} else {
+			clientCipher = cs.aead(clientKey, clientIV)
+			serverCipher = cs.aead(serverKey, serverIV)
+		}
+
+		if isClient {
+			tlsConn.in.prepareCipherSpec(version, serverCipher, serverHash)
+			tlsConn.out.prepareCipherSpec(version, clientCipher, clientHash)
+		} else {
+			tlsConn.in.prepareCipherSpec(version, clientCipher, clientHash)
+			tlsConn.out.prepareCipherSpec(version, serverCipher, serverHash)
+		}
+
+		// skip the handshake states
+		atomic.StoreUint32(&tlsConn.handshakeStatus, 1)
+		tlsConn.cipherSuite = cipherSuite
+		tlsConn.haveVers = true
+		tlsConn.vers = version
+
+		// Update to the new cipher specs
+		// and consume the finished messages
+		tlsConn.in.changeCipherSpec()
+		tlsConn.out.changeCipherSpec()
+
+		tlsConn.in.incSeq()
+		tlsConn.out.incSeq()
+
+		return tlsConn
+	} else {
+		// TODO: Support TLS 1.3 Cipher Suites
 		return nil
 	}
-
-	// This is mostly borrowed from establishKeys()
-	clientMAC, serverMAC, clientKey, serverKey, clientIV, serverIV :=
-		keysFromMasterSecret(version, cs, masterSecret, clientRandom, serverRandom,
-			cs.macLen, cs.keyLen, cs.ivLen)
-
-	var clientCipher, serverCipher interface{}
-	var clientHash, serverHash hash.Hash
-	if cs.cipher != nil {
-		clientCipher = cs.cipher(clientKey, clientIV, true /* for reading */)
-		clientHash = cs.mac(clientMAC)
-		serverCipher = cs.cipher(serverKey, serverIV, false /* not for reading */)
-		serverHash = cs.mac(serverMAC)
-	} else {
-		clientCipher = cs.aead(clientKey, clientIV)
-		serverCipher = cs.aead(serverKey, serverIV)
-	}
-
-	if isClient {
-		tlsConn.in.prepareCipherSpec(version, serverCipher, serverHash)
-		tlsConn.out.prepareCipherSpec(version, clientCipher, clientHash)
-	} else {
-		tlsConn.in.prepareCipherSpec(version, clientCipher, clientHash)
-		tlsConn.out.prepareCipherSpec(version, serverCipher, serverHash)
-	}
-
-	// skip the handshake states
-	atomic.StoreUint32(&tlsConn.handshakeStatus, 1)
-	tlsConn.cipherSuite = cipherSuite
-	tlsConn.haveVers = true
-	tlsConn.vers = version
-
-	// Update to the new cipher specs
-	// and consume the finished messages
-	tlsConn.in.changeCipherSpec()
-	tlsConn.out.changeCipherSpec()
-
-	tlsConn.in.incSeq()
-	tlsConn.out.incSeq()
-
-	return tlsConn
 }
 
 func makeSupportedVersions(minVers, maxVers uint16) []uint16 {
