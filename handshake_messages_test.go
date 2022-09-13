@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-var tests = []any{
+var tests = []interface{}{
 	&clientHelloMsg{},
 	&serverHelloMsg{},
 	&finishedMsg{},
@@ -62,7 +62,7 @@ func TestMarshalUnmarshal(t *testing.T) {
 				t.Errorf("#%d failed to unmarshal %#v %x", i, m1, marshaled)
 				break
 			}
-			m2.marshal() // to fill any marshal cache in the message
+			m2.marshal() // to fill interface{} marshal cache in the message
 
 			if !reflect.DeepEqual(m1, m2) {
 				t.Errorf("#%d got:%#v want:%#v %x", i, m2, m1, marshaled)
