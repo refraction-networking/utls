@@ -33,7 +33,7 @@ type clientHandshakeState struct {
 	masterSecret []byte
 	session      *ClientSessionState
 
-	uconn *UConn // [UTLS]
+	uconn *UConn // [uTLS]
 }
 
 func (c *Conn) makeClientHello() (*clientHelloMsg, ecdheParameters, error) {
@@ -663,7 +663,7 @@ func (hs *clientHandshakeState) establishKeys() error {
 
 	clientMAC, serverMAC, clientKey, serverKey, clientIV, serverIV :=
 		keysFromMasterSecret(c.vers, hs.suite, hs.masterSecret, hs.hello.random, hs.serverHello.random, hs.suite.macLen, hs.suite.keyLen, hs.suite.ivLen)
-	var clientCipher, serverCipher any
+	var clientCipher, serverCipher interface{}
 	var clientHash, serverHash hash.Hash
 	if hs.suite.cipher != nil {
 		clientCipher = hs.suite.cipher(clientKey, clientIV, false /* not for reading */)

@@ -6,11 +6,12 @@ package tls
 
 import (
 	"bytes"
-	"internal/testenv"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/refraction-networking/utls/testenv"
 )
 
 // Tests that the linker is able to remove references to the Client or Server if unused.

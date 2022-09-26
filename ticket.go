@@ -146,7 +146,7 @@ func (c *Conn) encryptTicket(state []byte) ([]byte, error) {
 
 // [uTLS] changed to use exported DecryptTicketWith func below
 func (c *Conn) decryptTicket(encrypted []byte) (plaintext []byte, usedOldKey bool) {
-	tks := ticketKeys(c.config.ticketKeys()).ToPublic()
+	tks := ticketKeys(c.config.ticketKeys(c.config)).ToPublic()
 	return DecryptTicketWith(encrypted, tks)
 }
 
@@ -168,8 +168,8 @@ func DecryptTicketWith(encrypted []byte, tks TicketKeys) (plaintext []byte, used
 	ciphertext := encrypted[ticketKeyNameLen+aes.BlockSize : len(encrypted)-sha256.Size]
 
 	keyIndex := -1
-	for i, candidateKey := range c.ticketKeys {
-		if bytes.Equal(keyName, candidateKey.keyName[:]) {
+	for i, candidateKey := range tks {
+		if bytes.Equal(keyName, candidateKey.KeyName[:]) {
 			keyIndex = i
 			break
 		}
@@ -177,9 +177,9 @@ func DecryptTicketWith(encrypted []byte, tks TicketKeys) (plaintext []byte, used
 	if keyIndex == -1 {
 		return nil, false
 	}
-	key := &c.ticketKeys[keyIndex]
+	key := &tks[keyIndex]
 
-	mac := hmac.New(sha256.New, key.hmacKey[:])
+	mac := hmac.New(sha256.New, key.HmacKey[:])
 	mac.Write(encrypted[:len(encrypted)-sha256.Size])
 	expected := mac.Sum(nil)
 
@@ -187,7 +187,7 @@ func DecryptTicketWith(encrypted []byte, tks TicketKeys) (plaintext []byte, used
 		return nil, false
 	}
 
-	block, err := aes.NewCipher(key.aesKey[:])
+	block, err := aes.NewCipher(key.AesKey[:])
 	if err != nil {
 		return nil, false
 	}

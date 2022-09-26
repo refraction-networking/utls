@@ -14,7 +14,6 @@ import (
 	"bytes"
 	"errors"
 	"flag"
-	"internal/cfg"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,6 +24,64 @@ import (
 	"testing"
 	"time"
 )
+
+const KnownEnv = `
+	AR
+	CC
+	CGO_CFLAGS
+	CGO_CFLAGS_ALLOW
+	CGO_CFLAGS_DISALLOW
+	CGO_CPPFLAGS
+	CGO_CPPFLAGS_ALLOW
+	CGO_CPPFLAGS_DISALLOW
+	CGO_CXXFLAGS
+	CGO_CXXFLAGS_ALLOW
+	CGO_CXXFLAGS_DISALLOW
+	CGO_ENABLED
+	CGO_FFLAGS
+	CGO_FFLAGS_ALLOW
+	CGO_FFLAGS_DISALLOW
+	CGO_LDFLAGS
+	CGO_LDFLAGS_ALLOW
+	CGO_LDFLAGS_DISALLOW
+	CXX
+	FC
+	GCCGO
+	GO111MODULE
+	GO386
+	GOAMD64
+	GOARCH
+	GOARM
+	GOBIN
+	GOCACHE
+	GOENV
+	GOEXE
+	GOEXPERIMENT
+	GOFLAGS
+	GOGCCFLAGS
+	GOHOSTARCH
+	GOHOSTOS
+	GOINSECURE
+	GOMIPS
+	GOMIPS64
+	GOMODCACHE
+	GONOPROXY
+	GONOSUMDB
+	GOOS
+	GOPATH
+	GOPPC64
+	GOPRIVATE
+	GOPROXY
+	GOROOT
+	GOSUMDB
+	GOTMPDIR
+	GOTOOLDIR
+	GOVCS
+	GOWASM
+	GOWORK
+	GO_EXTLINK_ENABLED
+	PKG_CONFIG
+`
 
 // Builder reports the name of the builder running this test
 // (for example, "linux-amd64" or "windows-386-gce").
@@ -90,7 +147,7 @@ func GoToolPath(t testing.TB) string {
 	// Add all environment variables that affect the Go command to test metadata.
 	// Cached test results will be invalidate when these variables change.
 	// See golang.org/issue/32285.
-	for _, envVar := range strings.Fields(cfg.KnownEnv) {
+	for _, envVar := range strings.Fields(KnownEnv) {
 		os.Getenv(envVar)
 	}
 	return path
