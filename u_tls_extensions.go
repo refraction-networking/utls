@@ -834,6 +834,8 @@ FAKE EXTENSIONS
 */
 
 type FakeChannelIDExtension struct {
+	// The extension ID changed from 30031 to 30032. Set to true to use the old extension ID.
+	OldExtensionID bool
 }
 
 func (e *FakeChannelIDExtension) writeToUConn(uc *UConn) error {
@@ -848,9 +850,13 @@ func (e *FakeChannelIDExtension) Read(b []byte) (int, error) {
 	if len(b) < e.Len() {
 		return 0, io.ErrShortBuffer
 	}
+	extensionID := fakeExtensionChannelID
+	if e.OldExtensionID {
+		extensionID = fakeExtensionChannelIDOld
+	}
 	// https://tools.ietf.org/html/draft-balfanz-tls-channelid-00
-	b[0] = byte(fakeExtensionChannelID >> 8)
-	b[1] = byte(fakeExtensionChannelID & 0xff)
+	b[0] = byte(extensionID >> 8)
+	b[1] = byte(extensionID & 0xff)
 	// The length is 0
 	return e.Len(), io.EOF
 }
@@ -906,6 +912,116 @@ func (e *DelegatedCredentialsExtension) Read(b []byte) (int, error) {
 	b[4] = byte((2 * len(e.AlgorithmsSignature)) >> 8)
 	b[5] = byte(2 * len(e.AlgorithmsSignature))
 	for i, sigAndHash := range e.AlgorithmsSignature {
+		b[6+2*i] = byte(sigAndHash >> 8)
+		b[7+2*i] = byte(sigAndHash)
+	}
+	return e.Len(), io.EOF
+}
+
+// https://tools.ietf.org/html/rfc8472#section-2
+
+type FakeTokenBindingExtension struct {
+	MajorVersion, MinorVersion uint8
+	KeyParameters              []uint8
+}
+
+func (e *FakeTokenBindingExtension) writeToUConn(uc *UConn) error {
+	return nil
+}
+
+func (e *FakeTokenBindingExtension) Len() int {
+	// extension ID + data length + versions + key parameters length + key parameters
+	return 2 + 2 + 2 + 1 + len(e.KeyParameters)
+}
+
+func (e *FakeTokenBindingExtension) Read(b []byte) (int, error) {
+	if len(b) < e.Len() {
+		return 0, io.ErrShortBuffer
+	}
+	dataLen := e.Len() - 4
+	b[0] = byte(fakeExtensionTokenBinding >> 8)
+	b[1] = byte(fakeExtensionTokenBinding & 0xff)
+	b[2] = byte(dataLen >> 8)
+	b[3] = byte(dataLen & 0xff)
+	b[4] = e.MajorVersion
+	b[5] = e.MinorVersion
+	b[6] = byte(len(e.KeyParameters))
+	if len(e.KeyParameters) > 0 {
+		copy(b[7:], e.KeyParameters)
+	}
+	return e.Len(), io.EOF
+}
+
+type FakeALPSExtension struct {
+	SupportedProtocols []string
+}
+
+func (e *FakeALPSExtension) writeToUConn(uc *UConn) error {
+	return nil
+}
+
+func (e *FakeALPSExtension) Len() int {
+	bLen := 2 + 2 + 2
+	for _, s := range e.SupportedProtocols {
+		bLen += 1 + len(s)
+	}
+	return bLen
+}
+
+func (e *FakeALPSExtension) Read(b []byte) (int, error) {
+	if len(b) < e.Len() {
+		return 0, io.ErrShortBuffer
+	}
+
+	b[0] = byte(fakeExtensionALPS >> 8)
+	b[1] = byte(fakeExtensionALPS & 0xff)
+	lengths := b[2:]
+	b = b[6:]
+
+	stringsLength := 0
+	for _, s := range e.SupportedProtocols {
+		l := len(s)
+		b[0] = byte(l)
+		copy(b[1:], s)
+		b = b[1+l:]
+		stringsLength += 1 + l
+	}
+
+	lengths[2] = byte(stringsLength >> 8)
+	lengths[3] = byte(stringsLength)
+	stringsLength += 2
+	lengths[0] = byte(stringsLength >> 8)
+	lengths[1] = byte(stringsLength)
+
+	return e.Len(), io.EOF
+}
+
+// https://datatracker.ietf.org/doc/html/draft-ietf-tls-subcerts-15#section-4.1.1
+
+type FakeDelegatedCredentialsExtension struct {
+	SupportedSignatureAlgorithms []SignatureScheme
+}
+
+func (e *FakeDelegatedCredentialsExtension) writeToUConn(uc *UConn) error {
+	return nil
+}
+
+func (e *FakeDelegatedCredentialsExtension) Len() int {
+	return 6 + 2*len(e.SupportedSignatureAlgorithms)
+}
+
+func (e *FakeDelegatedCredentialsExtension) Read(b []byte) (int, error) {
+	if len(b) < e.Len() {
+		return 0, io.ErrShortBuffer
+	}
+	// https://datatracker.ietf.org/doc/html/draft-ietf-tls-subcerts-15#section-4.1.1
+	b[0] = byte(fakeExtensionDelegatedCredentials >> 8)
+	b[1] = byte(fakeExtensionDelegatedCredentials)
+	b[2] = byte((2 + 2*len(e.SupportedSignatureAlgorithms)) >> 8)
+	b[3] = byte((2 + 2*len(e.SupportedSignatureAlgorithms)))
+	b[4] = byte((2 * len(e.SupportedSignatureAlgorithms)) >> 8)
+	b[5] = byte((2 * len(e.SupportedSignatureAlgorithms)))
+	for i, sigAndHash := range e.SupportedSignatureAlgorithms {
 		b[6+2*i] = byte(sigAndHash >> 8)
 		b[7+2*i] = byte(sigAndHash)
 	}

@@ -318,8 +318,63 @@ func (f *Fingerprinter) FingerprintClientHello(data []byte) (*ClientHelloSpec, e
 			}
 			clientHelloSpec.Extensions = append(clientHelloSpec.Extensions, &UtlsCompressCertExtension{methods})
 
-		case fakeExtensionChannelID, fakeRecordSizeLimit:
-			clientHelloSpec.Extensions = append(clientHelloSpec.Extensions, &GenericExtension{extension, extData})
+		case fakeExtensionChannelID:
+			clientHelloSpec.Extensions = append(clientHelloSpec.Extensions, &FakeChannelIDExtension{})
+
+		case fakeExtensionChannelIDOld:
+			clientHelloSpec.Extensions = append(clientHelloSpec.Extensions, &FakeChannelIDExtension{true})
+
+		case fakeExtensionTokenBinding:
+			var tokenBindingExt FakeTokenBindingExtension
+			var keyParameters cryptobyte.String
+			if !extData.ReadUint8(&tokenBindingExt.MajorVersion) ||
+				!extData.ReadUint8(&tokenBindingExt.MinorVersion) ||
+				!extData.ReadUint8LengthPrefixed(&keyParameters) {
+				return nil, errors.New("unable to read token binding extension data")
+			}
+			tokenBindingExt.KeyParameters = keyParameters
+			clientHelloSpec.Extensions = append(clientHelloSpec.Extensions, &tokenBindingExt)
+
+		case fakeExtensionALPS:
+			// Similar to ALPN (RFC 7301, Section 3.1):
+			// https://datatracker.ietf.org/doc/html/draft-vvv-tls-alps#section-3
+			var protoList cryptobyte.String
+			if !extData.ReadUint16LengthPrefixed(&protoList) || protoList.Empty() {
+				return nil, errors.New("unable to read ALPS extension data")
+			}
+			supportedProtocols := []string{}
+			for !protoList.Empty() {
+				var proto cryptobyte.String
+				if !protoList.ReadUint8LengthPrefixed(&proto) || proto.Empty() {
+					return nil, errors.New("unable to read ALPS extension data")
+				}
+				supportedProtocols = append(supportedProtocols, string(proto))
+			}
+			clientHelloSpec.Extensions = append(clientHelloSpec.Extensions, &FakeALPSExtension{supportedProtocols})
+
+		case fakeRecordSizeLimit:
+			recordSizeExt := new(FakeRecordSizeLimitExtension)
+			if !extData.ReadUint16(&recordSizeExt.Limit) {
+				return nil, errors.New("unable to read record size limit extension data")
+			}
+			clientHelloSpec.Extensions = append(clientHelloSpec.Extensions, recordSizeExt)
+
+		case fakeExtensionDelegatedCredentials:
+			//https://datatracker.ietf.org/doc/html/draft-ietf-tls-subcerts-15#section-4.1.1
+			var supportedAlgs cryptobyte.String
+			if !extData.ReadUint16LengthPrefixed(&supportedAlgs) || supportedAlgs.Empty() {
+				return nil, errors.New("unable to read signature algorithms extension data")
+			}
+			supportedSignatureAlgorithms := []SignatureScheme{}
+			for !supportedAlgs.Empty() {
+				var sigAndAlg uint16
+				if !supportedAlgs.ReadUint16(&sigAndAlg) {
+					return nil, errors.New("unable to read signature algorithms extension data")
+				}
+				supportedSignatureAlgorithms = append(
+					supportedSignatureAlgorithms, SignatureScheme(sigAndAlg))
+			}
+			clientHelloSpec.Extensions = append(clientHelloSpec.Extensions, &FakeDelegatedCredentialsExtension{supportedSignatureAlgorithms})
 
 		case extensionPreSharedKey:
 			// RFC 8446, Section 4.2.11
@@ -351,7 +406,7 @@ func (f *Fingerprinter) FingerprintClientHello(data []byte) (*ClientHelloSpec, e
 			} else if f.AllowBluntMimicry {
 				clientHelloSpec.Extensions = append(clientHelloSpec.Extensions, &GenericExtension{extension, extData})
 			} else {
-				return nil, fmt.Errorf("unsupported extension %#x", extension)
+				return nil, fmt.Errorf("unsupported extension %d", extension)
 			}
 
 			continue

@@ -23,7 +23,11 @@ const (
 	utlsExtensionCompressCertificate uint16 = 27
 
 	// extensions with 'fake' prefix break connection, if server echoes them back
-	fakeExtensionChannelID uint16 = 30032 // not IANA assigned
+	fakeExtensionTokenBinding         uint16 = 24
+	fakeExtensionChannelIDOld         uint16 = 30031 // not IANA assigned
+	fakeExtensionChannelID            uint16 = 30032 // not IANA assigned
+	fakeExtensionALPS                 uint16 = 17513 // not IANA assigned
+	fakeExtensionDelegatedCredentials uint16 = 34
 
 	fakeRecordSizeLimit uint16 = 0x001c
 
@@ -44,15 +48,24 @@ const (
 
 	FAKE_TLS_DHE_RSA_WITH_AES_128_CBC_SHA    = uint16(0x0033)
 	FAKE_TLS_DHE_RSA_WITH_AES_256_CBC_SHA    = uint16(0x0039)
-	FAKE_TLS_DHE_RSA_WITH_AES_256_GCM_SHA384 = uint16(0x009f)
 	FAKE_TLS_RSA_WITH_RC4_128_MD5            = uint16(0x0004)
+	FAKE_TLS_DHE_RSA_WITH_AES_256_GCM_SHA384 = uint16(0x009f)
+	FAKE_TLS_DHE_DSS_WITH_AES_128_CBC_SHA    = uint16(0x0032)
+	FAKE_TLS_DHE_RSA_WITH_AES_256_CBC_SHA256 = uint16(0x006b)
+	FAKE_TLS_DHE_RSA_WITH_AES_128_CBC_SHA256 = uint16(0x0067)
 	FAKE_TLS_EMPTY_RENEGOTIATION_INFO_SCSV   = uint16(0x00ff)
+
+	// https://docs.microsoft.com/en-us/dotnet/api/system.net.security.tlsciphersuite?view=netcore-3.1
+	FAKE_TLS_ECDHE_ECDSA_WITH_3DES_EDE_CBC_SHA = uint16(0xc008)
 )
 
 // newest signatures
 var (
 	FakePKCS1WithSHA224 SignatureScheme = 0x0301
 	FakeECDSAWithSHA224 SignatureScheme = 0x0303
+
+	FakeSHA1WithDSA   SignatureScheme = 0x0202
+	FakeSHA256WithDSA SignatureScheme = 0x0402
 
 	// fakeEd25519 = SignatureAndHash{0x08, 0x07}
 	// fakeEd448 = SignatureAndHash{0x08, 0x08}
@@ -109,6 +122,10 @@ const (
 	helloChrome           = "Chrome"
 	helloIOS              = "iOS"
 	helloAndroid          = "Android"
+	helloEdge             = "Edge"
+	helloSafari           = "Safari"
+	hello360              = "360Browser"
+	helloQQ               = "QQBrowser"
 
 	// versions
 	helloAutoVers = "0"
@@ -146,13 +163,14 @@ var (
 	HelloRandomizedNoALPN = ClientHelloID{helloRandomizedNoALPN, helloAutoVers, nil}
 
 	// The rest will will parrot given browser.
-	HelloFirefox_Auto = HelloFirefox_102
+	HelloFirefox_Auto = HelloFirefox_105
 	HelloFirefox_55   = ClientHelloID{helloFirefox, "55", nil}
 	HelloFirefox_56   = ClientHelloID{helloFirefox, "56", nil}
 	HelloFirefox_63   = ClientHelloID{helloFirefox, "63", nil}
 	HelloFirefox_65   = ClientHelloID{helloFirefox, "65", nil}
 	HelloFirefox_99   = ClientHelloID{helloFirefox, "99", nil}
 	HelloFirefox_102  = ClientHelloID{helloFirefox, "102", nil}
+	HelloFirefox_105  = ClientHelloID{helloFirefox, "105", nil}
 
 	HelloChrome_Auto = HelloChrome_102
 	HelloChrome_58   = ClientHelloID{helloChrome, "58", nil}
@@ -172,6 +190,20 @@ var (
 	HelloIOS_14   = ClientHelloID{helloIOS, "14", nil}
 
 	HelloAndroid_11_OkHttp = ClientHelloID{helloAndroid, "11", nil}
+
+	HelloEdge_Auto = HelloEdge_85 // HelloEdge_106 seems to be incompatible with this library
+	HelloEdge_85   = ClientHelloID{helloEdge, "85", nil}
+	HelloEdge_106  = ClientHelloID{helloEdge, "106", nil}
+
+	HelloSafari_Auto = HelloSafari_16_0
+	HelloSafari_16_0 = ClientHelloID{helloSafari, "16.0", nil}
+
+	Hello360_Auto = Hello360_7_5 // Hello360_11_0 seems to be incompatible with this library
+	Hello360_7_5  = ClientHelloID{hello360, "7.5", nil}
+	Hello360_11_0 = ClientHelloID{hello360, "11.0", nil}
+
+	HelloQQ_Auto = HelloQQ_11_1
+	HelloQQ_11_1 = ClientHelloID{helloQQ, "11.1", nil}
 )
 
 // based on spec's GreaseStyle, GREASE_PLACEHOLDER may be replaced by another GREASE value
