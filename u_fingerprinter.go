@@ -350,7 +350,7 @@ func (f *Fingerprinter) FingerprintClientHello(data []byte) (*ClientHelloSpec, e
 				}
 				supportedProtocols = append(supportedProtocols, string(proto))
 			}
-			clientHelloSpec.Extensions = append(clientHelloSpec.Extensions, &FakeALPSExtension{supportedProtocols})
+			clientHelloSpec.Extensions = append(clientHelloSpec.Extensions, &ApplicationSettingsExtension{supportedProtocols})
 
 		case fakeRecordSizeLimit:
 			recordSizeExt := new(FakeRecordSizeLimitExtension)

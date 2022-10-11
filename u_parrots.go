@@ -1499,7 +1499,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 						CertCompressionBrotli,
 					},
 				},
-				&FakeALPSExtension{
+				&ApplicationSettingsExtension{
 					SupportedProtocols: []string{
 						"h2",
 					},
@@ -1901,7 +1901,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 						CertCompressionBrotli,
 					},
 				},
-				&FakeALPSExtension{
+				&ApplicationSettingsExtension{
 					SupportedProtocols: []string{
 						"h2",
 					},

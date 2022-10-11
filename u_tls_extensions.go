@@ -356,6 +356,17 @@ func (e *ALPNExtension) Read(b []byte) (int, error) {
 	return e.Len(), io.EOF
 }
 
+// ApplicationSettingsExtension represents the TLS ALPS extension. At the time
+// of this writing, this extension is currently a draft:
+// https://datatracker.ietf.org/doc/html/draft-vvv-tls-alps-01
+//
+// This library does not offer actual support for ALPS. This extension is
+// "faked" - it is advertised by the client, but not respected if the server
+// responds with support.
+//
+// In the normal convention of this library, this type name would be prefixed
+// with 'Fake'. The existing name is retained for backwards compatibility
+// reasons.
 type ApplicationSettingsExtension struct {
 	SupportedProtocols []string
 }
@@ -378,8 +389,8 @@ func (e *ApplicationSettingsExtension) Read(b []byte) (int, error) {
 	}
 
 	// Read Type.
-	b[0] = byte(extensionALPS >> 8)   // hex: 44 dec: 68
-	b[1] = byte(extensionALPS & 0xff) // hex: 69 dec: 105
+	b[0] = byte(fakeExtensionALPS >> 8)   // hex: 44 dec: 68
+	b[1] = byte(fakeExtensionALPS & 0xff) // hex: 69 dec: 105
 
 	lengths := b[2:] // get the remaining buffer without Type
 	b = b[6:]        // set the buffer to the buffer without Type, Length and ALPS Extension Length (so only the Supported ALPN list remains)
@@ -949,50 +960,6 @@ func (e *FakeTokenBindingExtension) Read(b []byte) (int, error) {
 	if len(e.KeyParameters) > 0 {
 		copy(b[7:], e.KeyParameters)
 	}
-	return e.Len(), io.EOF
-}
-
-type FakeALPSExtension struct {
-	SupportedProtocols []string
-}
-
-func (e *FakeALPSExtension) writeToUConn(uc *UConn) error {
-	return nil
-}
-
-func (e *FakeALPSExtension) Len() int {
-	bLen := 2 + 2 + 2
-	for _, s := range e.SupportedProtocols {
-		bLen += 1 + len(s)
-	}
-	return bLen
-}
-
-func (e *FakeALPSExtension) Read(b []byte) (int, error) {
-	if len(b) < e.Len() {
-		return 0, io.ErrShortBuffer
-	}
-
-	b[0] = byte(fakeExtensionALPS >> 8)
-	b[1] = byte(fakeExtensionALPS & 0xff)
-	lengths := b[2:]
-	b = b[6:]
-
-	stringsLength := 0
-	for _, s := range e.SupportedProtocols {
-		l := len(s)
-		b[0] = byte(l)
-		copy(b[1:], s)
-		b = b[1+l:]
-		stringsLength += 1 + l
-	}
-
-	lengths[2] = byte(stringsLength >> 8)
-	lengths[3] = byte(stringsLength)
-	stringsLength += 2
-	lengths[0] = byte(stringsLength >> 8)
-	lengths[1] = byte(stringsLength)
-
 	return e.Len(), io.EOF
 }
 
