@@ -8,6 +8,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha512"
 	"fmt"
+	"hash"
 )
 
 // Naming convention:
@@ -226,8 +227,8 @@ func unGREASEUint16(v uint16) uint16 {
 
 // utlsMacSHA384 returns a SHA-384 based MAC. These are only supported in TLS 1.2
 // so the given version is ignored.
-func utlsMacSHA384(version uint16, key []byte) macFunction {
-	return tls10MAC{h: hmac.New(sha512.New384, key)}
+func utlsMacSHA384(key []byte) hash.Hash {
+	return hmac.New(sha512.New384, key)
 }
 
 var utlsSupportedCipherSuites []*cipherSuite
@@ -235,9 +236,9 @@ var utlsSupportedCipherSuites []*cipherSuite
 func init() {
 	utlsSupportedCipherSuites = append(cipherSuites, []*cipherSuite{
 		{OLD_TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256, 32, 0, 12, ecdheRSAKA,
-			suiteECDHE | suiteTLS12 | suiteDefaultOff, nil, nil, aeadChaCha20Poly1305},
+			suiteECDHE | suiteTLS12, nil, nil, aeadChaCha20Poly1305},
 		{OLD_TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256, 32, 0, 12, ecdheECDSAKA,
-			suiteECDHE | suiteECDSA | suiteTLS12 | suiteDefaultOff, nil, nil, aeadChaCha20Poly1305},
+			suiteECDHE | suiteECSign | suiteTLS12, nil, nil, aeadChaCha20Poly1305},
 	}...)
 }
 
@@ -249,11 +250,11 @@ func init() {
 func EnableWeakCiphers() {
 	utlsSupportedCipherSuites = append(cipherSuites, []*cipherSuite{
 		{DISABLED_TLS_RSA_WITH_AES_256_CBC_SHA256, 32, 32, 16, rsaKA,
-			suiteTLS12 | suiteDefaultOff, cipherAES, macSHA256, nil},
+			suiteTLS12, cipherAES, macSHA256, nil},
 
 		{DISABLED_TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384, 32, 48, 16, ecdheECDSAKA,
-			suiteECDHE | suiteECDSA | suiteTLS12 | suiteDefaultOff | suiteSHA384, cipherAES, utlsMacSHA384, nil},
+			suiteECDHE | suiteECSign | suiteTLS12 | suiteSHA384, cipherAES, utlsMacSHA384, nil},
 		{DISABLED_TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384, 32, 48, 16, ecdheRSAKA,
-			suiteECDHE | suiteTLS12 | suiteDefaultOff | suiteSHA384, cipherAES, utlsMacSHA384, nil},
+			suiteECDHE | suiteTLS12 | suiteSHA384, cipherAES, utlsMacSHA384, nil},
 	}...)
 }

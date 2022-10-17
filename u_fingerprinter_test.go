@@ -42,7 +42,7 @@ func assertEquality(t *testing.T, fieldName string, expected, actual interface{}
 	}
 }
 
-func compareClientHelloFields(t *testing.T, fieldName string, expected, actual *ClientHelloMsg) {
+func compareClientHelloFields(t *testing.T, fieldName string, expected, actual *PubClientHelloMsg) {
 	rExpected := reflect.ValueOf(expected)
 	if rExpected.Kind() != reflect.Ptr || rExpected.Elem().Kind() != reflect.Struct {
 		t.Errorf("Error using reflect to compare Hello fields")

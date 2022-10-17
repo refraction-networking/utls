@@ -1890,7 +1890,7 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 			strconv.Itoa(len(hello.Random)) + " bytes")
 	}
 	if len(hello.CipherSuites) == 0 {
-		hello.CipherSuites = defaultCipherSuites()
+		hello.CipherSuites = defaultCipherSuites
 	}
 	if len(hello.CompressionMethods) == 0 {
 		hello.CompressionMethods = []uint8{compressionNone}
@@ -2034,8 +2034,8 @@ func (uconn *UConn) generateRandomizedSpec() (ClientHelloSpec, error) {
 		return p, fmt.Errorf("using non-randomized ClientHelloID %v to generate randomized spec", id.Client)
 	}
 
-	p.CipherSuites = make([]uint16, len(defaultCipherSuites()))
-	copy(p.CipherSuites, defaultCipherSuites())
+	p.CipherSuites = make([]uint16, len(defaultCipherSuites))
+	copy(p.CipherSuites, defaultCipherSuites)
 	shuffledSuites, err := shuffledCiphers(r)
 	if err != nil {
 		return p, err
@@ -2044,8 +2044,8 @@ func (uconn *UConn) generateRandomizedSpec() (ClientHelloSpec, error) {
 	if r.FlipWeightedCoin(0.4) {
 		p.TLSVersMin = VersionTLS10
 		p.TLSVersMax = VersionTLS13
-		tls13ciphers := make([]uint16, len(defaultCipherSuitesTLS13()))
-		copy(tls13ciphers, defaultCipherSuitesTLS13())
+		tls13ciphers := make([]uint16, len(defaultCipherSuitesTLS13))
+		copy(tls13ciphers, defaultCipherSuitesTLS13)
 		r.rand.Shuffle(len(tls13ciphers), func(i, j int) {
 			tls13ciphers[i], tls13ciphers[j] = tls13ciphers[j], tls13ciphers[i]
 		})
