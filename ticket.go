@@ -144,7 +144,7 @@ func (c *Conn) encryptTicket(state []byte) ([]byte, error) {
 	return encrypted, nil
 }
 
-// [uTLS] changed to use exported DecryptTicketWith func below
+// [uTLS] added exported DecryptTicketWith func below
 func (c *Conn) decryptTicket(encrypted []byte) (plaintext []byte, usedOldKey bool) {
 	if len(encrypted) < ticketKeyNameLen+aes.BlockSize+sha256.Size {
 		return nil, false
@@ -191,7 +191,7 @@ func (c *Conn) decryptTicket(encrypted []byte) (plaintext []byte, usedOldKey boo
 // usedOldKey will be true if the key used for decryption is
 // not the first in the []TicketKey slice
 //
-// [uTLS] changed to be made public and take a TicketKeys instead of use a Conn receiver
+// [uTLS] changed to be made public and take a TicketKeys and use a fake conn receiver
 func DecryptTicketWith(encrypted []byte, tks TicketKeys) (plaintext []byte, usedOldKey bool) {
 	// create fake conn
 	c := &Conn{
