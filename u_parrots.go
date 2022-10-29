@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"sort"
 	"strconv"
 )
@@ -500,6 +501,14 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&UtlsPaddingExtension{GetPaddingLen: BoringPaddingStyle},
 			},
 		}, nil
+	case HelloChrome_107:
+		chs, err := utlsIdToSpec(HelloChrome_102)
+		if err != nil {
+			return chs, err
+		}
+
+		// Chrome 107 started shuffling the order of extensions
+		return shuffleExtensions(chs)
 	case HelloFirefox_55, HelloFirefox_56:
 		return ClientHelloSpec{
 			TLSVersMax: VersionTLS12,
@@ -1833,6 +1842,61 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 	}
 }
 
+func shuffleExtensions(chs ClientHelloSpec) (ClientHelloSpec, error) {
+	// Shuffle extensions to avoid fingerprinting -- introduced in Chrome 107
+	// GREASE, padding will remain in place (if present)
+
+	// Find indexes of GREASE and padding extensions
+	var greaseIdx []int
+	var paddingIdx []int
+	var otherExtensions []TLSExtension
+
+	for i, ext := range chs.Extensions {
+		switch ext.(type) {
+		case *UtlsGREASEExtension:
+			greaseIdx = append(greaseIdx, i)
+		case *UtlsPaddingExtension:
+			paddingIdx = append(paddingIdx, i)
+		default:
+			otherExtensions = append(otherExtensions, ext)
+		}
+	}
+
+	// Shuffle other extensions
+	rand.Shuffle(len(otherExtensions), func(i, j int) {
+		otherExtensions[i], otherExtensions[j] = otherExtensions[j], otherExtensions[i]
+	})
+
+	// Rebuild extensions slice
+	otherExtIdx := 0
+SHUF_EXTENSIONS:
+	for i := 0; i < len(chs.Extensions); i++ {
+		// if current index is in greaseIdx or paddingIdx, add GREASE or padding extension
+		for _, idx := range greaseIdx {
+			if i == idx {
+				chs.Extensions[i] = &UtlsGREASEExtension{}
+				continue SHUF_EXTENSIONS
+			}
+		}
+		for _, idx := range paddingIdx {
+			if i == idx {
+				chs.Extensions[i] = &UtlsPaddingExtension{
+					GetPaddingLen: BoringPaddingStyle,
+				}
+				break SHUF_EXTENSIONS
+			}
+		}
+
+		// otherwise add other extension
+		chs.Extensions[i] = otherExtensions[otherExtIdx]
+		otherExtIdx++
+	}
+	if otherExtIdx != len(otherExtensions) {
+		return ClientHelloSpec{}, errors.New("shuffleExtensions: otherExtIdx != len(otherExtensions)")
+	}
+	return chs, nil
+}
+
 func (uconn *UConn) applyPresetByID(id ClientHelloID) (err error) {
 	var spec ClientHelloSpec
 	uconn.ClientHelloID = id
@@ -1973,7 +2037,7 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 				ecdheParams, err := generateECDHEParameters(uconn.config.rand(), curveID)
 				if err != nil {
 					return fmt.Errorf("unsupported Curve in KeyShareExtension: %v."+
-						"To mimic it, fill the Data(key) field manually.", curveID)
+						"To mimic it, fill the Data(key) field manually", curveID)
 				}
 				ext.KeyShares[i].Data = ecdheParams.PublicKey()
 				if !preferredCurveIsSet {

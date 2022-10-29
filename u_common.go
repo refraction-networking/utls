@@ -183,6 +183,7 @@ var (
 	HelloChrome_96   = ClientHelloID{helloChrome, "96", nil}
 	HelloChrome_100  = ClientHelloID{helloChrome, "100", nil}
 	HelloChrome_102  = ClientHelloID{helloChrome, "102", nil}
+	HelloChrome_107  = ClientHelloID{helloChrome, "107", nil} // beta: shuffler enabled
 
 	HelloIOS_Auto = HelloIOS_14
 	HelloIOS_11_1 = ClientHelloID{helloIOS, "111", nil} // legacy "111" means 11.1
