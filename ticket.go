@@ -144,20 +144,8 @@ func (c *Conn) encryptTicket(state []byte) ([]byte, error) {
 	return encrypted, nil
 }
 
-// [uTLS] changed to use exported DecryptTicketWith func below
+// [uTLS] added exported DecryptTicketWith func below
 func (c *Conn) decryptTicket(encrypted []byte) (plaintext []byte, usedOldKey bool) {
-	tks := ticketKeys(c.config.ticketKeys(c.config)).ToPublic()
-	return DecryptTicketWith(encrypted, tks)
-}
-
-// DecryptTicketWith decrypts an encrypted session ticket
-// using a TicketKeys (ie []TicketKey) struct
-//
-// usedOldKey will be true if the key used for decryption is
-// not the first in the []TicketKey slice
-//
-// [uTLS] changed to be made public and take a TicketKeys instead of use a Conn receiver
-func DecryptTicketWith(encrypted []byte, tks TicketKeys) (plaintext []byte, usedOldKey bool) {
 	if len(encrypted) < ticketKeyNameLen+aes.BlockSize+sha256.Size {
 		return nil, false
 	}
@@ -168,8 +156,8 @@ func DecryptTicketWith(encrypted []byte, tks TicketKeys) (plaintext []byte, used
 	ciphertext := encrypted[ticketKeyNameLen+aes.BlockSize : len(encrypted)-sha256.Size]
 
 	keyIndex := -1
-	for i, candidateKey := range tks {
-		if bytes.Equal(keyName, candidateKey.KeyName[:]) {
+	for i, candidateKey := range c.ticketKeys {
+		if bytes.Equal(keyName, candidateKey.keyName[:]) {
 			keyIndex = i
 			break
 		}
@@ -177,9 +165,9 @@ func DecryptTicketWith(encrypted []byte, tks TicketKeys) (plaintext []byte, used
 	if keyIndex == -1 {
 		return nil, false
 	}
-	key := &tks[keyIndex]
+	key := &c.ticketKeys[keyIndex]
 
-	mac := hmac.New(sha256.New, key.HmacKey[:])
+	mac := hmac.New(sha256.New, key.hmacKey[:])
 	mac.Write(encrypted[:len(encrypted)-sha256.Size])
 	expected := mac.Sum(nil)
 
@@ -187,7 +175,7 @@ func DecryptTicketWith(encrypted []byte, tks TicketKeys) (plaintext []byte, used
 		return nil, false
 	}
 
-	block, err := aes.NewCipher(key.AesKey[:])
+	block, err := aes.NewCipher(key.aesKey[:])
 	if err != nil {
 		return nil, false
 	}
@@ -195,4 +183,20 @@ func DecryptTicketWith(encrypted []byte, tks TicketKeys) (plaintext []byte, used
 	cipher.NewCTR(block, iv).XORKeyStream(plaintext, ciphertext)
 
 	return plaintext, keyIndex > 0
+}
+
+// DecryptTicketWith decrypts an encrypted session ticket
+// using a TicketKeys (ie []TicketKey) struct
+//
+// usedOldKey will be true if the key used for decryption is
+// not the first in the []TicketKey slice
+//
+// [uTLS] changed to be made public and take a TicketKeys and use a fake conn receiver
+func DecryptTicketWith(encrypted []byte, tks TicketKeys) (plaintext []byte, usedOldKey bool) {
+	// create fake conn
+	c := &Conn{
+		ticketKeys: tks.ToPrivate(),
+	}
+
+	return c.decryptTicket(encrypted)
 }
