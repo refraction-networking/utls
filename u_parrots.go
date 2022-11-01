@@ -14,6 +14,13 @@ import (
 	"strconv"
 )
 
+// UtlsIdSpec converts a ClientHelloID to a corresponding ClientHelloSpec.
+//
+// Exported internal function utlsIdToSpec per request.
+func UtlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
+	return utlsIdToSpec(id)
+}
+
 func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 	switch id {
 	case HelloChrome_58, HelloChrome_62:
