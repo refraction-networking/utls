@@ -14,10 +14,10 @@ import (
 	"strconv"
 )
 
-// UtlsIdSpec converts a ClientHelloID to a corresponding ClientHelloSpec.
+// UTLSIdToSpec converts a ClientHelloID to a corresponding ClientHelloSpec.
 //
 // Exported internal function utlsIdToSpec per request.
-func UtlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
+func UTLSIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 	return utlsIdToSpec(id)
 }
 
