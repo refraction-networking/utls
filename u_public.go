@@ -16,6 +16,7 @@ import (
 // ClientHandshakeState will be converted into and from either
 //   - clientHandshakeState      (TLS 1.2)
 //   - clientHandshakeStateTLS13 (TLS 1.3)
+//
 // uTLS will call .handshake() on one of these private internal states,
 // to perform TLS handshake using standard crypto/tls implementation.
 type PubClientHandshakeState struct {
@@ -429,6 +430,12 @@ func UnmarshalClientHello(data []byte) *PubClientHelloMsg {
 		return m.getPublicPtr()
 	}
 	return nil
+}
+
+// Marshal allows external code to convert a ClientHello object back into
+// raw bytes.
+func (chm *PubClientHelloMsg) Marshal() []byte {
+	return chm.getPrivatePtr().marshal()
 }
 
 // A CipherSuite is a specific combination of key agreement, cipher and MAC
