@@ -551,8 +551,9 @@ const (
 
 // it is responsibility of user not to generate multiple grease extensions with same value
 type UtlsGREASEExtension struct {
-	Value uint16
-	Body  []byte // in Chrome first grease has empty body, second grease has a single zero byte
+	Value      uint16
+	Body       []byte // in Chrome first grease has empty body, second grease has a single zero byte
+	Customized bool   // Requested in #128: if set to true, Value and Body are used as is (otherwise uTLS will generate them)
 }
 
 func (e *UtlsGREASEExtension) writeToUConn(uc *UConn) error {

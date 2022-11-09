@@ -1939,16 +1939,19 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 				ext.ServerName = uconn.config.ServerName
 			}
 		case *UtlsGREASEExtension:
+			grease_extensions_seen += 1
+			if ext.Customized == true { // Requested in #128: allow custom GREASE values
+				continue
+			}
 			switch grease_extensions_seen {
-			case 0:
-				ext.Value = GetBoringGREASEValue(uconn.greaseSeed, ssl_grease_extension1)
 			case 1:
+				ext.Value = GetBoringGREASEValue(uconn.greaseSeed, ssl_grease_extension1)
+			case 2:
 				ext.Value = GetBoringGREASEValue(uconn.greaseSeed, ssl_grease_extension2)
 				ext.Body = []byte{0}
 			default:
 				return errors.New("at most 2 grease extensions are supported")
 			}
-			grease_extensions_seen += 1
 		case *SessionTicketExtension:
 			if session == nil && uconn.config.ClientSessionCache != nil {
 				cacheKey := clientSessionCacheKey(uconn.RemoteAddr(), uconn.config)
