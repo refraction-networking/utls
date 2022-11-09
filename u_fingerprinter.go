@@ -402,7 +402,7 @@ func (f *Fingerprinter) FingerprintClientHello(data []byte) (*ClientHelloSpec, e
 
 		default:
 			if isGREASEUint16(extension) {
-				clientHelloSpec.Extensions = append(clientHelloSpec.Extensions, &UtlsGREASEExtension{unGREASEUint16(extension), extData})
+				clientHelloSpec.Extensions = append(clientHelloSpec.Extensions, &UtlsGREASEExtension{Value: unGREASEUint16(extension), Body: extData})
 			} else if f.AllowBluntMimicry {
 				clientHelloSpec.Extensions = append(clientHelloSpec.Extensions, &GenericExtension{extension, extData})
 			} else {
