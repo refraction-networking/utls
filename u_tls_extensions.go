@@ -863,7 +863,7 @@ func (e *FakeChannelIDExtension) Read(b []byte) (int, error) {
 	}
 	extensionID := fakeExtensionChannelID
 	if e.OldExtensionID {
-		extensionID = fakeExtensionChannelIDOld
+		extensionID = fakeOldExtensionChannelID
 	}
 	// https://tools.ietf.org/html/draft-balfanz-tls-channelid-00
 	b[0] = byte(extensionID >> 8)

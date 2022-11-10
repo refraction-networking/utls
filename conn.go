@@ -1081,11 +1081,14 @@ func (c *Conn) readHandshake() (any, error) {
 		m = new(endOfEarlyDataMsg)
 	case typeKeyUpdate:
 		m = new(keyUpdateMsg)
-	// [UTLS SECTION BEGINS]
-	case typeCompressedCertificate:
-		m = new(compressedCertificateMsg)
-	// [UTLS SECTION ENDS]
 	default:
+		// [UTLS SECTION BEGINS]
+		var err error
+		m, err = c.utlsHandshakeMessageType(data[0]) // see u_conn.go
+		if err == nil {
+			break
+		}
+		// [UTLS SECTION ENDS]
 		return nil, c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
 	}
 

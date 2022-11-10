@@ -710,3 +710,13 @@ func makeSupportedVersions(minVers, maxVers uint16) []uint16 {
 	}
 	return a
 }
+
+// Extending (*Conn).readHandshake() to support more customized handshake messages.
+func (c *Conn) utlsHandshakeMessageType(msgType byte) (handshakeMessage, error) {
+	switch msgType {
+	case typeCompressedCertificate:
+		return new(compressedCertificateMsg), nil
+	default:
+		return nil, c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
+	}
+}

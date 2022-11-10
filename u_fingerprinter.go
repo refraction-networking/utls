@@ -321,7 +321,7 @@ func (f *Fingerprinter) FingerprintClientHello(data []byte) (*ClientHelloSpec, e
 		case fakeExtensionChannelID:
 			clientHelloSpec.Extensions = append(clientHelloSpec.Extensions, &FakeChannelIDExtension{})
 
-		case fakeExtensionChannelIDOld:
+		case fakeOldExtensionChannelID:
 			clientHelloSpec.Extensions = append(clientHelloSpec.Extensions, &FakeChannelIDExtension{true})
 
 		case fakeExtensionTokenBinding:
