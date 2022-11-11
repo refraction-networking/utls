@@ -7,6 +7,7 @@ package tls
 import (
 	"bytes"
 	"compress/zlib"
+	"errors"
 	"fmt"
 	"io"
 
@@ -14,15 +15,15 @@ import (
 	"github.com/klauspost/compress/zstd"
 )
 
-// This function is called by (*clientHandshakeStateTLS13.)readServerCertificate()
-// to retrieve the certificate out of a message read by (*Conn.)readHandshake()
+// This function is called by (*clientHandshakeStateTLS13).readServerCertificate()
+// to retrieve the certificate out of a message read by (*Conn).readHandshake()
 func (hs *clientHandshakeStateTLS13) utlsReadServerCertificate(msg any) (processedMsg any, err error) {
 	for _, ext := range hs.uconn.Extensions {
 		switch ext.(type) {
 		case *UtlsCompressCertExtension:
 			// Included Compressed Certificate extension
 			if len(hs.uconn.certCompressionAlgs) > 0 {
-				compressedCertMsg, ok := msg.(*compressedCertificateMsg)
+				compressedCertMsg, ok := msg.(*utlsCompressedCertificateMsg)
 				if ok {
 					hs.transcript.Write(compressedCertMsg.marshal())
 					msg, err = hs.decompressCert(*compressedCertMsg)
@@ -40,8 +41,8 @@ func (hs *clientHandshakeStateTLS13) utlsReadServerCertificate(msg any) (process
 	return nil, nil
 }
 
-// called by (*clientHandshakeStateTLS13.)utlsReadServerCertificate() when UtlsCompressCertExtension is used
-func (hs *clientHandshakeStateTLS13) decompressCert(m compressedCertificateMsg) (*certificateMsgTLS13, error) {
+// called by (*clientHandshakeStateTLS13).utlsReadServerCertificate() when UtlsCompressCertExtension is used
+func (hs *clientHandshakeStateTLS13) decompressCert(m utlsCompressedCertificateMsg) (*certificateMsgTLS13, error) {
 	var (
 		decompressed io.Reader
 		compressed   = bytes.NewReader(m.compressedCertificateMessage)
@@ -110,4 +111,53 @@ func (hs *clientHandshakeStateTLS13) decompressCert(m compressedCertificateMsg) 
 		return nil, c.sendAlert(alertUnexpectedMessage)
 	}
 	return certMsg, nil
+}
+
+// to be called in (*clientHandshakeStateTLS13).handshake(),
+// after hs.readServerFinished() and before hs.sendClientCertificate()
+func (hs *clientHandshakeStateTLS13) serverFinishedReceived() error {
+	if err := hs.sendClientEncryptedExtensions(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (hs *clientHandshakeStateTLS13) sendClientEncryptedExtensions() error {
+	c := hs.c
+	clientEncryptedExtensions := new(utlsClientEncryptedExtensionsMsg)
+	if c.utls.hasApplicationSettings {
+		clientEncryptedExtensions.hasApplicationSettings = true
+		clientEncryptedExtensions.applicationSettings = c.utls.localApplicationSettings
+		hs.transcript.Write(clientEncryptedExtensions.marshal())
+		if _, err := c.writeRecord(recordTypeHandshake, clientEncryptedExtensions.marshal()); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (hs *clientHandshakeStateTLS13) utlsReadServerParameters(encryptedExtensions *encryptedExtensionsMsg) error {
+	hs.c.utls.hasApplicationSettings = encryptedExtensions.utls.hasApplicationSettings
+	hs.c.utls.peerApplicationSettings = encryptedExtensions.utls.applicationSettings
+
+	if hs.c.utls.hasApplicationSettings {
+		if hs.uconn.vers < VersionTLS13 {
+			return errors.New("tls: server sent application settings at invalid version")
+		}
+		if len(hs.uconn.clientProtocol) == 0 {
+			return errors.New("tls: server sent application settings without ALPN")
+		}
+
+		// Check if the ALPN selected by the server exists in the client's list.
+		if alps, ok := hs.uconn.config.ApplicationSettings[hs.serverHello.alpnProtocol]; ok {
+			hs.c.utls.localApplicationSettings = alps
+		} else {
+			// return errors.New("tls: server selected ALPN doesn't match a client ALPS")
+			return nil // ignore if client doesn't have ALPS in use.
+			// TODO: is this a issue or not?
+		}
+	}
+
+	return nil
 }

@@ -238,6 +238,10 @@ type ConnectionState struct {
 	// Deprecated: this value is always true.
 	NegotiatedProtocolIsMutual bool
 
+	// PeerApplicationSettings is the Application-Layer Protocol Settings (ALPS)
+	// provided by peer.
+	PeerApplicationSettings []byte // [uTLS]
+
 	// ServerName is the value of the Server Name Indication extension sent by
 	// the client. It's available both on the server and on the client side.
 	ServerName string
@@ -625,6 +629,10 @@ type Config struct {
 	// ConnectionState.NegotiatedProtocol will be empty.
 	NextProtos []string
 
+	// ApplicationSettings is a set of application settings (ALPS) to use
+	// with each application protocol (ALPN).
+	ApplicationSettings map[string][]byte // [uTLS]
+
 	// ServerName is used to verify the hostname on the returned
 	// certificates unless InsecureSkipVerify is given. It is also included
 	// in the client's handshake to support virtual hosting unless it is
@@ -800,6 +808,7 @@ func (c *Config) Clone() *Config {
 		VerifyConnection:            c.VerifyConnection,
 		RootCAs:                     c.RootCAs,
 		NextProtos:                  c.NextProtos,
+		ApplicationSettings:         c.ApplicationSettings,
 		ServerName:                  c.ServerName,
 		ClientAuth:                  c.ClientAuth,
 		ClientCAs:                   c.ClientCAs,

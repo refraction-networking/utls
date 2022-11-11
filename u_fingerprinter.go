@@ -335,7 +335,7 @@ func (f *Fingerprinter) FingerprintClientHello(data []byte) (*ClientHelloSpec, e
 			tokenBindingExt.KeyParameters = keyParameters
 			clientHelloSpec.Extensions = append(clientHelloSpec.Extensions, &tokenBindingExt)
 
-		case fakeExtensionALPS:
+		case utlsExtensionApplicationSettings:
 			// Similar to ALPN (RFC 7301, Section 3.1):
 			// https://datatracker.ietf.org/doc/html/draft-vvv-tls-alps#section-3
 			var protoList cryptobyte.String

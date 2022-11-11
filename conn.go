@@ -92,6 +92,10 @@ type Conn struct {
 	// clientProtocol is the negotiated ALPN protocol.
 	clientProtocol string
 
+	// [UTLS SECTION START]
+	utls utlsConnExtraFields // used for extensive things such as ALPS
+	// [UTLS SECTION END]
+
 	// input/output
 	in, out   halfConn
 	rawInput  bytes.Buffer // raw input, starting with a record header
@@ -1075,8 +1079,10 @@ func (c *Conn) readHandshake() (any, error) {
 		}
 	case typeFinished:
 		m = new(finishedMsg)
-	case typeEncryptedExtensions:
-		m = new(encryptedExtensionsMsg)
+	// [uTLS] Commented typeEncryptedExtensions to force
+	// utlsHandshakeMessageType to handle it
+	// case typeEncryptedExtensions:
+	// 	m = new(encryptedExtensionsMsg)
 	case typeEndOfEarlyData:
 		m = new(endOfEarlyDataMsg)
 	case typeKeyUpdate:
@@ -1517,6 +1523,7 @@ func (c *Conn) connectionStateLocked() ConnectionState {
 	} else {
 		state.ekm = c.ekm
 	}
+
 	return state
 }
 
