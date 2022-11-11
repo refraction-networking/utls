@@ -30,6 +30,7 @@ const (
 	utlsExtensionExtendedMasterSecret uint16 = 23    // https://tools.ietf.org/html/rfc7627
 	utlsExtensionCompressCertificate  uint16 = 27    // https://datatracker.ietf.org/doc/html/rfc8879#section-7.1
 	utlsExtensionApplicationSettings  uint16 = 17513 // not IANA assigned
+	utlsFakeExtensionCustom           uint16 = 1234  // not IANA assigned, for ALPS
 
 	// extensions with 'fake' prefix break connection, if server echoes them back
 	fakeExtensionTokenBinding         uint16 = 24

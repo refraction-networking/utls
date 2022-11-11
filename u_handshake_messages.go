@@ -71,6 +71,7 @@ type utlsClientEncryptedExtensionsMsg struct {
 	raw                    []byte
 	applicationSettings    []byte
 	hasApplicationSettings bool
+	customExtension        []byte
 }
 
 func (m *utlsClientEncryptedExtensionsMsg) marshal() (x []byte) {
@@ -86,6 +87,12 @@ func (m *utlsClientEncryptedExtensionsMsg) marshal() (x []byte) {
 				extensions.AddUint16(utlsExtensionApplicationSettings)
 				extensions.AddUint16LengthPrefixed(func(msg *cryptobyte.Builder) {
 					msg.AddBytes(m.applicationSettings)
+				})
+			}
+			if len(m.customExtension) > 0 {
+				extensions.AddUint16(utlsFakeExtensionCustom)
+				extensions.AddUint16LengthPrefixed(func(msg *cryptobyte.Builder) {
+					msg.AddBytes(m.customExtension)
 				})
 			}
 		})
