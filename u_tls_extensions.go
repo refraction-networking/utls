@@ -132,8 +132,8 @@ func (e *StatusRequestV2Extension) Read(b []byte) (int, error) {
 		return 0, io.ErrShortBuffer
 	}
 	// RFC 4366, section 3.6
-	b[0] = byte(17 >> 8)
-	b[1] = byte(17)
+	b[0] = byte(extensionStatusRequestV2 >> 8)
+	b[1] = byte(extensionStatusRequestV2)
 	b[2] = 0
 	b[3] = 9
 	b[4] = 0
