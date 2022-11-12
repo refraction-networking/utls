@@ -501,7 +501,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&UtlsPaddingExtension{GetPaddingLen: BoringPaddingStyle},
 			},
 		}, nil
-	case HelloChrome_107:
+	case HelloChrome_106_Shuffle:
 		chs, err := utlsIdToSpec(HelloChrome_102)
 		if err != nil {
 			return chs, err
@@ -1843,7 +1843,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 }
 
 func shuffleExtensions(chs ClientHelloSpec) (ClientHelloSpec, error) {
-	// Shuffle extensions to avoid fingerprinting -- introduced in Chrome 107
+	// Shuffle extensions to avoid fingerprinting -- introduced in Chrome 106
 	// GREASE, padding will remain in place (if present)
 
 	// Find indexes of GREASE and padding extensions
