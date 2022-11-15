@@ -173,16 +173,17 @@ var (
 	HelloFirefox_102  = ClientHelloID{helloFirefox, "102", nil}
 	HelloFirefox_105  = ClientHelloID{helloFirefox, "105", nil}
 
-	HelloChrome_Auto = HelloChrome_102
-	HelloChrome_58   = ClientHelloID{helloChrome, "58", nil}
-	HelloChrome_62   = ClientHelloID{helloChrome, "62", nil}
-	HelloChrome_70   = ClientHelloID{helloChrome, "70", nil}
-	HelloChrome_72   = ClientHelloID{helloChrome, "72", nil}
-	HelloChrome_83   = ClientHelloID{helloChrome, "83", nil}
-	HelloChrome_87   = ClientHelloID{helloChrome, "87", nil}
-	HelloChrome_96   = ClientHelloID{helloChrome, "96", nil}
-	HelloChrome_100  = ClientHelloID{helloChrome, "100", nil}
-	HelloChrome_102  = ClientHelloID{helloChrome, "102", nil}
+	HelloChrome_Auto        = HelloChrome_102
+	HelloChrome_58          = ClientHelloID{helloChrome, "58", nil}
+	HelloChrome_62          = ClientHelloID{helloChrome, "62", nil}
+	HelloChrome_70          = ClientHelloID{helloChrome, "70", nil}
+	HelloChrome_72          = ClientHelloID{helloChrome, "72", nil}
+	HelloChrome_83          = ClientHelloID{helloChrome, "83", nil}
+	HelloChrome_87          = ClientHelloID{helloChrome, "87", nil}
+	HelloChrome_96          = ClientHelloID{helloChrome, "96", nil}
+	HelloChrome_100         = ClientHelloID{helloChrome, "100", nil}
+	HelloChrome_102         = ClientHelloID{helloChrome, "102", nil}
+	HelloChrome_106_Shuffle = ClientHelloID{helloChrome, "106", nil} // beta: shuffler enabled starting from 106
 
 	HelloIOS_Auto = HelloIOS_14
 	HelloIOS_11_1 = ClientHelloID{helloIOS, "111", nil} // legacy "111" means 11.1
