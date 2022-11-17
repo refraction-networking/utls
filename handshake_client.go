@@ -600,6 +600,9 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 		}
 	}
 
+	/* sessionHash does not include CertificateVerify */
+	sessionHash := hs.finishedHash.Sum()
+
 	if chainToSend != nil && len(chainToSend.Certificate) > 0 {
 		certVerify := &certificateVerifyMsg{}
 
@@ -649,7 +652,7 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 	}
 
 	if hs.hello.ems && hs.serverHello.ems {
-		hs.masterSecret = extendedMasterFromPreMasterSecret(c.vers, hs.suite, preMasterSecret, hs.finishedHash)
+		hs.masterSecret = extendedMasterFromPreMasterSecret(c.vers, hs.suite, preMasterSecret, sessionHash)
 	} else {
 		hs.masterSecret = masterFromPreMasterSecret(c.vers, hs.suite, preMasterSecret, hs.hello.random, hs.serverHello.random)
 	}
