@@ -868,6 +868,8 @@ func (m *serverHelloMsg) unmarshal(data []byte) bool {
 type encryptedExtensionsMsg struct {
 	raw          []byte
 	alpnProtocol string
+
+	utls utlsEncryptedExtensionsMsgExtraFields // [uTLS]
 }
 
 func (m *encryptedExtensionsMsg) marshal() []byte {
@@ -927,6 +929,11 @@ func (m *encryptedExtensionsMsg) unmarshal(data []byte) bool {
 			}
 			m.alpnProtocol = string(proto)
 		default:
+			// [UTLS SECTION START]
+			if !m.utlsUnmarshal(extension, extData) {
+				return false // return false when ERROR
+			}
+			// [UTLS SECTION END]
 			// Ignore unknown extensions.
 			continue
 		}

@@ -89,6 +89,7 @@ const (
 	extensionSupportedPoints         uint16 = 11
 	extensionSignatureAlgorithms     uint16 = 13
 	extensionALPN                    uint16 = 16
+	extensionStatusRequestV2         uint16 = 17
 	extensionSCT                     uint16 = 18
 	extensionDelegatedCredentials    uint16 = 34
 	extensionSessionTicket           uint16 = 35
@@ -100,7 +101,7 @@ const (
 	extensionCertificateAuthorities  uint16 = 47
 	extensionSignatureAlgorithmsCert uint16 = 50
 	extensionKeyShare                uint16 = 51
-	extensionNextProtoNeg            uint16 = 13172 // not IANA assigned // Pending discussion on whether or not remove this. crypto/tls removed it on Nov 21, 2019.  
+	extensionNextProtoNeg            uint16 = 13172 // not IANA assigned // Pending discussion on whether or not remove this. crypto/tls removed it on Nov 21, 2019.
 	extensionRenegotiationInfo       uint16 = 0xff01
 )
 
@@ -236,6 +237,10 @@ type ConnectionState struct {
 	//
 	// Deprecated: this value is always true.
 	NegotiatedProtocolIsMutual bool
+
+	// PeerApplicationSettings is the Application-Layer Protocol Settings (ALPS)
+	// provided by peer.
+	PeerApplicationSettings []byte // [uTLS]
 
 	// ServerName is the value of the Server Name Indication extension sent by
 	// the client. It's available both on the server and on the client side.
@@ -624,6 +629,10 @@ type Config struct {
 	// ConnectionState.NegotiatedProtocol will be empty.
 	NextProtos []string
 
+	// ApplicationSettings is a set of application settings (ALPS) to use
+	// with each application protocol (ALPN).
+	ApplicationSettings map[string][]byte // [uTLS]
+
 	// ServerName is used to verify the hostname on the returned
 	// certificates unless InsecureSkipVerify is given. It is also included
 	// in the client's handshake to support virtual hosting unless it is
@@ -799,6 +808,7 @@ func (c *Config) Clone() *Config {
 		VerifyConnection:            c.VerifyConnection,
 		RootCAs:                     c.RootCAs,
 		NextProtos:                  c.NextProtos,
+		ApplicationSettings:         c.ApplicationSettings,
 		ServerName:                  c.ServerName,
 		ClientAuth:                  c.ClientAuth,
 		ClientCAs:                   c.ClientCAs,

@@ -16,24 +16,27 @@ import (
 // Things, supported by utls, but not crypto/tls' are prefixed with "utls"
 // Supported things, that have changed their ID are prefixed with "Old"
 // Supported but disabled things are prefixed with "Disabled". We will _enable_ them.
+
+// TLS handshake message types.
+const (
+	utlsTypeEncryptedExtensions uint8 = 8 // implemention incomplete by crypto/tls
+	// https://datatracker.ietf.org/doc/html/rfc8879#section-7.2
+	utlsTypeCompressedCertificate uint8 = 25
+)
+
+// TLS
 const (
 	utlsExtensionPadding              uint16 = 21
-	utlsExtensionExtendedMasterSecret uint16 = 23 // https://tools.ietf.org/html/rfc7627
-
-	// https://datatracker.ietf.org/doc/html/rfc8879#section-7.1
-	utlsExtensionCompressCertificate uint16 = 27
+	utlsExtensionExtendedMasterSecret uint16 = 23    // https://tools.ietf.org/html/rfc7627
+	utlsExtensionCompressCertificate  uint16 = 27    // https://datatracker.ietf.org/doc/html/rfc8879#section-7.1
+	utlsExtensionApplicationSettings  uint16 = 17513 // not IANA assigned
+	utlsFakeExtensionCustom           uint16 = 1234  // not IANA assigned, for ALPS
 
 	// extensions with 'fake' prefix break connection, if server echoes them back
 	fakeExtensionTokenBinding         uint16 = 24
-	fakeExtensionChannelIDOld         uint16 = 30031 // not IANA assigned
+	fakeOldExtensionChannelID         uint16 = 30031 // not IANA assigned
 	fakeExtensionChannelID            uint16 = 30032 // not IANA assigned
-	fakeExtensionALPS                 uint16 = 17513 // not IANA assigned
 	fakeExtensionDelegatedCredentials uint16 = 34
-
-	fakeRecordSizeLimit uint16 = 0x001c
-
-	// https://datatracker.ietf.org/doc/html/rfc8879#section-7.2
-	typeCompressedCertificate uint8 = 25
 )
 
 const (
@@ -58,6 +61,11 @@ const (
 
 	// https://docs.microsoft.com/en-us/dotnet/api/system.net.security.tlsciphersuite?view=netcore-3.1
 	FAKE_TLS_ECDHE_ECDSA_WITH_3DES_EDE_CBC_SHA = uint16(0xc008)
+)
+
+// Other things
+const (
+	fakeRecordSizeLimit uint16 = 0x001c
 )
 
 // newest signatures

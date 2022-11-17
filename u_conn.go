@@ -710,3 +710,30 @@ func makeSupportedVersions(minVers, maxVers uint16) []uint16 {
 	}
 	return a
 }
+
+// Extending (*Conn).readHandshake() to support more customized handshake messages.
+func (c *Conn) utlsHandshakeMessageType(msgType byte) (handshakeMessage, error) {
+	switch msgType {
+	case utlsTypeCompressedCertificate:
+		return new(utlsCompressedCertificateMsg), nil
+	case utlsTypeEncryptedExtensions:
+		if c.isClient {
+			return new(encryptedExtensionsMsg), nil
+		} else {
+			return new(utlsClientEncryptedExtensionsMsg), nil
+		}
+	default:
+		return nil, c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
+	}
+}
+
+// Extending (*Conn).connectionStateLocked()
+func (c *Conn) utlsConnectionStateLocked(state *ConnectionState) {
+	state.PeerApplicationSettings = c.utls.peerApplicationSettings
+}
+
+type utlsConnExtraFields struct {
+	hasApplicationSettings   bool
+	peerApplicationSettings  []byte
+	localApplicationSettings []byte
+}
