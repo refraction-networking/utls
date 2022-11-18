@@ -600,8 +600,10 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 		}
 	}
 
+	// [UTLS SECTION START]
 	/* sessionHash does not include CertificateVerify */
 	sessionHash := hs.finishedHash.Sum()
+	// [UTLS SECTION END]
 
 	if chainToSend != nil && len(chainToSend.Certificate) > 0 {
 		certVerify := &certificateVerifyMsg{}
@@ -651,11 +653,14 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 		}
 	}
 
+	// [UTLS SECTION START]
 	if hs.hello.ems && hs.serverHello.ems {
 		hs.masterSecret = extendedMasterFromPreMasterSecret(c.vers, hs.suite, preMasterSecret, sessionHash)
 	} else {
 		hs.masterSecret = masterFromPreMasterSecret(c.vers, hs.suite, preMasterSecret, hs.hello.random, hs.serverHello.random)
 	}
+	// [UTLS SECTION END]
+
 	if err := c.config.writeKeyLog(keyLogLabelTLS12, hs.hello.random, hs.masterSecret); err != nil {
 		c.sendAlert(alertInternalError)
 		return errors.New("tls: failed to write to key log: " + err.Error())
