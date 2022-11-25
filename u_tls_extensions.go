@@ -891,29 +891,29 @@ func (e *FakeRecordSizeLimitExtension) Read(b []byte) (int, error) {
 	return e.Len(), io.EOF
 }
 
-type DelegatedCredentialsExtension struct {
-	AlgorithmsSignature []SignatureScheme
+type FakeDelegatedCredentialsExtension struct {
+	SupportedSignatureAlgorithms []SignatureScheme
 }
 
-func (e *DelegatedCredentialsExtension) writeToUConn(uc *UConn) error {
+func (e *FakeDelegatedCredentialsExtension) writeToUConn(uc *UConn) error {
 	return nil
 }
 
-func (e *DelegatedCredentialsExtension) Len() int {
-	return 6 + 2*len(e.AlgorithmsSignature)
+func (e *FakeDelegatedCredentialsExtension) Len() int {
+	return 6 + 2*len(e.SupportedSignatureAlgorithms)
 }
 
-func (e *DelegatedCredentialsExtension) Read(b []byte) (int, error) {
+func (e *FakeDelegatedCredentialsExtension) Read(b []byte) (int, error) {
 	if len(b) < e.Len() {
 		return 0, io.ErrShortBuffer
 	}
-	b[0] = byte(extensionDelegatedCredentials >> 8)
-	b[1] = byte(extensionDelegatedCredentials)
-	b[2] = byte((2 + 2*len(e.AlgorithmsSignature)) >> 8)
-	b[3] = byte(2 + 2*len(e.AlgorithmsSignature))
-	b[4] = byte((2 * len(e.AlgorithmsSignature)) >> 8)
-	b[5] = byte(2 * len(e.AlgorithmsSignature))
-	for i, sigAndHash := range e.AlgorithmsSignature {
+	b[0] = byte(fakeExtensionDelegatedCredentials >> 8)
+	b[1] = byte(fakeExtensionDelegatedCredentials)
+	b[2] = byte((2 + 2*len(e.SupportedSignatureAlgorithms)) >> 8)
+	b[3] = byte(2 + 2*len(e.SupportedSignatureAlgorithms))
+	b[4] = byte((2 * len(e.SupportedSignatureAlgorithms)) >> 8)
+	b[5] = byte(2 * len(e.SupportedSignatureAlgorithms))
+	for i, sigAndHash := range e.SupportedSignatureAlgorithms {
 		b[6+2*i] = byte(sigAndHash >> 8)
 		b[7+2*i] = byte(sigAndHash)
 	}
@@ -950,38 +950,6 @@ func (e *FakeTokenBindingExtension) Read(b []byte) (int, error) {
 	b[6] = byte(len(e.KeyParameters))
 	if len(e.KeyParameters) > 0 {
 		copy(b[7:], e.KeyParameters)
-	}
-	return e.Len(), io.EOF
-}
-
-// https://datatracker.ietf.org/doc/html/draft-ietf-tls-subcerts-15#section-4.1.1
-
-type FakeDelegatedCredentialsExtension struct {
-	SupportedSignatureAlgorithms []SignatureScheme
-}
-
-func (e *FakeDelegatedCredentialsExtension) writeToUConn(uc *UConn) error {
-	return nil
-}
-
-func (e *FakeDelegatedCredentialsExtension) Len() int {
-	return 6 + 2*len(e.SupportedSignatureAlgorithms)
-}
-
-func (e *FakeDelegatedCredentialsExtension) Read(b []byte) (int, error) {
-	if len(b) < e.Len() {
-		return 0, io.ErrShortBuffer
-	}
-	// https://datatracker.ietf.org/doc/html/draft-ietf-tls-subcerts-15#section-4.1.1
-	b[0] = byte(fakeExtensionDelegatedCredentials >> 8)
-	b[1] = byte(fakeExtensionDelegatedCredentials)
-	b[2] = byte((2 + 2*len(e.SupportedSignatureAlgorithms)) >> 8)
-	b[3] = byte((2 + 2*len(e.SupportedSignatureAlgorithms)))
-	b[4] = byte((2 * len(e.SupportedSignatureAlgorithms)) >> 8)
-	b[5] = byte((2 * len(e.SupportedSignatureAlgorithms)))
-	for i, sigAndHash := range e.SupportedSignatureAlgorithms {
-		b[6+2*i] = byte(sigAndHash >> 8)
-		b[7+2*i] = byte(sigAndHash)
 	}
 	return e.Len(), io.EOF
 }

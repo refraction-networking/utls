@@ -91,7 +91,6 @@ const (
 	extensionALPN                    uint16 = 16
 	extensionStatusRequestV2         uint16 = 17
 	extensionSCT                     uint16 = 18
-	extensionDelegatedCredentials    uint16 = 34
 	extensionSessionTicket           uint16 = 35
 	extensionPreSharedKey            uint16 = 41
 	extensionEarlyData               uint16 = 42
