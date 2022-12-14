@@ -277,7 +277,7 @@ func (f *Fingerprinter) FingerprintClientHello(data []byte) (*ClientHelloSpec, e
 				ks.Group = CurveID(unGREASEUint16(group))
 				// if not GREASE, key share data will be discarded as it should
 				// be generated per connection
-				if ks.Group != GREASE_PLACEHOLDER {
+				if !isGREASEUint16(group) {
 					ks.Data = nil
 				}
 				keyShares = append(keyShares, ks)
