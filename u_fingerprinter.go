@@ -324,6 +324,13 @@ func (f *Fingerprinter) FingerprintClientHello(data []byte) (*ClientHelloSpec, e
 		case fakeOldExtensionChannelID:
 			clientHelloSpec.Extensions = append(clientHelloSpec.Extensions, &FakeChannelIDExtension{true})
 
+		case fakeExtensionEncryptThenMAC:
+			if f.AllowBluntMimicry {
+				clientHelloSpec.Extensions = append(clientHelloSpec.Extensions, &GenericExtension{extension, extData})
+			} else {
+				return nil, errors.New("unsupported extension Encrypt-then-MAC")
+			}
+
 		case fakeExtensionTokenBinding:
 			var tokenBindingExt FakeTokenBindingExtension
 			var keyParameters cryptobyte.String
