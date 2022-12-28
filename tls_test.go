@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/refraction-networking/utls/testenv"
 	"io"
 	"io/ioutil"
 	"math"
@@ -21,6 +20,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Danny-Dasilva/utls/testenv"
 )
 
 var rsaCertPEM = `-----BEGIN CERTIFICATE-----

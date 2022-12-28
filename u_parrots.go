@@ -79,7 +79,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 					VersionTLS11,
 					VersionTLS10,
 				}},
-				&FakeCertCompressionAlgsExtension{[]CertCompressionAlgo{
+				&CompressCertificateExtension{[]CertCompressionAlgo{
 					CertCompressionBrotli,
 				}},
 				&ApplicationSettingsExtension{
@@ -457,7 +457,11 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 			}
 		case *NPNExtension:
 			haveNPN = true
+
+		case *CompressCertificateExtension:
+			uconn.HandshakeState.State13.CertCompAlgs = ext.Algorithms
 		}
+
 	}
 
 	// The default golang behavior in makeClientHello always sets NextProtoNeg if NextProtos is set,
