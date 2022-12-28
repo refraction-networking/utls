@@ -2,7 +2,7 @@
  * Copyright (c) 2019, Psiphon Inc.
  * All rights reserved.
  *
- * Released under utls licence:
+ * Released under tls licence:
  * https://github.com/refraction-networking/utls/blob/master/LICENSE
  */
 

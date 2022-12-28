@@ -178,7 +178,7 @@ func (c *Conn) decryptTicket(encrypted []byte) (plaintext []byte, usedOldKey boo
 }
 
 // DecryptTicketWith decrypts an encrypted session ticket
-// using a TicketKeys (ie []TicketKey) struct
+// using a TicketKeys (ie []TicketKey) structs
 //
 // usedOldKey will be true if the key used for decryption is
 // not the first in the []TicketKey slice

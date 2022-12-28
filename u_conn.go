@@ -230,7 +230,7 @@ func (c *UConn) Handshake() error {
 	return c.handshakeErr
 }
 
-// Copy-pasted from tls.Conn in its entirety. But c.Handshake() is now utls' one, not tls.
+// Copy-pasted from tls.Conn in its entirety. But c.Handshake() is now tls' one, not tls.
 // Write writes data to the connection.
 func (c *UConn) Write(b []byte) (int, error) {
 	// interlock with Close below
@@ -490,7 +490,7 @@ func (uconn *UConn) MarshalClientHello() error {
 	}
 
 	if helloBuffer.Len() != 4+helloLen {
-		return errors.New("utls: unexpected ClientHello length. Expected: " + strconv.Itoa(4+helloLen) +
+		return errors.New("tls: unexpected ClientHello length. Expected: " + strconv.Itoa(4+helloLen) +
 			". Got: " + strconv.Itoa(helloBuffer.Len()))
 	}
 

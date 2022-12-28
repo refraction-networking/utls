@@ -12,6 +12,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"github.com/Noooste/utls/cpu"
 	"io"
 	"math/big"
 	"net"
@@ -19,8 +20,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/refraction-networking/utls/cpu"
 )
 
 const (
@@ -98,6 +97,7 @@ const (
 	extensionNextProtoNeg            uint16 = 13172 // not IANA assigned
 	extensionApplicationSettings     uint16 = 0x4469
 	extensionRenegotiationInfo       uint16 = 0xff01
+	extensionAzure                   uint16 = 0xff15
 )
 
 // TLS signaling cipher suite values
@@ -526,7 +526,7 @@ type Config struct {
 	InsecureSkipVerify bool
 
 	// CipherSuites is a list of supported cipher suites for TLS versions up to
-	// TLS 1.2. If CipherSuites is nil, a default list of secure cipher suites
+	// TLS 1.2. If CipherSuites is nil, a default list of security cipher suites
 	// is used, with a preference order based on hardware performance. The
 	// default cipher suites might change over Go versions. Note that TLS 1.3
 	// ciphersuites are not configurable.

@@ -2,10 +2,11 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+//go:build ignore
 // +build ignore
 
 // Generate a self-signed X.509 certificate for a TLS server. Outputs to
-// 'cert.pem' and 'key.pem' and will overwrite existing files.
+// 'cert.pem' and 'key.pem' and will overwrite existing structs.
 
 package main
 
@@ -19,7 +20,7 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"math/big"
 	"net"
 	"os"
@@ -152,11 +153,11 @@ func main() {
 	if err := certOut.Close(); err != nil {
 		log.Fatalf("error closing cert.pem: %s", err)
 	}
-	log.Print("wrote cert.pem\n")
+	log.Debugln("wrote cert.pem\n")
 
 	keyOut, err := os.OpenFile("key.pem", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
-		log.Print("failed to open key.pem for writing:", err)
+		log.Debugln("failed to open key.pem for writing:", err)
 		return
 	}
 	if err := pem.Encode(keyOut, pemBlockForKey(priv)); err != nil {
@@ -165,5 +166,5 @@ func main() {
 	if err := keyOut.Close(); err != nil {
 		log.Fatalf("error closing key.pem: %s", err)
 	}
-	log.Print("wrote key.pem\n")
+	log.Debugln("wrote key.pem\n")
 }

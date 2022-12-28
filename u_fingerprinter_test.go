@@ -234,8 +234,7 @@ func checkUTLSFingerPrintClientHello(t *testing.T, clientHelloID ClientHelloID, 
 }
 
 func TestUTLSFingerprintClientHello(t *testing.T) {
-	clientHellosToTest := []ClientHelloID{
-		HelloChrome_58, HelloChrome_70, HelloChrome_83, HelloFirefox_55, HelloFirefox_63, HelloIOS_11_1, HelloIOS_12_1, HelloRandomized, HelloRandomizedALPN, HelloRandomizedNoALPN}
+	clientHellosToTest := []ClientHelloID{HelloIOS_11_1, HelloIOS_12_1, HelloRandomized, HelloRandomizedALPN, HelloRandomizedNoALPN}
 
 	serverNames := []string{"foobar"}
 
@@ -297,7 +296,7 @@ func TestUTLSFingerprintClientHelloAlwaysAddPadding(t *testing.T) {
 	if err != nil {
 		t.Errorf("got error: %v; expected to succeed", err)
 	}
-	specWithPadding, err := utlsIdToSpec(HelloChrome_83)
+	specWithPadding, err := utlsIdToSpec(HelloChrome_101)
 	if err != nil {
 		t.Errorf("got error: %v; expected to succeed", err)
 	}

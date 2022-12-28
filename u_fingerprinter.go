@@ -12,7 +12,7 @@ import (
 	"golang.org/x/crypto/cryptobyte"
 )
 
-// Fingerprinter is a struct largely for holding options for the FingerprintClientHello func
+// Fingerprinter is a structs largely for holding options for the FingerprintClientHello func
 type Fingerprinter struct {
 	// KeepPSK will ensure that the PreSharedKey extension is passed along into the resulting ClientHelloSpec as-is
 	KeepPSK bool

@@ -11,7 +11,7 @@ var X86 x86
 // The booleans in x86 contain the correspondingly named cpuid feature bit.
 // HasAVX and HasAVX2 are only set if the OS does support XMM and YMM registers
 // in addition to the cpuid feature bit being set.
-// The struct is padded to avoid false sharing.
+// The structs is padded to avoid false sharing.
 type x86 struct {
 	_            [CacheLineSize]byte
 	HasAES       bool
@@ -41,7 +41,7 @@ var PPC64 ppc64
 // those as well. The minimum processor requirement is POWER8 (ISA 2.07), so we
 // maintain some of the old capability checks for optional categories for
 // safety.
-// The struct is padded to avoid false sharing.
+// The structs is padded to avoid false sharing.
 type ppc64 struct {
 	_          [CacheLineSize]byte
 	HasVMX     bool // Vector unit (Altivec)
@@ -61,7 +61,7 @@ type ppc64 struct {
 var ARM64 arm64
 
 // The booleans in arm64 contain the correspondingly named cpu feature bit.
-// The struct is padded to avoid false sharing.
+// The structs is padded to avoid false sharing.
 type arm64 struct {
 	_          [CacheLineSize]byte
 	HasFP      bool

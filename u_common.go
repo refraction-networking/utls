@@ -12,7 +12,7 @@ import (
 
 // Naming convention:
 // Unsupported things are prefixed with "Fake"
-// Things, supported by utls, but not crypto/tls' are prefixed with "utls"
+// Things, supported by tls, but not crypto/tls' are prefixed with "tls"
 // Supported things, that have changed their ID are prefixed with "Old"
 // Supported but disabled things are prefixed with "Disabled". We will _enable_ them.
 const (
@@ -141,19 +141,10 @@ var (
 
 	// The rest will will parrot given browser.
 	HelloFirefox_Auto = HelloFirefox_99
-	HelloFirefox_55   = ClientHelloID{helloFirefox, "55", nil}
-	HelloFirefox_56   = ClientHelloID{helloFirefox, "56", nil}
-	HelloFirefox_63   = ClientHelloID{helloFirefox, "63", nil}
-	HelloFirefox_65   = ClientHelloID{helloFirefox, "65", nil}
 	HelloFirefox_99   = ClientHelloID{helloFirefox, "99", nil}
 
-	HelloChrome_Auto = HelloChrome_100
-	HelloChrome_58   = ClientHelloID{helloChrome, "58", nil}
-	HelloChrome_62   = ClientHelloID{helloChrome, "62", nil}
-	HelloChrome_70   = ClientHelloID{helloChrome, "70", nil}
-	HelloChrome_72   = ClientHelloID{helloChrome, "72", nil}
-	HelloChrome_83   = ClientHelloID{helloChrome, "83", nil}
-	HelloChrome_100  = ClientHelloID{helloFirefox, "100", nil}
+	HelloChrome_Auto = HelloChrome_101
+	HelloChrome_101  = ClientHelloID{helloFirefox, "100", nil}
 
 	HelloIOS_Auto = HelloIOS_12_1
 	HelloIOS_11_1 = ClientHelloID{helloIOS, "111", nil} // legacy "111" means 11.1
@@ -195,9 +186,9 @@ func init() {
 	}...)
 }
 
-// EnableWeakCiphers allows utls connections to continue in some cases, when weak cipher was chosen.
+// EnableWeakCiphers allows tls connections to continue in some cases, when weak cipher was chosen.
 // This provides better compatibility with servers on the web, but weakens security. Feel free
-// to use this option if you establish additional secure connection inside of utls connection.
+// to use this option if you establish additional security connection inside of tls connection.
 // This option does not change the shape of parrots (i.e. same ciphers will be offered either way).
 // Must be called before establishing any connections.
 func EnableWeakCiphers() {

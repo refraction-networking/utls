@@ -56,6 +56,7 @@ func (c *Conn) serverHandshake() error {
 		c:           c,
 		clientHello: clientHello,
 	}
+
 	return hs.handshake()
 }
 
@@ -65,7 +66,6 @@ func (hs *serverHandshakeState) handshake() error {
 	if err := hs.processClientHello(); err != nil {
 		return err
 	}
-
 	// For an overview of TLS handshaking, see RFC 5246, Section 7.3.
 	c.buffering = true
 	if hs.checkForResumption() {
@@ -139,6 +139,43 @@ func (c *Conn) readClientHello() (*clientHelloMsg, error) {
 	if !ok {
 		c.sendAlert(alertUnexpectedMessage)
 		return nil, unexpectedMessageError(clientHello, msg)
+	}
+
+	c.ClientHello = &ClientHelloMsg{
+		Raw:                              clientHello.raw,
+		Vers:                             clientHello.vers,
+		Random:                           clientHello.random,
+		SessionId:                        clientHello.sessionId,
+		CipherSuites:                     clientHello.cipherSuites,
+		CompressionMethods:               clientHello.compressionMethods,
+		NextProtoNeg:                     clientHello.nextProtoNeg,
+		ServerName:                       clientHello.serverName,
+		OcspStapling:                     clientHello.ocspStapling,
+		Scts:                             clientHello.scts,
+		Ems:                              clientHello.ems,
+		SupportedCurves:                  clientHello.supportedCurves,
+		SupportedPoints:                  clientHello.supportedPoints,
+		TicketSupported:                  clientHello.ticketSupported,
+		SessionTicket:                    clientHello.sessionTicket,
+		SupportedSignatureAlgorithms:     clientHello.supportedSignatureAlgorithms,
+		SecureRenegotiation:              clientHello.secureRenegotiation,
+		SecureRenegotiationSupported:     clientHello.secureRenegotiationSupported,
+		AlpnProtocols:                    clientHello.alpnProtocols,
+		SupportedSignatureAlgorithmsCert: clientHello.supportedSignatureAlgorithmsCert,
+		SupportedVersions:                clientHello.supportedVersions,
+		Cookie:                           clientHello.cookie,
+		EarlyData:                        clientHello.earlyData,
+		PskModes:                         clientHello.pskModes,
+		PskIdentities:                    clientHello.pskIdentities,
+		PskBinders:                       clientHello.pskBinders,
+	}
+
+	c.ClientHello.KeyShares = make([]KeyShare, len(clientHello.keyShares))
+	for i, el := range clientHello.keyShares {
+		c.ClientHello.KeyShares[i] = KeyShare{
+			Group: el.group,
+			Data:  el.data,
+		}
 	}
 
 	if c.config.GetConfigForClient != nil {

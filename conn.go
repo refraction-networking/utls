@@ -51,7 +51,7 @@ type Conn struct {
 	verifiedChains [][]*x509.Certificate
 	// serverName contains the server name indicated by the client, if any.
 	serverName string
-	// secureRenegotiation is true if the server echoed the secure
+	// secureRenegotiation is true if the server echoed the security
 	// renegotiation extension. (This is meaningless as a server because
 	// renegotiation is not supported in that case.)
 	secureRenegotiation bool
@@ -108,11 +108,13 @@ type Conn struct {
 	activeCall int32
 
 	tmp [16]byte
+
+	ClientHello *ClientHelloMsg
 }
 
 // Access to net.Conn methods.
 // Cannot just embed net.Conn because that would
-// export the struct field too.
+// export the structs field too.
 
 // LocalAddr returns the local network address.
 func (c *Conn) LocalAddr() net.Addr {
@@ -473,7 +475,7 @@ func (hc *halfConn) encrypt(record, payload []byte, rand io.Reader) ([]byte, err
 		if _, isCBC := hc.cipher.(cbcMode); !isCBC && explicitNonceLen < 16 {
 			// The AES-GCM construction in TLS has an explicit nonce so that the
 			// nonce can be random. However, the nonce is only 8 bytes which is
-			// too small for a secure, random nonce. Therefore we use the
+			// too small for a security, random nonce. Therefore we use the
 			// sequence number as the nonce. The 3DES-CBC construction also has
 			// an 8 bytes nonce but its nonces must be unpredictable (see RFC
 			// 5246, Appendix F.3), forcing us to use randomness. That's not
