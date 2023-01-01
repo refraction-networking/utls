@@ -9,8 +9,8 @@ import (
 	"net/url"
 	"time"
 
-	tls "github.com/Danny-Dasilva/utls"
 	http "github.com/Noooste/fhttp"
+	tls "github.com/Noooste/utls"
 
 	"golang.org/x/net/http2"
 )

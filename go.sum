@@ -1,6 +1,6 @@
-github.com/Danny-Dasilva/fhttp v0.0.0-20220418170016-5ea1c560e6a8 h1:K/qCmMCMhnKGS+q2KOSpYO+UpS7xLKlDX+HgX6LbwsM=
-github.com/Danny-Dasilva/fhttp v0.0.0-20220418170016-5ea1c560e6a8/go.mod h1:t534vrahRNn9ax1tRiYSUvwJSa9jWaYYgETlfodBPm4=
-github.com/Danny-Dasilva/utls v0.0.0-20220418055514-7c61e0dbb504/go.mod h1:A2g8gPTJWDD3Y4iCTNon2vG3VcjdTBcgWBlZtopfNxU=
+github.com/Noooste/fhttp v0.0.0-20220418170016-5ea1c560e6a8 h1:K/qCmMCMhnKGS+q2KOSpYO+UpS7xLKlDX+HgX6LbwsM=
+github.com/Noooste/fhttp v0.0.0-20220418170016-5ea1c560e6a8/go.mod h1:t534vrahRNn9ax1tRiYSUvwJSa9jWaYYgETlfodBPm4=
+github.com/Noooste/utls v0.0.0-20220418055514-7c61e0dbb504/go.mod h1:A2g8gPTJWDD3Y4iCTNon2vG3VcjdTBcgWBlZtopfNxU=
 github.com/Noooste/utls v1.0.2 h1:H6+F+adGanx2yFjSafrAeAl1AJ64RpYLZ/bVhm/XHEA=
 github.com/Noooste/utls v1.0.2/go.mod h1:5U+SyFmhL3C/bm8PmCsoiSMwsGW7tH23L6VZ2BVcs9s=
 github.com/andybalholm/brotli v1.0.4/go.mod h1:fO7iG3H7G2nSZ7m0zPUDn85XEX2GTukHGRSepvi9Eig=
