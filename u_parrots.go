@@ -1844,10 +1844,11 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				},
 			},
 		}, nil
-	case HelloRandomized, HelloRandomizedALPN, HelloRandomizedNoALPN:
-		// Use empty values as they can be filled later by UConn.ApplyPreset or manually.
-		return generateRandomizedSpec(id, "", nil, nil)
 	default:
+		if id.Client == helloRandomized || id.Client == helloRandomizedALPN || id.Client == helloRandomizedNoALPN {
+			// Use empty values as they can be filled later by UConn.ApplyPreset or manually.
+			return generateRandomizedSpec(id, "", nil, nil)
+		}
 		return ClientHelloSpec{}, errors.New("ClientHello ID " + id.Str() + " is unknown")
 	}
 }
