@@ -44,7 +44,7 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, ecdheParameters, error) {
 	// [UTLS SECTION START]
 	skipServerNameVerify := config.InsecureSkipVerify || config.InsecureSkipServerNameVerify
 	if len(config.ServerName) == 0 && !skipServerNameVerify {
-		return nil, nil, errors.New("tls: either ServerName or InsecureSkipVerify must be specified in the tls.Config")
+		return nil, nil, errors.New("tls: at least one of ServerName, InsecureSkipVerify or InsecureSkipServerNameVerify must be specified in the tls.Config")
 	}
 	// [UTLS SECTION END]
 
