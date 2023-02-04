@@ -1844,6 +1844,9 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				},
 			},
 		}, nil
+	case HelloRandomized, HelloRandomizedALPN, HelloRandomizedNoALPN:
+		// Use empty values as they can be filled later by UConn.ApplyPreset or manually.
+		return generateRandomizedSpec(id, "", nil, nil)
 	default:
 		return ClientHelloSpec{}, errors.New("ClientHello ID " + id.Str() + " is unknown")
 	}
@@ -2072,22 +2075,29 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 }
 
 func (uconn *UConn) generateRandomizedSpec() (ClientHelloSpec, error) {
+	return generateRandomizedSpec(uconn.ClientHelloID, uconn.serverName, uconn.HandshakeState.Session, uconn.config.NextProtos)
+}
+
+func generateRandomizedSpec(
+	id ClientHelloID,
+	serverName string,
+	session *ClientSessionState,
+	nextProtos []string,
+) (ClientHelloSpec, error) {
 	p := ClientHelloSpec{}
 
-	if uconn.ClientHelloID.Seed == nil {
+	if id.Seed == nil {
 		seed, err := NewPRNGSeed()
 		if err != nil {
 			return p, err
 		}
-		uconn.ClientHelloID.Seed = seed
+		id.Seed = seed
 	}
 
-	r, err := newPRNGWithSeed(uconn.ClientHelloID.Seed)
+	r, err := newPRNGWithSeed(id.Seed)
 	if err != nil {
 		return p, err
 	}
-
-	id := uconn.ClientHelloID
 
 	var WithALPN bool
 	switch id.Client {
@@ -2132,8 +2142,8 @@ func (uconn *UConn) generateRandomizedSpec() (ClientHelloSpec, error) {
 
 	p.CipherSuites = removeRandomCiphers(r, shuffledSuites, 0.4)
 
-	sni := SNIExtension{uconn.config.ServerName}
-	sessionTicket := SessionTicketExtension{Session: uconn.HandshakeState.Session}
+	sni := SNIExtension{serverName}
+	sessionTicket := SessionTicketExtension{Session: session}
 
 	sigAndHashAlgos := []SignatureScheme{
 		ECDSAWithP256AndSHA256,
@@ -2193,11 +2203,11 @@ func (uconn *UConn) generateRandomizedSpec() (ClientHelloSpec, error) {
 	}
 
 	if WithALPN {
-		if len(uconn.config.NextProtos) == 0 {
+		if len(nextProtos) == 0 {
 			// if user didn't specify alpn yet, choose something popular
-			uconn.config.NextProtos = []string{"h2", "http/1.1"}
+			nextProtos = []string{"h2", "http/1.1"}
 		}
-		alpn := ALPNExtension{AlpnProtocols: uconn.config.NextProtos}
+		alpn := ALPNExtension{AlpnProtocols: nextProtos}
 		p.Extensions = append(p.Extensions, &alpn)
 	}
 
@@ -2245,7 +2255,7 @@ func (uconn *UConn) generateRandomizedSpec() (ClientHelloSpec, error) {
 			// seed to create a new, independent PRNG, so that a seed used
 			// with the previous version of generateRandomizedSpec will
 			// produce the exact same spec as long as ALPS isn't selected.
-			r, err := newPRNGWithSaltedSeed(uconn.ClientHelloID.Seed, "ALPS")
+			r, err := newPRNGWithSaltedSeed(id.Seed, "ALPS")
 			if err != nil {
 				return p, err
 			}
