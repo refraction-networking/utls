@@ -377,8 +377,9 @@ func (c *UConn) clientHandshake(ctx context.Context) (err error) {
 	// [uTLS section begins]
 	// don't make new ClientHello, use hs.hello
 	// preserve the checks from beginning and end of makeClientHello()
-	if len(c.config.ServerName) == 0 && !c.config.InsecureSkipVerify {
-		return errors.New("tls: either ServerName or InsecureSkipVerify must be specified in the tls.Config")
+	skipServerNameVerify := c.config.InsecureSkipVerify || c.config.InsecureSkipServerNameVerify
+	if len(c.config.ServerName) == 0 && !skipServerNameVerify {
+		return errors.New("tls: at least one of ServerName, InsecureSkipVerify or InsecureSkipServerNameVerify must be specified in the tls.Config")
 	}
 
 	nextProtosLength := 0

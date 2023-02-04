@@ -40,9 +40,13 @@ var testingOnlyForceClientHelloSignatureAlgorithms []SignatureScheme
 
 func (c *Conn) makeClientHello() (*clientHelloMsg, ecdheParameters, error) {
 	config := c.config
-	if len(config.ServerName) == 0 && !config.InsecureSkipVerify {
-		return nil, nil, errors.New("tls: either ServerName or InsecureSkipVerify must be specified in the tls.Config")
+
+	// [UTLS SECTION START]
+	skipServerNameVerify := config.InsecureSkipVerify || config.InsecureSkipServerNameVerify
+	if len(config.ServerName) == 0 && !skipServerNameVerify {
+		return nil, nil, errors.New("tls: at least one of ServerName, InsecureSkipVerify or InsecureSkipServerNameVerify must be specified in the tls.Config")
 	}
+	// [UTLS SECTION END]
 
 	nextProtosLength := 0
 	for _, proto := range config.NextProtos {
@@ -874,12 +878,17 @@ func (c *Conn) verifyServerCertificate(certificates [][]byte) error {
 	}
 
 	if !c.config.InsecureSkipVerify {
+		// [UTLS SECTION START]
 		opts := x509.VerifyOptions{
 			Roots:         c.config.RootCAs,
 			CurrentTime:   c.config.time(),
-			DNSName:       c.config.ServerName,
 			Intermediates: x509.NewCertPool(),
 		}
+
+		if !c.config.InsecureSkipServerNameVerify {
+			opts.DNSName = c.config.ServerName
+		}
+		// [UTLS SECTION END]
 
 		for _, cert := range certs[1:] {
 			opts.Intermediates.AddCert(cert)
