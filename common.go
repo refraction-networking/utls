@@ -656,6 +656,15 @@ type Config struct {
 	// testing or in combination with VerifyConnection or VerifyPeerCertificate.
 	InsecureSkipVerify bool
 
+	// InsecureSkipServerNameVerify controls whether a client verifies the
+	// server's certificate chain only without verify host name.
+	// If InsecureSkipServerNameVerify is true, crypto/tls will do normal
+	// certificate validation but ignore certifacate's DNSName. This is intended
+	// to use with spoofed ServerName and VerifyConnection.
+	//
+	// This field is ignored when InsecureSkipVerify is true.
+	InsecureSkipServerNameVerify bool // [uTLS]
+
 	// CipherSuites is a list of enabled TLS 1.0–1.2 cipher suites. The order of
 	// the list is ignored. Note that TLS 1.3 ciphersuites are not configurable.
 	//
