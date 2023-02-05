@@ -658,7 +658,7 @@ type Config struct {
 
 	// InsecureServerNameToVerify is used to verify the hostname on the returned
 	// certificates. It is intended to use with spoofed ServerName.
-	// If InsecureServerNameToVerify is "any", crypto/tls will do normal
+	// If InsecureServerNameToVerify is "*", crypto/tls will do normal
 	// certificate validation but ignore certifacate's DNSName.
 	//
 	// This field is ignored when InsecureSkipVerify is true.

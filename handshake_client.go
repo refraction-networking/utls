@@ -886,7 +886,7 @@ func (c *Conn) verifyServerCertificate(certificates [][]byte) error {
 
 		if len(c.config.InsecureServerNameToVerify) == 0 {
 			opts.DNSName = c.config.ServerName
-		} else if c.config.InsecureServerNameToVerify != "any" {
+		} else if c.config.InsecureServerNameToVerify != "*" {
 			opts.DNSName = c.config.InsecureServerNameToVerify
 		}
 		// [UTLS SECTION END]
