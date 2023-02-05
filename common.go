@@ -656,14 +656,13 @@ type Config struct {
 	// testing or in combination with VerifyConnection or VerifyPeerCertificate.
 	InsecureSkipVerify bool
 
-	// InsecureSkipServerNameVerify controls whether a client verifies the
-	// server's certificate chain only without verify host name.
-	// If InsecureSkipServerNameVerify is true, crypto/tls will do normal
-	// certificate validation but ignore certifacate's DNSName. This is intended
-	// to use with spoofed ServerName and VerifyConnection.
+	// InsecureServerNameToVerify is used to verify the hostname on the returned
+	// certificates. It is intended to use with spoofed ServerName.
+	// If InsecureServerNameToVerify is "any", crypto/tls will do normal
+	// certificate validation but ignore certifacate's DNSName.
 	//
 	// This field is ignored when InsecureSkipVerify is true.
-	InsecureSkipServerNameVerify bool // [uTLS]
+	InsecureServerNameToVerify string // [uTLS]
 
 	// CipherSuites is a list of enabled TLS 1.0–1.2 cipher suites. The order of
 	// the list is ignored. Note that TLS 1.3 ciphersuites are not configurable.
@@ -806,36 +805,36 @@ func (c *Config) Clone() *Config {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 	return &Config{
-		Rand:                         c.Rand,
-		Time:                         c.Time,
-		Certificates:                 c.Certificates,
-		NameToCertificate:            c.NameToCertificate,
-		GetCertificate:               c.GetCertificate,
-		GetClientCertificate:         c.GetClientCertificate,
-		GetConfigForClient:           c.GetConfigForClient,
-		VerifyPeerCertificate:        c.VerifyPeerCertificate,
-		VerifyConnection:             c.VerifyConnection,
-		RootCAs:                      c.RootCAs,
-		NextProtos:                   c.NextProtos,
-		ApplicationSettings:          c.ApplicationSettings,
-		ServerName:                   c.ServerName,
-		ClientAuth:                   c.ClientAuth,
-		ClientCAs:                    c.ClientCAs,
-		InsecureSkipVerify:           c.InsecureSkipVerify,
-		InsecureSkipServerNameVerify: c.InsecureSkipServerNameVerify,
-		CipherSuites:                 c.CipherSuites,
-		PreferServerCipherSuites:     c.PreferServerCipherSuites,
-		SessionTicketsDisabled:       c.SessionTicketsDisabled,
-		SessionTicketKey:             c.SessionTicketKey,
-		ClientSessionCache:           c.ClientSessionCache,
-		MinVersion:                   c.MinVersion,
-		MaxVersion:                   c.MaxVersion,
-		CurvePreferences:             c.CurvePreferences,
-		DynamicRecordSizingDisabled:  c.DynamicRecordSizingDisabled,
-		Renegotiation:                c.Renegotiation,
-		KeyLogWriter:                 c.KeyLogWriter,
-		sessionTicketKeys:            c.sessionTicketKeys,
-		autoSessionTicketKeys:        c.autoSessionTicketKeys,
+		Rand:                        c.Rand,
+		Time:                        c.Time,
+		Certificates:                c.Certificates,
+		NameToCertificate:           c.NameToCertificate,
+		GetCertificate:              c.GetCertificate,
+		GetClientCertificate:        c.GetClientCertificate,
+		GetConfigForClient:          c.GetConfigForClient,
+		VerifyPeerCertificate:       c.VerifyPeerCertificate,
+		VerifyConnection:            c.VerifyConnection,
+		RootCAs:                     c.RootCAs,
+		NextProtos:                  c.NextProtos,
+		ApplicationSettings:         c.ApplicationSettings,
+		ServerName:                  c.ServerName,
+		ClientAuth:                  c.ClientAuth,
+		ClientCAs:                   c.ClientCAs,
+		InsecureSkipVerify:          c.InsecureSkipVerify,
+		InsecureServerNameToVerify:  c.InsecureServerNameToVerify,
+		CipherSuites:                c.CipherSuites,
+		PreferServerCipherSuites:    c.PreferServerCipherSuites,
+		SessionTicketsDisabled:      c.SessionTicketsDisabled,
+		SessionTicketKey:            c.SessionTicketKey,
+		ClientSessionCache:          c.ClientSessionCache,
+		MinVersion:                  c.MinVersion,
+		MaxVersion:                  c.MaxVersion,
+		CurvePreferences:            c.CurvePreferences,
+		DynamicRecordSizingDisabled: c.DynamicRecordSizingDisabled,
+		Renegotiation:               c.Renegotiation,
+		KeyLogWriter:                c.KeyLogWriter,
+		sessionTicketKeys:           c.sessionTicketKeys,
+		autoSessionTicketKeys:       c.autoSessionTicketKeys,
 	}
 }
 

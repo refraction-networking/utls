@@ -42,9 +42,8 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, ecdheParameters, error) {
 	config := c.config
 
 	// [UTLS SECTION START]
-	skipServerNameVerify := config.InsecureSkipVerify || config.InsecureSkipServerNameVerify
-	if len(config.ServerName) == 0 && !skipServerNameVerify {
-		return nil, nil, errors.New("tls: at least one of ServerName, InsecureSkipVerify or InsecureSkipServerNameVerify must be specified in the tls.Config")
+	if len(config.ServerName) == 0 && !config.InsecureSkipVerify && len(config.InsecureServerNameToVerify) == 0 {
+		return nil, nil, errors.New("tls: at least one of ServerName, InsecureSkipVerify or InsecureServerNameToVerify must be specified in the tls.Config")
 	}
 	// [UTLS SECTION END]
 
@@ -885,8 +884,10 @@ func (c *Conn) verifyServerCertificate(certificates [][]byte) error {
 			Intermediates: x509.NewCertPool(),
 		}
 
-		if !c.config.InsecureSkipServerNameVerify {
+		if len(c.config.InsecureServerNameToVerify) == 0 {
 			opts.DNSName = c.config.ServerName
+		} else if c.config.InsecureServerNameToVerify != "any" {
+			opts.DNSName = c.config.InsecureServerNameToVerify
 		}
 		// [UTLS SECTION END]
 
