@@ -140,6 +140,8 @@ const (
 
 	// versions
 	helloAutoVers = "0"
+
+	DefaultWeights_Version = "0"
 )
 
 type ClientHelloSpec struct {
@@ -169,9 +171,9 @@ var (
 	HelloCustom = ClientHelloID{helloCustom, helloAutoVers, nil}
 
 	// HelloRandomized* randomly adds/reorders extensions, ciphersuites, etc.
-	HelloRandomized       = ClientHelloID{helloRandomized, helloAutoVers, nil}
-	HelloRandomizedALPN   = ClientHelloID{helloRandomizedALPN, helloAutoVers, nil}
-	HelloRandomizedNoALPN = ClientHelloID{helloRandomizedNoALPN, helloAutoVers, nil}
+	HelloRandomized       = ClientHelloID{helloRandomized, DefaultWeights_Version, nil}
+	HelloRandomizedALPN   = ClientHelloID{helloRandomizedALPN, DefaultWeights_Version, nil}
+	HelloRandomizedNoALPN = ClientHelloID{helloRandomizedNoALPN, DefaultWeights_Version, nil}
 
 	// The rest will will parrot given browser.
 	HelloFirefox_Auto = HelloFirefox_105
@@ -295,7 +297,7 @@ func init() {
 		{OLD_TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256, 32, 0, 12, ecdheECDSAKA,
 			suiteECDHE | suiteECSign | suiteTLS12, nil, nil, aeadChaCha20Poly1305},
 	}...)
-	WeightsMap.Store(helloAutoVers, DefaultWeights)
+	WeightsMap.Store(DefaultWeights_Version, DefaultWeights)
 }
 
 // EnableWeakCiphers allows utls connections to continue in some cases, when weak cipher was chosen.
