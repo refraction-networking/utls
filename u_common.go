@@ -216,6 +216,26 @@ var (
 	HelloQQ_11_1 = ClientHelloID{helloQQ, "11.1", nil}
 )
 
+// Weights used in generateRandomizedSpec(), they should be set in advance.
+var (
+	Weight_Extensions_Append_ALPN                             = 0.7
+	Weight_TLSVersMax_Set_VersionTLS13                        = 0.4
+	Weight_CipherSuites_Remove_RandomCiphers                  = 0.4
+	Weight_SigAndHashAlgos_Append_ECDSAWithSHA1               = 0.63
+	Weight_SigAndHashAlgos_Append_ECDSAWithP521AndSHA512      = 0.59
+	Weight_SigAndHashAlgos_Append_PSSWithSHA256               = 0.51
+	Weight_SigAndHashAlgos_Append_PSSWithSHA384_PSSWithSHA512 = 0.9
+	Weight_CurveIDs_Append_X25519                             = 0.71
+	Weight_CurveIDs_Append_CurveP521                          = 0.46
+	Weight_Extensions_Append_Padding                          = 0.62
+	Weight_Extensions_Append_Status                           = 0.74
+	Weight_Extensions_Append_SCT                              = 0.46
+	Weight_Extensions_Append_Reneg                            = 0.75
+	Weight_Extensions_Append_EMS                              = 0.77
+	Weight_FirstKeyShare_Set_CurveP256                        = 0.25
+	Weight_Extensions_Append_ALPS                             = 0.33
+)
+
 // based on spec's GreaseStyle, GREASE_PLACEHOLDER may be replaced by another GREASE value
 // https://tools.ietf.org/html/draft-ietf-tls-grease-01
 const GREASE_PLACEHOLDER = 0x0a0a
