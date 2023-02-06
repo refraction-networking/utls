@@ -2087,12 +2087,6 @@ func generateRandomizedSpec(
 ) (ClientHelloSpec, error) {
 	p := ClientHelloSpec{}
 
-	value, ok := WeightsMap.Load(id.Version)
-	if !ok {
-		return p, fmt.Errorf("can not find weights for %v", id.Version)
-	}
-	weights := value.(Weights)
-
 	if id.Seed == nil {
 		seed, err := NewPRNGSeed()
 		if err != nil {
@@ -2105,6 +2099,12 @@ func generateRandomizedSpec(
 	if err != nil {
 		return p, err
 	}
+
+	value, ok := WeightsMap.Load(id.Version)
+	if !ok {
+		return p, fmt.Errorf("failed to load Weights for Version %v from WeightsMap", id.Version)
+	}
+	weights := value.(Weights)
 
 	var WithALPN bool
 	switch id.Client {
