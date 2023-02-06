@@ -9,6 +9,7 @@ import (
 	"crypto/sha512"
 	"fmt"
 	"hash"
+	"sync"
 )
 
 // Naming convention:
@@ -104,7 +105,8 @@ type ClientHelloID struct {
 	Client string
 
 	// Version specifies version of a mimicked clients (e.g. browsers).
-	// Not used in randomized, custom handshake, and default Go.
+	// It is used to load weights in func generateRandomizedSpec().
+	// Not used in custom handshake and default Go.
 	Version string
 
 	// Seed is only used for randomized fingerprints to seed PRNG.
@@ -216,25 +218,49 @@ var (
 	HelloQQ_11_1 = ClientHelloID{helloQQ, "11.1", nil}
 )
 
-// Weights used in generateRandomizedSpec(), they should be set in advance.
-var (
-	Weight_Extensions_Append_ALPN                             = 0.7
-	Weight_TLSVersMax_Set_VersionTLS13                        = 0.4
-	Weight_CipherSuites_Remove_RandomCiphers                  = 0.4
-	Weight_SigAndHashAlgos_Append_ECDSAWithSHA1               = 0.63
-	Weight_SigAndHashAlgos_Append_ECDSAWithP521AndSHA512      = 0.59
-	Weight_SigAndHashAlgos_Append_PSSWithSHA256               = 0.51
-	Weight_SigAndHashAlgos_Append_PSSWithSHA384_PSSWithSHA512 = 0.9
-	Weight_CurveIDs_Append_X25519                             = 0.71
-	Weight_CurveIDs_Append_CurveP521                          = 0.46
-	Weight_Extensions_Append_Padding                          = 0.62
-	Weight_Extensions_Append_Status                           = 0.74
-	Weight_Extensions_Append_SCT                              = 0.46
-	Weight_Extensions_Append_Reneg                            = 0.75
-	Weight_Extensions_Append_EMS                              = 0.77
-	Weight_FirstKeyShare_Set_CurveP256                        = 0.25
-	Weight_Extensions_Append_ALPS                             = 0.33
-)
+// The key is Version(string) and the value is Weights(struct).
+// Store your weights into this map and uTLS will load them.
+var WeightsMap sync.Map
+
+// Weights are used in func generateRandomizedSpec().
+type Weights struct {
+	Weight_Extensions_Append_ALPN                             float64
+	Weight_TLSVersMax_Set_VersionTLS13                        float64
+	Weight_CipherSuites_Remove_RandomCiphers                  float64
+	Weight_SigAndHashAlgos_Append_ECDSAWithSHA1               float64
+	Weight_SigAndHashAlgos_Append_ECDSAWithP521AndSHA512      float64
+	Weight_SigAndHashAlgos_Append_PSSWithSHA256               float64
+	Weight_SigAndHashAlgos_Append_PSSWithSHA384_PSSWithSHA512 float64
+	Weight_CurveIDs_Append_X25519                             float64
+	Weight_CurveIDs_Append_CurveP521                          float64
+	Weight_Extensions_Append_Padding                          float64
+	Weight_Extensions_Append_Status                           float64
+	Weight_Extensions_Append_SCT                              float64
+	Weight_Extensions_Append_Reneg                            float64
+	Weight_Extensions_Append_EMS                              float64
+	Weight_OnlyKeyShare_Set_CurveP256                         float64
+	Weight_Extensions_Append_ALPS                             float64
+}
+
+// Please make a copy first instead of modifying them directly.
+var DefaultWeights = Weights{
+	Weight_Extensions_Append_ALPN:                             0.7,
+	Weight_TLSVersMax_Set_VersionTLS13:                        0.4,
+	Weight_CipherSuites_Remove_RandomCiphers:                  0.4,
+	Weight_SigAndHashAlgos_Append_ECDSAWithSHA1:               0.63,
+	Weight_SigAndHashAlgos_Append_ECDSAWithP521AndSHA512:      0.59,
+	Weight_SigAndHashAlgos_Append_PSSWithSHA256:               0.51,
+	Weight_SigAndHashAlgos_Append_PSSWithSHA384_PSSWithSHA512: 0.9,
+	Weight_CurveIDs_Append_X25519:                             0.71,
+	Weight_CurveIDs_Append_CurveP521:                          0.46,
+	Weight_Extensions_Append_Padding:                          0.62,
+	Weight_Extensions_Append_Status:                           0.74,
+	Weight_Extensions_Append_SCT:                              0.46,
+	Weight_Extensions_Append_Reneg:                            0.75,
+	Weight_Extensions_Append_EMS:                              0.77,
+	Weight_OnlyKeyShare_Set_CurveP256:                         0.25,
+	Weight_Extensions_Append_ALPS:                             0.33,
+}
 
 // based on spec's GreaseStyle, GREASE_PLACEHOLDER may be replaced by another GREASE value
 // https://tools.ietf.org/html/draft-ietf-tls-grease-01
@@ -269,6 +295,7 @@ func init() {
 		{OLD_TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256, 32, 0, 12, ecdheECDSAKA,
 			suiteECDHE | suiteECSign | suiteTLS12, nil, nil, aeadChaCha20Poly1305},
 	}...)
+	WeightsMap.Store(helloAutoVers, DefaultWeights)
 }
 
 // EnableWeakCiphers allows utls connections to continue in some cases, when weak cipher was chosen.

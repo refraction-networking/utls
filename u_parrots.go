@@ -2087,6 +2087,12 @@ func generateRandomizedSpec(
 ) (ClientHelloSpec, error) {
 	p := ClientHelloSpec{}
 
+	value, ok := WeightsMap.Load(id.Version)
+	if !ok {
+		return p, fmt.Errorf("can not find weights for %v", id.Version)
+	}
+	weights := value.(Weights)
+
 	if id.Seed == nil {
 		seed, err := NewPRNGSeed()
 		if err != nil {
@@ -2107,7 +2113,7 @@ func generateRandomizedSpec(
 	case helloRandomizedNoALPN:
 		WithALPN = false
 	case helloRandomized:
-		if r.FlipWeightedCoin(Weight_Extensions_Append_ALPN) {
+		if r.FlipWeightedCoin(weights.Weight_Extensions_Append_ALPN) {
 			WithALPN = true
 		} else {
 			WithALPN = false
@@ -2123,7 +2129,7 @@ func generateRandomizedSpec(
 		return p, err
 	}
 
-	if r.FlipWeightedCoin(Weight_TLSVersMax_Set_VersionTLS13) {
+	if r.FlipWeightedCoin(weights.Weight_TLSVersMax_Set_VersionTLS13) {
 		p.TLSVersMin = VersionTLS10
 		p.TLSVersMax = VersionTLS13
 		tls13ciphers := make([]uint16, len(defaultCipherSuitesTLS13))
@@ -2141,7 +2147,7 @@ func generateRandomizedSpec(
 		p.TLSVersMax = VersionTLS12
 	}
 
-	p.CipherSuites = removeRandomCiphers(r, shuffledSuites, Weight_CipherSuites_Remove_RandomCiphers)
+	p.CipherSuites = removeRandomCiphers(r, shuffledSuites, weights.Weight_CipherSuites_Remove_RandomCiphers)
 
 	sni := SNIExtension{serverName}
 	sessionTicket := SessionTicketExtension{Session: session}
@@ -2155,16 +2161,16 @@ func generateRandomizedSpec(
 		PKCS1WithSHA512,
 	}
 
-	if r.FlipWeightedCoin(Weight_SigAndHashAlgos_Append_ECDSAWithSHA1) {
+	if r.FlipWeightedCoin(weights.Weight_SigAndHashAlgos_Append_ECDSAWithSHA1) {
 		sigAndHashAlgos = append(sigAndHashAlgos, ECDSAWithSHA1)
 	}
-	if r.FlipWeightedCoin(Weight_SigAndHashAlgos_Append_ECDSAWithP521AndSHA512) {
+	if r.FlipWeightedCoin(weights.Weight_SigAndHashAlgos_Append_ECDSAWithP521AndSHA512) {
 		sigAndHashAlgos = append(sigAndHashAlgos, ECDSAWithP521AndSHA512)
 	}
-	if r.FlipWeightedCoin(Weight_SigAndHashAlgos_Append_PSSWithSHA256) || p.TLSVersMax == VersionTLS13 {
+	if r.FlipWeightedCoin(weights.Weight_SigAndHashAlgos_Append_PSSWithSHA256) || p.TLSVersMax == VersionTLS13 {
 		// https://tools.ietf.org/html/rfc8446 says "...RSASSA-PSS (which is mandatory in TLS 1.3)..."
 		sigAndHashAlgos = append(sigAndHashAlgos, PSSWithSHA256)
-		if r.FlipWeightedCoin(Weight_SigAndHashAlgos_Append_PSSWithSHA384_PSSWithSHA512) {
+		if r.FlipWeightedCoin(weights.Weight_SigAndHashAlgos_Append_PSSWithSHA384_PSSWithSHA512) {
 			// these usually go together
 			sigAndHashAlgos = append(sigAndHashAlgos, PSSWithSHA384)
 			sigAndHashAlgos = append(sigAndHashAlgos, PSSWithSHA512)
@@ -2182,11 +2188,11 @@ func generateRandomizedSpec(
 	points := SupportedPointsExtension{SupportedPoints: []byte{pointFormatUncompressed}}
 
 	curveIDs := []CurveID{}
-	if r.FlipWeightedCoin(Weight_CurveIDs_Append_X25519) || p.TLSVersMax == VersionTLS13 {
+	if r.FlipWeightedCoin(weights.Weight_CurveIDs_Append_X25519) || p.TLSVersMax == VersionTLS13 {
 		curveIDs = append(curveIDs, X25519)
 	}
 	curveIDs = append(curveIDs, CurveP256, CurveP384)
-	if r.FlipWeightedCoin(Weight_CurveIDs_Append_CurveP521) {
+	if r.FlipWeightedCoin(weights.Weight_CurveIDs_Append_CurveP521) {
 		curveIDs = append(curveIDs, CurveP521)
 	}
 
@@ -2212,28 +2218,28 @@ func generateRandomizedSpec(
 		p.Extensions = append(p.Extensions, &alpn)
 	}
 
-	if r.FlipWeightedCoin(Weight_Extensions_Append_Padding) || p.TLSVersMax == VersionTLS13 {
+	if r.FlipWeightedCoin(weights.Weight_Extensions_Append_Padding) || p.TLSVersMax == VersionTLS13 {
 		// always include for TLS 1.3, since TLS 1.3 ClientHellos are often over 256 bytes
 		// and that's when padding is required to work around buggy middleboxes
 		p.Extensions = append(p.Extensions, &padding)
 	}
-	if r.FlipWeightedCoin(Weight_Extensions_Append_Status) {
+	if r.FlipWeightedCoin(weights.Weight_Extensions_Append_Status) {
 		p.Extensions = append(p.Extensions, &status)
 	}
-	if r.FlipWeightedCoin(Weight_Extensions_Append_SCT) {
+	if r.FlipWeightedCoin(weights.Weight_Extensions_Append_SCT) {
 		p.Extensions = append(p.Extensions, &sct)
 	}
-	if r.FlipWeightedCoin(Weight_Extensions_Append_Reneg) {
+	if r.FlipWeightedCoin(weights.Weight_Extensions_Append_Reneg) {
 		p.Extensions = append(p.Extensions, &reneg)
 	}
-	if r.FlipWeightedCoin(Weight_Extensions_Append_EMS) {
+	if r.FlipWeightedCoin(weights.Weight_Extensions_Append_EMS) {
 		p.Extensions = append(p.Extensions, &ems)
 	}
 	if p.TLSVersMax == VersionTLS13 {
 		ks := KeyShareExtension{[]KeyShare{
 			{Group: X25519}, // the key for the group will be generated later
 		}}
-		if r.FlipWeightedCoin(Weight_FirstKeyShare_Set_CurveP256) {
+		if r.FlipWeightedCoin(weights.Weight_OnlyKeyShare_Set_CurveP256) {
 			// do not ADD second keyShare because crypto/tls does not support multiple ecdheParams
 			// TODO: add it back when they implement multiple keyShares, or implement it oursevles
 			// ks.KeyShares = append(ks.KeyShares, KeyShare{Group: CurveP256})
@@ -2260,7 +2266,7 @@ func generateRandomizedSpec(
 			if err != nil {
 				return p, err
 			}
-			if r.FlipWeightedCoin(Weight_Extensions_Append_ALPS) {
+			if r.FlipWeightedCoin(weights.Weight_Extensions_Append_ALPS) {
 				// As with the ALPN case above, default to something popular
 				// (unlike ALPN, ALPS can't yet be specified in uconn.config).
 				alps := &ApplicationSettingsExtension{SupportedProtocols: []string{"h2"}}
