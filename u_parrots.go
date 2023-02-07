@@ -1847,7 +1847,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 	default:
 		if id.Client == helloRandomized || id.Client == helloRandomizedALPN || id.Client == helloRandomizedNoALPN {
 			// Use empty values as they can be filled later by UConn.ApplyPreset or manually.
-			return generateRandomizedSpec(id, "", nil, nil)
+			return generateRandomizedSpec(&id, "", nil, nil)
 		}
 		return ClientHelloSpec{}, errors.New("ClientHello ID " + id.Str() + " is unknown")
 	}
@@ -2076,11 +2076,11 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 }
 
 func (uconn *UConn) generateRandomizedSpec() (ClientHelloSpec, error) {
-	return generateRandomizedSpec(uconn.ClientHelloID, uconn.serverName, uconn.HandshakeState.Session, uconn.config.NextProtos)
+	return generateRandomizedSpec(&uconn.ClientHelloID, uconn.serverName, uconn.HandshakeState.Session, uconn.config.NextProtos)
 }
 
 func generateRandomizedSpec(
-	id ClientHelloID,
+	id *ClientHelloID,
 	serverName string,
 	session *ClientSessionState,
 	nextProtos []string,
@@ -2100,6 +2100,10 @@ func generateRandomizedSpec(
 		return p, err
 	}
 
+	if id.Weights == nil {
+		id.Weights = &DefaultWeights
+	}
+
 	var WithALPN bool
 	switch id.Client {
 	case helloRandomizedALPN:
@@ -2107,7 +2111,7 @@ func generateRandomizedSpec(
 	case helloRandomizedNoALPN:
 		WithALPN = false
 	case helloRandomized:
-		if r.FlipWeightedCoin(0.7) {
+		if r.FlipWeightedCoin(id.Weights.Extensions_Append_ALPN) {
 			WithALPN = true
 		} else {
 			WithALPN = false
@@ -2123,7 +2127,7 @@ func generateRandomizedSpec(
 		return p, err
 	}
 
-	if r.FlipWeightedCoin(0.4) {
+	if r.FlipWeightedCoin(id.Weights.TLSVersMax_Set_VersionTLS13) {
 		p.TLSVersMin = VersionTLS10
 		p.TLSVersMax = VersionTLS13
 		tls13ciphers := make([]uint16, len(defaultCipherSuitesTLS13))
@@ -2141,7 +2145,7 @@ func generateRandomizedSpec(
 		p.TLSVersMax = VersionTLS12
 	}
 
-	p.CipherSuites = removeRandomCiphers(r, shuffledSuites, 0.4)
+	p.CipherSuites = removeRandomCiphers(r, shuffledSuites, id.Weights.CipherSuites_Remove_RandomCiphers)
 
 	sni := SNIExtension{serverName}
 	sessionTicket := SessionTicketExtension{Session: session}
@@ -2155,16 +2159,16 @@ func generateRandomizedSpec(
 		PKCS1WithSHA512,
 	}
 
-	if r.FlipWeightedCoin(0.63) {
+	if r.FlipWeightedCoin(id.Weights.SigAndHashAlgos_Append_ECDSAWithSHA1) {
 		sigAndHashAlgos = append(sigAndHashAlgos, ECDSAWithSHA1)
 	}
-	if r.FlipWeightedCoin(0.59) {
+	if r.FlipWeightedCoin(id.Weights.SigAndHashAlgos_Append_ECDSAWithP521AndSHA512) {
 		sigAndHashAlgos = append(sigAndHashAlgos, ECDSAWithP521AndSHA512)
 	}
-	if r.FlipWeightedCoin(0.51) || p.TLSVersMax == VersionTLS13 {
+	if r.FlipWeightedCoin(id.Weights.SigAndHashAlgos_Append_PSSWithSHA256) || p.TLSVersMax == VersionTLS13 {
 		// https://tools.ietf.org/html/rfc8446 says "...RSASSA-PSS (which is mandatory in TLS 1.3)..."
 		sigAndHashAlgos = append(sigAndHashAlgos, PSSWithSHA256)
-		if r.FlipWeightedCoin(0.9) {
+		if r.FlipWeightedCoin(id.Weights.SigAndHashAlgos_Append_PSSWithSHA384_PSSWithSHA512) {
 			// these usually go together
 			sigAndHashAlgos = append(sigAndHashAlgos, PSSWithSHA384)
 			sigAndHashAlgos = append(sigAndHashAlgos, PSSWithSHA512)
@@ -2182,11 +2186,11 @@ func generateRandomizedSpec(
 	points := SupportedPointsExtension{SupportedPoints: []byte{pointFormatUncompressed}}
 
 	curveIDs := []CurveID{}
-	if r.FlipWeightedCoin(0.71) || p.TLSVersMax == VersionTLS13 {
+	if r.FlipWeightedCoin(id.Weights.CurveIDs_Append_X25519) || p.TLSVersMax == VersionTLS13 {
 		curveIDs = append(curveIDs, X25519)
 	}
 	curveIDs = append(curveIDs, CurveP256, CurveP384)
-	if r.FlipWeightedCoin(0.46) {
+	if r.FlipWeightedCoin(id.Weights.CurveIDs_Append_CurveP521) {
 		curveIDs = append(curveIDs, CurveP521)
 	}
 
@@ -2212,28 +2216,28 @@ func generateRandomizedSpec(
 		p.Extensions = append(p.Extensions, &alpn)
 	}
 
-	if r.FlipWeightedCoin(0.62) || p.TLSVersMax == VersionTLS13 {
+	if r.FlipWeightedCoin(id.Weights.Extensions_Append_Padding) || p.TLSVersMax == VersionTLS13 {
 		// always include for TLS 1.3, since TLS 1.3 ClientHellos are often over 256 bytes
 		// and that's when padding is required to work around buggy middleboxes
 		p.Extensions = append(p.Extensions, &padding)
 	}
-	if r.FlipWeightedCoin(0.74) {
+	if r.FlipWeightedCoin(id.Weights.Extensions_Append_Status) {
 		p.Extensions = append(p.Extensions, &status)
 	}
-	if r.FlipWeightedCoin(0.46) {
+	if r.FlipWeightedCoin(id.Weights.Extensions_Append_SCT) {
 		p.Extensions = append(p.Extensions, &sct)
 	}
-	if r.FlipWeightedCoin(0.75) {
+	if r.FlipWeightedCoin(id.Weights.Extensions_Append_Reneg) {
 		p.Extensions = append(p.Extensions, &reneg)
 	}
-	if r.FlipWeightedCoin(0.77) {
+	if r.FlipWeightedCoin(id.Weights.Extensions_Append_EMS) {
 		p.Extensions = append(p.Extensions, &ems)
 	}
 	if p.TLSVersMax == VersionTLS13 {
 		ks := KeyShareExtension{[]KeyShare{
 			{Group: X25519}, // the key for the group will be generated later
 		}}
-		if r.FlipWeightedCoin(0.25) {
+		if r.FlipWeightedCoin(id.Weights.FirstKeyShare_Set_CurveP256) {
 			// do not ADD second keyShare because crypto/tls does not support multiple ecdheParams
 			// TODO: add it back when they implement multiple keyShares, or implement it oursevles
 			// ks.KeyShares = append(ks.KeyShares, KeyShare{Group: CurveP256})
@@ -2260,7 +2264,7 @@ func generateRandomizedSpec(
 			if err != nil {
 				return p, err
 			}
-			if r.FlipWeightedCoin(0.33) {
+			if r.FlipWeightedCoin(id.Weights.Extensions_Append_ALPS) {
 				// As with the ALPN case above, default to something popular
 				// (unlike ALPN, ALPS can't yet be specified in uconn.config).
 				alps := &ApplicationSettingsExtension{SupportedProtocols: []string{"h2"}}

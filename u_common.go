@@ -110,6 +110,10 @@ type ClientHelloID struct {
 	// Seed is only used for randomized fingerprints to seed PRNG.
 	// Must not be modified once set.
 	Seed *PRNGSeed
+
+	// Weights are only used for randomized fingerprints in func
+	// generateRandomizedSpec(). Must not be modified once set.
+	Weights *Weights
 }
 
 func (p *ClientHelloID) Str() string {
@@ -160,61 +164,101 @@ var (
 	// overwrite your changes to Hello(Config, Session are fine).
 	// You might want to call BuildHandshakeState() before applying any changes.
 	// UConn.Extensions will be completely ignored.
-	HelloGolang = ClientHelloID{helloGolang, helloAutoVers, nil}
+	HelloGolang = ClientHelloID{helloGolang, helloAutoVers, nil, nil}
 
 	// HelloCustom will prepare ClientHello with empty uconn.Extensions so you can fill it with
 	// TLSExtensions manually or use ApplyPreset function
-	HelloCustom = ClientHelloID{helloCustom, helloAutoVers, nil}
+	HelloCustom = ClientHelloID{helloCustom, helloAutoVers, nil, nil}
 
 	// HelloRandomized* randomly adds/reorders extensions, ciphersuites, etc.
-	HelloRandomized       = ClientHelloID{helloRandomized, helloAutoVers, nil}
-	HelloRandomizedALPN   = ClientHelloID{helloRandomizedALPN, helloAutoVers, nil}
-	HelloRandomizedNoALPN = ClientHelloID{helloRandomizedNoALPN, helloAutoVers, nil}
+	HelloRandomized       = ClientHelloID{helloRandomized, helloAutoVers, nil, nil}
+	HelloRandomizedALPN   = ClientHelloID{helloRandomizedALPN, helloAutoVers, nil, nil}
+	HelloRandomizedNoALPN = ClientHelloID{helloRandomizedNoALPN, helloAutoVers, nil, nil}
 
 	// The rest will will parrot given browser.
 	HelloFirefox_Auto = HelloFirefox_105
-	HelloFirefox_55   = ClientHelloID{helloFirefox, "55", nil}
-	HelloFirefox_56   = ClientHelloID{helloFirefox, "56", nil}
-	HelloFirefox_63   = ClientHelloID{helloFirefox, "63", nil}
-	HelloFirefox_65   = ClientHelloID{helloFirefox, "65", nil}
-	HelloFirefox_99   = ClientHelloID{helloFirefox, "99", nil}
-	HelloFirefox_102  = ClientHelloID{helloFirefox, "102", nil}
-	HelloFirefox_105  = ClientHelloID{helloFirefox, "105", nil}
+	HelloFirefox_55   = ClientHelloID{helloFirefox, "55", nil, nil}
+	HelloFirefox_56   = ClientHelloID{helloFirefox, "56", nil, nil}
+	HelloFirefox_63   = ClientHelloID{helloFirefox, "63", nil, nil}
+	HelloFirefox_65   = ClientHelloID{helloFirefox, "65", nil, nil}
+	HelloFirefox_99   = ClientHelloID{helloFirefox, "99", nil, nil}
+	HelloFirefox_102  = ClientHelloID{helloFirefox, "102", nil, nil}
+	HelloFirefox_105  = ClientHelloID{helloFirefox, "105", nil, nil}
 
 	HelloChrome_Auto        = HelloChrome_106_Shuffle
-	HelloChrome_58          = ClientHelloID{helloChrome, "58", nil}
-	HelloChrome_62          = ClientHelloID{helloChrome, "62", nil}
-	HelloChrome_70          = ClientHelloID{helloChrome, "70", nil}
-	HelloChrome_72          = ClientHelloID{helloChrome, "72", nil}
-	HelloChrome_83          = ClientHelloID{helloChrome, "83", nil}
-	HelloChrome_87          = ClientHelloID{helloChrome, "87", nil}
-	HelloChrome_96          = ClientHelloID{helloChrome, "96", nil}
-	HelloChrome_100         = ClientHelloID{helloChrome, "100", nil}
-	HelloChrome_102         = ClientHelloID{helloChrome, "102", nil}
-	HelloChrome_106_Shuffle = ClientHelloID{helloChrome, "106", nil} // beta: shuffler enabled starting from 106
+	HelloChrome_58          = ClientHelloID{helloChrome, "58", nil, nil}
+	HelloChrome_62          = ClientHelloID{helloChrome, "62", nil, nil}
+	HelloChrome_70          = ClientHelloID{helloChrome, "70", nil, nil}
+	HelloChrome_72          = ClientHelloID{helloChrome, "72", nil, nil}
+	HelloChrome_83          = ClientHelloID{helloChrome, "83", nil, nil}
+	HelloChrome_87          = ClientHelloID{helloChrome, "87", nil, nil}
+	HelloChrome_96          = ClientHelloID{helloChrome, "96", nil, nil}
+	HelloChrome_100         = ClientHelloID{helloChrome, "100", nil, nil}
+	HelloChrome_102         = ClientHelloID{helloChrome, "102", nil, nil}
+	HelloChrome_106_Shuffle = ClientHelloID{helloChrome, "106", nil, nil} // beta: shuffler enabled starting from 106
 
 	HelloIOS_Auto = HelloIOS_14
-	HelloIOS_11_1 = ClientHelloID{helloIOS, "111", nil} // legacy "111" means 11.1
-	HelloIOS_12_1 = ClientHelloID{helloIOS, "12.1", nil}
-	HelloIOS_13   = ClientHelloID{helloIOS, "13", nil}
-	HelloIOS_14   = ClientHelloID{helloIOS, "14", nil}
+	HelloIOS_11_1 = ClientHelloID{helloIOS, "111", nil, nil} // legacy "111" means 11.1
+	HelloIOS_12_1 = ClientHelloID{helloIOS, "12.1", nil, nil}
+	HelloIOS_13   = ClientHelloID{helloIOS, "13", nil, nil}
+	HelloIOS_14   = ClientHelloID{helloIOS, "14", nil, nil}
 
-	HelloAndroid_11_OkHttp = ClientHelloID{helloAndroid, "11", nil}
+	HelloAndroid_11_OkHttp = ClientHelloID{helloAndroid, "11", nil, nil}
 
 	HelloEdge_Auto = HelloEdge_85 // HelloEdge_106 seems to be incompatible with this library
-	HelloEdge_85   = ClientHelloID{helloEdge, "85", nil}
-	HelloEdge_106  = ClientHelloID{helloEdge, "106", nil}
+	HelloEdge_85   = ClientHelloID{helloEdge, "85", nil, nil}
+	HelloEdge_106  = ClientHelloID{helloEdge, "106", nil, nil}
 
 	HelloSafari_Auto = HelloSafari_16_0
-	HelloSafari_16_0 = ClientHelloID{helloSafari, "16.0", nil}
+	HelloSafari_16_0 = ClientHelloID{helloSafari, "16.0", nil, nil}
 
 	Hello360_Auto = Hello360_7_5 // Hello360_11_0 seems to be incompatible with this library
-	Hello360_7_5  = ClientHelloID{hello360, "7.5", nil}
-	Hello360_11_0 = ClientHelloID{hello360, "11.0", nil}
+	Hello360_7_5  = ClientHelloID{hello360, "7.5", nil, nil}
+	Hello360_11_0 = ClientHelloID{hello360, "11.0", nil, nil}
 
 	HelloQQ_Auto = HelloQQ_11_1
-	HelloQQ_11_1 = ClientHelloID{helloQQ, "11.1", nil}
+	HelloQQ_11_1 = ClientHelloID{helloQQ, "11.1", nil, nil}
 )
+
+type Weights struct {
+	Extensions_Append_ALPN                             float64
+	TLSVersMax_Set_VersionTLS13                        float64
+	CipherSuites_Remove_RandomCiphers                  float64
+	SigAndHashAlgos_Append_ECDSAWithSHA1               float64
+	SigAndHashAlgos_Append_ECDSAWithP521AndSHA512      float64
+	SigAndHashAlgos_Append_PSSWithSHA256               float64
+	SigAndHashAlgos_Append_PSSWithSHA384_PSSWithSHA512 float64
+	CurveIDs_Append_X25519                             float64
+	CurveIDs_Append_CurveP521                          float64
+	Extensions_Append_Padding                          float64
+	Extensions_Append_Status                           float64
+	Extensions_Append_SCT                              float64
+	Extensions_Append_Reneg                            float64
+	Extensions_Append_EMS                              float64
+	FirstKeyShare_Set_CurveP256                        float64
+	Extensions_Append_ALPS                             float64
+}
+
+// Do not modify them directly as they may being used. If you
+// want to use your custom weights, please make a copy first.
+var DefaultWeights = Weights{
+	Extensions_Append_ALPN:                             0.7,
+	TLSVersMax_Set_VersionTLS13:                        0.4,
+	CipherSuites_Remove_RandomCiphers:                  0.4,
+	SigAndHashAlgos_Append_ECDSAWithSHA1:               0.63,
+	SigAndHashAlgos_Append_ECDSAWithP521AndSHA512:      0.59,
+	SigAndHashAlgos_Append_PSSWithSHA256:               0.51,
+	SigAndHashAlgos_Append_PSSWithSHA384_PSSWithSHA512: 0.9,
+	CurveIDs_Append_X25519:                             0.71,
+	CurveIDs_Append_CurveP521:                          0.46,
+	Extensions_Append_Padding:                          0.62,
+	Extensions_Append_Status:                           0.74,
+	Extensions_Append_SCT:                              0.46,
+	Extensions_Append_Reneg:                            0.75,
+	Extensions_Append_EMS:                              0.77,
+	FirstKeyShare_Set_CurveP256:                        0.25,
+	Extensions_Append_ALPS:                             0.33,
+}
 
 // based on spec's GreaseStyle, GREASE_PLACEHOLDER may be replaced by another GREASE value
 // https://tools.ietf.org/html/draft-ietf-tls-grease-01
