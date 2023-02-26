@@ -279,7 +279,7 @@ func (chs *ClientHelloSpec) ImportTLSClientHello(data map[string][]byte, keepPSK
 	for _, extType := range tlsExtensionTypes {
 		extension := ExtensionIDToExtension(extType)
 		if extension == nil {
-			log.Printf("[Warning] Unsupported extension %d", extType)
+			log.Printf("[Warning] Unsupported extension %d added as a &GenericExtension without Data", extType)
 			chs.Extensions = append(chs.Extensions, &GenericExtension{extType, []byte{}})
 		} else {
 			if extType == extensionSupportedVersions {
@@ -354,6 +354,15 @@ func (chs *ClientHelloSpec) ImportTLSClientHello(data map[string][]byte, keepPSK
 				_, err = extension.Write(data["record_size_limit"]) // uint16 as []byte
 				if err != nil {
 					return err
+				}
+			case utlsExtensionApplicationSettings:
+				// TODO: tlsfingerprint.io should also provide application settings data
+				extension.(*ApplicationSettingsExtension).SupportedProtocols = []string{"h2"}
+			default:
+				if isGREASEUint16(extType) {
+					log.Printf("[Info] GREASE extension added without specifying Value or Data. It will be automatically re-GREASEd on ApplyPreset() call.")
+				} else {
+					log.Printf("[Warning] extension %d added without data", extType)
 				}
 			}
 			chs.Extensions = append(chs.Extensions, extension)
