@@ -84,7 +84,11 @@ func (f *Fingerprinter) FingerprintClientHello(data []byte) (clientHelloSpec *Cl
 	}
 
 	// CompressionMethods
-	err = clientHelloSpec.ReadCompressionMethods(s)
+	var compressionMethods cryptobyte.String
+	if !s.ReadUint8LengthPrefixed(&compressionMethods) {
+		return nil, errors.New("unable to read compression methods")
+	}
+	err = clientHelloSpec.ReadCompressionMethods(compressionMethods)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +103,10 @@ func (f *Fingerprinter) FingerprintClientHello(data []byte) (clientHelloSpec *Cl
 		return nil, errors.New("unable to read extensions data")
 	}
 
-	clientHelloSpec.ReadTLSExtensions(extensions, f.KeepPSK, f.AllowBluntMimicry)
+	err = clientHelloSpec.ReadTLSExtensions(extensions, f.KeepPSK, f.AllowBluntMimicry)
+	if err != nil {
+		return nil, err
+	}
 
 	if f.AlwaysAddPadding {
 		clientHelloSpec.AlwaysAddPadding()

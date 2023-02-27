@@ -180,11 +180,8 @@ func (chs *ClientHelloSpec) ReadCipherSuites(b []byte) error {
 
 // ReadCompressionMethods is a helper function to construct a list of compression
 // methods from a []byte into []uint8.
-func (chs *ClientHelloSpec) ReadCompressionMethods(b []byte) error {
-	s := cryptobyte.String(b)
-	if !readUint8LengthPrefixed(&s, &chs.CompressionMethods) {
-		return errors.New("unable to read compression methods")
-	}
+func (chs *ClientHelloSpec) ReadCompressionMethods(compressionMethods []byte) error {
+	chs.CompressionMethods = compressionMethods
 	return nil
 }
 
@@ -195,10 +192,13 @@ func (chs *ClientHelloSpec) ReadTLSExtensions(b []byte, keepPSK, allowBluntMimic
 	for !extensions.Empty() {
 		var extension uint16
 		var extData cryptobyte.String
-		if !extensions.ReadUint16(&extension) ||
-			!extensions.ReadUint16LengthPrefixed(&extData) {
-			return errors.New("unable to read extension data")
+		if !extensions.ReadUint16(&extension) {
+			return fmt.Errorf("unable to read extension ID")
 		}
+		if !extensions.ReadUint16LengthPrefixed(&extData) {
+			return fmt.Errorf("unable to read data for extension %x", extension)
+		}
+		log.Printf("extension read: %x, %v", extension, []byte(extData))
 
 		if extension == extensionPreSharedKey && !keepPSK {
 			continue // skip PSK, this will result in fingerprint change!!!!
@@ -261,7 +261,7 @@ func (chs *ClientHelloSpec) AlwaysAddPadding() {
 //
 // TLSVersMin/TLSVersMax are set to 0 if supported_versions is present.
 // To prevent conflict, they should be set manually if needed BEFORE calling this function.
-func (chs *ClientHelloSpec) ImportTLSClientHello(data map[string][]byte, keepPSK, allowBluntMimicry bool) error {
+func (chs *ClientHelloSpec) ImportTLSClientHello(data map[string][]byte, keepPSK bool) error {
 	var tlsExtensionTypes []uint16
 	var err error
 
