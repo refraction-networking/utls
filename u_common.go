@@ -198,7 +198,6 @@ func (chs *ClientHelloSpec) ReadTLSExtensions(b []byte, keepPSK, allowBluntMimic
 		if !extensions.ReadUint16LengthPrefixed(&extData) {
 			return fmt.Errorf("unable to read data for extension %x", extension)
 		}
-		log.Printf("extension read: %x, %v", extension, []byte(extData))
 
 		if extension == extensionPreSharedKey && !keepPSK {
 			continue // skip PSK, this will result in fingerprint change!!!!
@@ -359,11 +358,11 @@ func (chs *ClientHelloSpec) ImportTLSClientHello(data map[string][]byte, keepPSK
 				// TODO: tlsfingerprint.io should also provide application settings data
 				extension.(*ApplicationSettingsExtension).SupportedProtocols = []string{"h2"}
 			default:
-				if isGREASEUint16(extType) {
-					log.Printf("[Info] GREASE extension added without specifying Value or Data. It will be automatically re-GREASEd on ApplyPreset() call.")
-				} else {
+				if !isGREASEUint16(extType) {
 					log.Printf("[Warning] extension %d added without data", extType)
-				}
+				} /*else {
+					log.Printf("[Warning] GREASE extension added but ID/Data discarded. They will be automatically re-GREASEd on ApplyPreset() call.")
+				}*/
 			}
 			chs.Extensions = append(chs.Extensions, extension)
 		}
