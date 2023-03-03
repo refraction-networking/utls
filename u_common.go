@@ -200,7 +200,8 @@ func (chs *ClientHelloSpec) ReadTLSExtensions(b []byte, keepPSK, allowBluntMimic
 		}
 
 		if extension == extensionPreSharedKey && !keepPSK {
-			continue // skip PSK, this will result in fingerprint change!!!!
+			return fmt.Errorf("PSK extension is not allowed unless keepPSK is set")
+			// continue // skip PSK, this will result in fingerprint change!!!!
 		}
 
 		extWriter := ExtensionIDToExtension(extension)

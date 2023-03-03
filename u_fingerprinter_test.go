@@ -514,10 +514,8 @@ func TestUTLSFingerprintClientHelloKeepPSK(t *testing.T) {
 	}
 
 	for _, ext := range generatedSpec.Extensions {
-		if genericExtension, ok := (ext).(*GenericExtension); ok {
-			if genericExtension.Id == extensionPreSharedKey {
-				return
-			}
+		if _, ok := (ext).(*PreSharedKeyExtension); ok {
+			return
 		}
 	}
 	t.Errorf("generated ClientHelloSpec with KeepPSK does not include preshared key extension")
