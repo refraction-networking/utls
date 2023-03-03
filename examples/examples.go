@@ -285,7 +285,7 @@ func forgeConn() {
 	// then replaces underlying connection of that tls connection with an in-memory pipe
 	// to a forged local in-memory "server-side" connection,
 	// that uses cryptographic parameters passed by a client
-	clientTcp, err := net.DialTimeout("tcp", "google.com:443", 10*time.Second)
+	clientTcp, err := net.DialTimeout("tcp", "badssl.com:443", 10*time.Second)
 	if err != nil {
 		fmt.Printf("net.DialTimeout error: %+v", err)
 		return
@@ -293,7 +293,7 @@ func forgeConn() {
 
 	clientUtls := tls.UClient(clientTcp, nil, tls.HelloGolang)
 	defer clientUtls.Close()
-	clientUtls.SetSNI("google.com") // have to set SNI, if config was nil
+	clientUtls.SetSNI("badssl.com") // have to set SNI, if config was nil
 	err = clientUtls.Handshake()
 	if err != nil {
 		fmt.Printf("clientUtls.Handshake() error: %+v", err)
