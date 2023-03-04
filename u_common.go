@@ -38,11 +38,12 @@ const (
 	utlsFakeExtensionCustom           uint16 = 1234  // not IANA assigned, for ALPS
 
 	// extensions with 'fake' prefix break connection, if server echoes them back
+	fakeExtensionEncryptThenMAC       uint16 = 22
 	fakeExtensionTokenBinding         uint16 = 24
+	fakeExtensionDelegatedCredentials uint16 = 34
 	fakeExtensionPreSharedKey         uint16 = 41
 	fakeOldExtensionChannelID         uint16 = 30031 // not IANA assigned
 	fakeExtensionChannelID            uint16 = 30032 // not IANA assigned
-	fakeExtensionDelegatedCredentials uint16 = 34
 )
 
 const (
