@@ -305,7 +305,7 @@ func (m *clientHelloMsg) marshal() []byte {
 }
 
 // marshalWithoutBinders returns the ClientHello through the
-// PreSharedKeyExtension.identities field, according to RFC 8446, Section
+// FakePreSharedKeyExtension.identities field, according to RFC 8446, Section
 // 4.2.11.2. Note that m.pskBinders must be set to slices of the correct length.
 func (m *clientHelloMsg) marshalWithoutBinders() []byte {
 	bindersLen := 2 // uint16 length prefix

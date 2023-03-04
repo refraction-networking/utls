@@ -514,7 +514,7 @@ func TestUTLSFingerprintClientHelloKeepPSK(t *testing.T) {
 	}
 
 	for _, ext := range generatedSpec.Extensions {
-		if _, ok := (ext).(*PreSharedKeyExtension); ok {
+		if _, ok := (ext).(*FakePreSharedKeyExtension); ok {
 			return
 		}
 	}

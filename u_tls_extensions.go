@@ -44,8 +44,8 @@ func ExtensionIDToExtension(id uint16) TLSExtensionWriter {
 		return &FakeDelegatedCredentialsExtension{}
 	case extensionSessionTicket:
 		return &SessionTicketExtension{}
-	case extensionPreSharedKey:
-		return &PreSharedKeyExtension{}
+	case fakeExtensionPreSharedKey:
+		return &FakePreSharedKeyExtension{}
 	// case extensionEarlyData:
 	// 	return &EarlyDataExtension{}
 	case extensionSupportedVersions:
@@ -1434,23 +1434,23 @@ func (e *FakeDelegatedCredentialsExtension) Write(b []byte) (int, error) {
 	return fullLen, nil
 }
 
-// PreSharedKeyExtension is an extension used to set the PSK extension in the
+// FakePreSharedKeyExtension is an extension used to set the PSK extension in the
 // ClientHello.
 //
-// Warning: detailed test pending. not production ready. Should be treated as
-// a FakeExtension.
-type PreSharedKeyExtension struct {
+// Unfortunately, even when the PSK extension is set, there will be no PSK-based
+// resumption since crypto/tls does not implement PSK.
+type FakePreSharedKeyExtension struct {
 	PskIdentities []PskIdentity
 	PskBinders    [][]byte
 }
 
-func (e *PreSharedKeyExtension) writeToUConn(uc *UConn) error {
+func (e *FakePreSharedKeyExtension) writeToUConn(uc *UConn) error {
 	uc.HandshakeState.Hello.PskIdentities = e.PskIdentities
 	uc.HandshakeState.Hello.PskBinders = e.PskBinders
 	return nil
 }
 
-func (e *PreSharedKeyExtension) Len() int {
+func (e *FakePreSharedKeyExtension) Len() int {
 	length := 4 // extension type + extension length
 	length += 2 // identities length
 	for _, identity := range e.PskIdentities {
@@ -1463,7 +1463,7 @@ func (e *PreSharedKeyExtension) Len() int {
 	return length
 }
 
-func (e *PreSharedKeyExtension) Read(b []byte) (int, error) {
+func (e *FakePreSharedKeyExtension) Read(b []byte) (int, error) {
 	if len(b) < e.Len() {
 		return 0, io.ErrShortBuffer
 	}
@@ -1514,7 +1514,7 @@ func (e *PreSharedKeyExtension) Read(b []byte) (int, error) {
 	return e.Len(), io.EOF
 }
 
-func (e *PreSharedKeyExtension) Write(b []byte) (n int, err error) {
+func (e *FakePreSharedKeyExtension) Write(b []byte) (n int, err error) {
 	fullLen := len(b)
 	s := cryptobyte.String(b)
 
