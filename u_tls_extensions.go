@@ -37,8 +37,8 @@ func (e *NPNExtension) Read(b []byte) (int, error) {
 	if len(b) < e.Len() {
 		return 0, io.ErrShortBuffer
 	}
-	b[0] = byte(extensionNextProtoNeg >> 8)
-	b[1] = byte(extensionNextProtoNeg & 0xff)
+	b[0] = byte(utlsExtensionNextProtoNeg >> 8)
+	b[1] = byte(utlsExtensionNextProtoNeg & 0xff)
 	// The length is always 0
 	return e.Len(), io.EOF
 }

@@ -101,7 +101,6 @@ const (
 	extensionCertificateAuthorities  uint16 = 47
 	extensionSignatureAlgorithmsCert uint16 = 50
 	extensionKeyShare                uint16 = 51
-	extensionNextProtoNeg            uint16 = 13172 // not IANA assigned // Pending discussion on whether or not remove this. crypto/tls removed it on Nov 21, 2019.
 	extensionRenegotiationInfo       uint16 = 0xff01
 )
 
@@ -1405,7 +1404,7 @@ func (c *Certificate) leaf() (*x509.Certificate, error) {
 }
 
 type handshakeMessage interface {
-	marshal() []byte
+	marshal() ([]byte, error)
 	unmarshal([]byte) bool
 }
 

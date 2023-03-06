@@ -39,6 +39,15 @@ var tests = []any{
 	&utlsCompressedCertificateMsg{}, // [UTLS]
 }
 
+func mustMarshal(t *testing.T, msg handshakeMessage) []byte {
+	t.Helper()
+	b, err := msg.marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
 func TestMarshalUnmarshal(t *testing.T) {
 	rand := rand.New(rand.NewSource(time.Now().UnixNano()))
 
@@ -57,7 +66,7 @@ func TestMarshalUnmarshal(t *testing.T) {
 			}
 
 			m1 := v.Interface().(handshakeMessage)
-			marshaled := m1.marshal()
+			marshaled := mustMarshal(t, m1)
 			m2 := iface.(handshakeMessage)
 			if !m2.unmarshal(marshaled) {
 				t.Errorf("#%d failed to unmarshal %#v %x", i, m1, marshaled)
@@ -419,12 +428,12 @@ func TestRejectEmptySCTList(t *testing.T) {
 
 	var random [32]byte
 	sct := []byte{0x42, 0x42, 0x42, 0x42}
-	serverHello := serverHelloMsg{
+	serverHello := &serverHelloMsg{
 		vers:   VersionTLS12,
 		random: random[:],
 		scts:   [][]byte{sct},
 	}
-	serverHelloBytes := serverHello.marshal()
+	serverHelloBytes := mustMarshal(t, serverHello)
 
 	var serverHelloCopy serverHelloMsg
 	if !serverHelloCopy.unmarshal(serverHelloBytes) {
@@ -462,12 +471,12 @@ func TestRejectEmptySCT(t *testing.T) {
 	// not be zero length.
 
 	var random [32]byte
-	serverHello := serverHelloMsg{
+	serverHello := &serverHelloMsg{
 		vers:   VersionTLS12,
 		random: random[:],
 		scts:   [][]byte{nil},
 	}
-	serverHelloBytes := serverHello.marshal()
+	serverHelloBytes := mustMarshal(t, serverHello)
 
 	var serverHelloCopy serverHelloMsg
 	if serverHelloCopy.unmarshal(serverHelloBytes) {

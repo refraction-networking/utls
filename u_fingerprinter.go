@@ -141,7 +141,7 @@ func (f *Fingerprinter) FingerprintClientHello(data []byte) (*ClientHelloSpec, e
 				clientHelloSpec.Extensions = append(clientHelloSpec.Extensions, &SNIExtension{})
 
 			}
-		case extensionNextProtoNeg:
+		case utlsExtensionNextProtoNeg:
 			// draft-agl-tls-nextprotoneg-04
 			clientHelloSpec.Extensions = append(clientHelloSpec.Extensions, &NPNExtension{})
 
