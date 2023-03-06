@@ -435,7 +435,11 @@ func UnmarshalClientHello(data []byte) *PubClientHelloMsg {
 // Marshal allows external code to convert a ClientHello object back into
 // raw bytes.
 func (chm *PubClientHelloMsg) Marshal() []byte {
-	return chm.getPrivatePtr().marshal()
+	privMsg, err := chm.getPrivatePtr().marshal()
+	if err != nil {
+		return nil
+	}
+	return privMsg
 }
 
 // A CipherSuite is a specific combination of key agreement, cipher and MAC

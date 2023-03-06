@@ -574,7 +574,7 @@ func (hs *clientHandshakeStateTLS13) readServerCertificate() error {
 	// [UTLS SECTION BEGINS]
 	// Previously, this was simply 'hs.transcript.Write(certMsg.marshal())' (without the if).
 	if !skipWritingCertToTranscript {
-		hs.transcript.Write(certMsg.marshal())
+		transcriptMsg(certMsg, hs.transcript)
 	}
 	// [UTLS SECTION ENDS]
 

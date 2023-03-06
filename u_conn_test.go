@@ -47,7 +47,7 @@ func TestUTLSMarshalNoOp(t *testing.T) {
 		t.Errorf("Got error: %s; expected to succeed", err)
 	}
 	msg.raw = []byte(str)
-	marshalledHello := msg.marshal()
+	marshalledHello, _ := msg.marshal()
 	if strings.Compare(string(marshalledHello), str) != 0 {
 		t.Errorf("clientHelloMsg.marshal() is not NOOP! Expected to get: %s, got: %s", str, string(marshalledHello))
 	}

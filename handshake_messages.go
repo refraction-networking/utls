@@ -741,106 +741,10 @@ func (m *serverHelloMsg) marshal() ([]byte, error) {
 		b.AddUint16(m.cipherSuite)
 		b.AddUint8(m.compressionMethod)
 
-<<<<<<< HEAD
-		// If extensions aren't present, omit them.
-		var extensionsPresent bool
-		bWithoutExtensions := *b
-
-		b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-			if m.ocspStapling {
-				b.AddUint16(extensionStatusRequest)
-				b.AddUint16(0) // empty extension_data
-			}
-			if m.ticketSupported {
-				b.AddUint16(extensionSessionTicket)
-				b.AddUint16(0) // empty extension_data
-			}
-			if m.secureRenegotiationSupported {
-				b.AddUint16(extensionRenegotiationInfo)
-				b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-					b.AddUint8LengthPrefixed(func(b *cryptobyte.Builder) {
-						b.AddBytes(m.secureRenegotiation)
-					})
-				})
-			}
-			if len(m.alpnProtocol) > 0 {
-				b.AddUint16(extensionALPN)
-				b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-					b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-						b.AddUint8LengthPrefixed(func(b *cryptobyte.Builder) {
-							b.AddBytes([]byte(m.alpnProtocol))
-						})
-					})
-				})
-			}
-			if len(m.scts) > 0 {
-				b.AddUint16(extensionSCT)
-				b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-					b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-						for _, sct := range m.scts {
-							b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-								b.AddBytes(sct)
-							})
-						}
-					})
-				})
-			}
-			if m.supportedVersion != 0 {
-				b.AddUint16(extensionSupportedVersions)
-				b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-					b.AddUint16(m.supportedVersion)
-				})
-			}
-			if m.serverShare.group != 0 {
-				b.AddUint16(extensionKeyShare)
-				b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-					b.AddUint16(uint16(m.serverShare.group))
-					b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-						b.AddBytes(m.serverShare.data)
-					})
-				})
-			}
-			if m.selectedIdentityPresent {
-				b.AddUint16(extensionPreSharedKey)
-				b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-					b.AddUint16(m.selectedIdentity)
-				})
-			}
-
-			if len(m.cookie) > 0 {
-				b.AddUint16(extensionCookie)
-				b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-					b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-						b.AddBytes(m.cookie)
-					})
-				})
-			}
-			if m.selectedGroup != 0 {
-				b.AddUint16(extensionKeyShare)
-				b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-					b.AddUint16(uint16(m.selectedGroup))
-				})
-			}
-			if len(m.supportedPoints) > 0 {
-				b.AddUint16(extensionSupportedPoints)
-				b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-					b.AddUint8LengthPrefixed(func(b *cryptobyte.Builder) {
-						b.AddBytes(m.supportedPoints)
-					})
-				})
-			}
-
-			extensionsPresent = len(b.BytesOrPanic()) > 2
-		})
-
-		if !extensionsPresent {
-			*b = bWithoutExtensions
-=======
 		if len(extBytes) > 0 {
 			b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
 				b.AddBytes(extBytes)
 			})
->>>>>>> crypto-tls-1.19.6
 		}
 	})
 
