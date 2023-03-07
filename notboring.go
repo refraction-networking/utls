@@ -1,12 +1,19 @@
 // Copyright 2022 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
+<<<<<<< HEAD
 package tls
 
 import (
 	"crypto/cipher"
 	"errors"
 )
+=======
+
+//go:build !boringcrypto
+
+package tls
+>>>>>>> crypto-tls-1-19-6
 
 func needFIPS() bool { return false }
 
@@ -20,6 +27,7 @@ func fipsCurvePreferences(c *Config) []CurveID { panic("fipsCurvePreferences") }
 func fipsCipherSuites(c *Config) []uint16      { panic("fipsCipherSuites") }
 
 var fipsSupportedSignatureAlgorithms []SignatureScheme
+<<<<<<< HEAD
 
 // [uTLS]
 // Boring struct is only to be used to record static env variables
@@ -37,3 +45,5 @@ func (*Boring) Unreachable() {
 }
 
 var boring Boring
+=======
+>>>>>>> crypto-tls-1-19-6

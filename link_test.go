@@ -6,12 +6,19 @@ package tls
 
 import (
 	"bytes"
+<<<<<<< HEAD
+=======
+	"internal/testenv"
+>>>>>>> crypto-tls-1-19-6
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
+<<<<<<< HEAD
 
 	"github.com/refraction-networking/utls/testenv"
+=======
+>>>>>>> crypto-tls-1-19-6
 )
 
 // Tests that the linker is able to remove references to the Client or Server if unused.

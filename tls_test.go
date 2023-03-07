@@ -830,8 +830,11 @@ func TestCloneNonFuncFields(t *testing.T) {
 			f.Set(reflect.ValueOf(RenegotiateOnceAsClient))
 		case "mutex", "autoSessionTicketKeys", "sessionTicketKeys":
 			continue // these are unexported fields that are handled separately
+<<<<<<< HEAD
 		case "ApplicationSettings":
 			f.Set(reflect.ValueOf(map[string][]byte{"a": {1}}))
+=======
+>>>>>>> crypto-tls-1-19-6
 		default:
 			t.Errorf("all fields must be accounted for, but saw unknown field %q", fn)
 		}

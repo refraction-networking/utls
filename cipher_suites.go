@@ -10,15 +10,22 @@ import (
 	"crypto/cipher"
 	"crypto/des"
 	"crypto/hmac"
+	"crypto/internal/boring"
 	"crypto/rc4"
 	"crypto/sha1"
 	"crypto/sha256"
 	"fmt"
 	"hash"
+<<<<<<< HEAD
 	"runtime"
 
 	"github.com/refraction-networking/utls/cpu"
 
+=======
+	"internal/cpu"
+	"runtime"
+
+>>>>>>> crypto-tls-1-19-6
 	"golang.org/x/crypto/chacha20poly1305"
 )
 

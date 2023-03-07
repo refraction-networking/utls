@@ -32,7 +32,11 @@ type sessionState struct {
 	usedOldKey bool
 }
 
+<<<<<<< HEAD
 func (m *sessionState) marshal() []byte {
+=======
+func (m *sessionState) marshal() ([]byte, error) {
+>>>>>>> crypto-tls-1-19-6
 	var b cryptobyte.Builder
 	b.AddUint16(m.vers)
 	b.AddUint16(m.cipherSuite)
@@ -47,7 +51,11 @@ func (m *sessionState) marshal() []byte {
 			})
 		}
 	})
+<<<<<<< HEAD
 	return b.BytesOrPanic()
+=======
+	return b.Bytes()
+>>>>>>> crypto-tls-1-19-6
 }
 
 func (m *sessionState) unmarshal(data []byte) bool {
@@ -86,7 +94,7 @@ type sessionStateTLS13 struct {
 	certificate      Certificate // CertificateEntry certificate_list<0..2^24-1>;
 }
 
-func (m *sessionStateTLS13) marshal() []byte {
+func (m *sessionStateTLS13) marshal() ([]byte, error) {
 	var b cryptobyte.Builder
 	b.AddUint16(VersionTLS13)
 	b.AddUint8(0) // revision
@@ -96,7 +104,7 @@ func (m *sessionStateTLS13) marshal() []byte {
 		b.AddBytes(m.resumptionSecret)
 	})
 	marshalCertificate(&b, m.certificate)
-	return b.BytesOrPanic()
+	return b.Bytes()
 }
 
 func (m *sessionStateTLS13) unmarshal(data []byte) bool {
