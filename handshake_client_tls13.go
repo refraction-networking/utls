@@ -299,7 +299,6 @@ func (hs *clientHandshakeStateTLS13) processHelloRetryRequest() error {
 		}
 	}
 
-<<<<<<< HEAD
 	// [uTLS SECTION BEGINS]
 	// crypto/tls code above this point had changed crypto/tls structures in accordance with HRR, and is about
 	// to call default marshaller.
@@ -362,11 +361,10 @@ func (hs *clientHandshakeStateTLS13) processHelloRetryRequest() error {
 	}
 	// [uTLS SECTION ENDS]
 
-	hs.transcript.Write(hs.hello.marshal())
-	if _, err := c.writeRecord(recordTypeHandshake, hs.hello.marshal()); err != nil {
-=======
+	// UTLSTODO: delete comment
+	// hs.transcript.Write(hs.hello.marshal())
+	// if _, err := c.writeRecord(recordTypeHandshake, hs.hello.marshal()); err != nil {
 	if _, err := hs.c.writeHandshakeRecord(hs.hello, hs.transcript); err != nil {
->>>>>>> crypto-tls-1-19-6
 		return err
 	}
 
@@ -538,7 +536,8 @@ func (hs *clientHandshakeStateTLS13) readServerCertificate() error {
 		return nil
 	}
 
-	msg, err := c.readHandshake(hs.transcript)
+	// msg, err := c.readHandshake(hs.transcript)
+	msg, err := c.readHandshake(nil) // [UTLS] we don't write to transcript until make sure it is not compressed cert
 	if err != nil {
 		return err
 	}
@@ -546,8 +545,10 @@ func (hs *clientHandshakeStateTLS13) readServerCertificate() error {
 	certReq, ok := msg.(*certificateRequestMsgTLS13)
 	if ok {
 		hs.certReq = certReq
+		transcriptMsg(certReq, hs.transcript) // [UTLS] if it is certReq (not compressedCert), write to transcript
 
-		msg, err = c.readHandshake(hs.transcript)
+		// msg, err = c.readHandshake(hs.transcript)
+		msg, err = c.readHandshake(nil) // [UTLS] we don't write to transcript until make sure it is not compressed cert
 		if err != nil {
 			return err
 		}
@@ -576,15 +577,15 @@ func (hs *clientHandshakeStateTLS13) readServerCertificate() error {
 		c.sendAlert(alertDecodeError)
 		return errors.New("tls: received empty certificates message")
 	}
-<<<<<<< HEAD
 	// [UTLS SECTION BEGINS]
 	// Previously, this was simply 'hs.transcript.Write(certMsg.marshal())' (without the if).
-	if !skipWritingCertToTranscript {
-		hs.transcript.Write(certMsg.marshal())
+	if !skipWritingCertToTranscript { // utlsReadServerCertificate didn't call transcriptMsg()
+		// hs.transcript.Write(certMsg.marshal()) // deprecated since Go 1.19.6
+		if err = transcriptMsg(certMsg, hs.transcript); err != nil {
+			return err
+		}
 	}
 	// [UTLS SECTION ENDS]
-=======
->>>>>>> crypto-tls-1-19-6
 
 	c.scts = certMsg.certificate.SignedCertificateTimestamps
 	c.ocspResponse = certMsg.certificate.OCSPStaple
@@ -610,11 +611,7 @@ func (hs *clientHandshakeStateTLS13) readServerCertificate() error {
 	// See RFC 8446, Section 4.4.3.
 	if !isSupportedSignatureAlgorithm(certVerify.signatureAlgorithm, supportedSignatureAlgorithms()) {
 		c.sendAlert(alertIllegalParameter)
-<<<<<<< HEAD
-		return errors.New("tls: certificate used with invalid signature algorithm -- not implemented")
-=======
 		return errors.New("tls: certificate used with invalid signature algorithm")
->>>>>>> crypto-tls-1-19-6
 	}
 	sigType, sigHash, err := typeAndHashFromSignatureScheme(certVerify.signatureAlgorithm)
 	if err != nil {
@@ -622,11 +619,7 @@ func (hs *clientHandshakeStateTLS13) readServerCertificate() error {
 	}
 	if sigType == signaturePKCS1v15 || sigHash == crypto.SHA1 {
 		c.sendAlert(alertIllegalParameter)
-<<<<<<< HEAD
-		return errors.New("tls: certificate used with invalid signature algorithm -- obsolete")
-=======
 		return errors.New("tls: certificate used with invalid signature algorithm")
->>>>>>> crypto-tls-1-19-6
 	}
 	signed := signedMessage(sigHash, serverSignatureContext, hs.transcript)
 	if err := verifyHandshakeSignature(sigType, c.peerCertificates[0].PublicKey,

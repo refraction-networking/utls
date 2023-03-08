@@ -434,7 +434,7 @@ func UnmarshalClientHello(data []byte) *PubClientHelloMsg {
 
 // Marshal allows external code to convert a ClientHello object back into
 // raw bytes.
-func (chm *PubClientHelloMsg) Marshal() []byte {
+func (chm *PubClientHelloMsg) Marshal() ([]byte, error) {
 	return chm.getPrivatePtr().marshal()
 }
 

@@ -20,9 +20,9 @@ type utlsCompressedCertificateMsg struct {
 	compressedCertificateMessage []byte
 }
 
-func (m *utlsCompressedCertificateMsg) marshal() []byte {
+func (m *utlsCompressedCertificateMsg) marshal() ([]byte, error) {
 	if m.raw != nil {
-		return m.raw
+		return m.raw, nil
 	}
 
 	var b cryptobyte.Builder
@@ -35,8 +35,9 @@ func (m *utlsCompressedCertificateMsg) marshal() []byte {
 		})
 	})
 
-	m.raw = b.BytesOrPanic()
-	return m.raw
+	var err error
+	m.raw, err = b.Bytes()
+	return m.raw, err
 }
 
 func (m *utlsCompressedCertificateMsg) unmarshal(data []byte) bool {
@@ -74,9 +75,9 @@ type utlsClientEncryptedExtensionsMsg struct {
 	customExtension        []byte
 }
 
-func (m *utlsClientEncryptedExtensionsMsg) marshal() (x []byte) {
+func (m *utlsClientEncryptedExtensionsMsg) marshal() (x []byte, err error) {
 	if m.raw != nil {
-		return m.raw
+		return m.raw, nil
 	}
 
 	var builder cryptobyte.Builder
@@ -98,8 +99,8 @@ func (m *utlsClientEncryptedExtensionsMsg) marshal() (x []byte) {
 		})
 	})
 
-	m.raw = builder.BytesOrPanic()
-	return m.raw
+	m.raw, err = builder.Bytes()
+	return m.raw, err
 }
 
 func (m *utlsClientEncryptedExtensionsMsg) unmarshal(data []byte) bool {

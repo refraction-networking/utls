@@ -32,11 +32,7 @@ type sessionState struct {
 	usedOldKey bool
 }
 
-<<<<<<< HEAD
-func (m *sessionState) marshal() []byte {
-=======
 func (m *sessionState) marshal() ([]byte, error) {
->>>>>>> crypto-tls-1-19-6
 	var b cryptobyte.Builder
 	b.AddUint16(m.vers)
 	b.AddUint16(m.cipherSuite)
@@ -51,11 +47,7 @@ func (m *sessionState) marshal() ([]byte, error) {
 			})
 		}
 	})
-<<<<<<< HEAD
-	return b.BytesOrPanic()
-=======
 	return b.Bytes()
->>>>>>> crypto-tls-1-19-6
 }
 
 func (m *sessionState) unmarshal(data []byte) bool {

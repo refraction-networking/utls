@@ -129,13 +129,9 @@ func (hs *serverHandshakeState) handshake() error {
 
 // readClientHello reads a ClientHello message and selects the protocol version.
 func (c *Conn) readClientHello(ctx context.Context) (*clientHelloMsg, error) {
-<<<<<<< HEAD
-	msg, err := c.readHandshake()
-=======
 	// clientHelloMsg is included in the transcript, but we haven't initialized
 	// it yet. The respective handshake functions will record it themselves.
 	msg, err := c.readHandshake(nil)
->>>>>>> crypto-tls-1-19-6
 	if err != nil {
 		return nil, err
 	}
@@ -670,17 +666,6 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 				c.sendAlert(alertIllegalParameter)
 				return err
 			}
-<<<<<<< HEAD
-		}
-
-		signed := hs.finishedHash.hashForClientCertificate(sigType, sigHash, hs.masterSecret)
-		if err := verifyHandshakeSignature(sigType, pub, sigHash, signed, certVerify.signature); err != nil {
-			c.sendAlert(alertDecryptError)
-			return errors.New("tls: invalid signature by the client certificate: " + err.Error())
-		}
-
-		hs.finishedHash.Write(certVerify.marshal())
-=======
 		}
 
 		signed := hs.finishedHash.hashForClientCertificate(sigType, sigHash, hs.masterSecret)
@@ -692,7 +677,6 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 		if err := transcriptMsg(certVerify, &hs.finishedHash); err != nil {
 			return err
 		}
->>>>>>> crypto-tls-1-19-6
 	}
 
 	hs.finishedHash.discardHandshakeBuffer()
@@ -732,14 +716,10 @@ func (hs *serverHandshakeState) readFinished(out []byte) error {
 		return err
 	}
 
-<<<<<<< HEAD
-	msg, err := c.readHandshake()
-=======
 	// finishedMsg is included in the transcript, but not until after we
 	// check the client version, since the state before this message was
 	// sent is used during verification.
 	msg, err := c.readHandshake(nil)
->>>>>>> crypto-tls-1-19-6
 	if err != nil {
 		return err
 	}

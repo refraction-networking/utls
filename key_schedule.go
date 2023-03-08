@@ -8,10 +8,7 @@ import (
 	"crypto/elliptic"
 	"crypto/hmac"
 	"errors"
-<<<<<<< HEAD
-=======
 	"fmt"
->>>>>>> crypto-tls-1-19-6
 	"hash"
 	"io"
 	"math/big"

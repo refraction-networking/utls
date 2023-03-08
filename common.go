@@ -101,10 +101,6 @@ const (
 	extensionCertificateAuthorities  uint16 = 47
 	extensionSignatureAlgorithmsCert uint16 = 50
 	extensionKeyShare                uint16 = 51
-<<<<<<< HEAD
-	extensionNextProtoNeg            uint16 = 13172 // not IANA assigned // Pending discussion on whether or not remove this. crypto/tls removed it on Nov 21, 2019.
-=======
->>>>>>> crypto-tls-1-19-6
 	extensionRenegotiationInfo       uint16 = 0xff01
 )
 
@@ -241,13 +237,10 @@ type ConnectionState struct {
 	// Deprecated: this value is always true.
 	NegotiatedProtocolIsMutual bool
 
-<<<<<<< HEAD
 	// PeerApplicationSettings is the Application-Layer Protocol Settings (ALPS)
 	// provided by peer.
 	PeerApplicationSettings []byte // [uTLS]
 
-=======
->>>>>>> crypto-tls-1-19-6
 	// ServerName is the value of the Server Name Indication extension sent by
 	// the client. It's available both on the server and on the client side.
 	ServerName string
@@ -662,7 +655,6 @@ type Config struct {
 	// testing or in combination with VerifyConnection or VerifyPeerCertificate.
 	InsecureSkipVerify bool
 
-<<<<<<< HEAD
 	// InsecureServerNameToVerify is used to verify the hostname on the returned
 	// certificates. It is intended to use with spoofed ServerName.
 	// If InsecureServerNameToVerify is "*", crypto/tls will do normal
@@ -671,8 +663,6 @@ type Config struct {
 	// This field is ignored when InsecureSkipVerify is true.
 	InsecureServerNameToVerify string // [uTLS]
 
-=======
->>>>>>> crypto-tls-1-19-6
 	// CipherSuites is a list of enabled TLS 1.0–1.2 cipher suites. The order of
 	// the list is ignored. Note that TLS 1.3 ciphersuites are not configurable.
 	//

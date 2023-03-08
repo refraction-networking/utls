@@ -26,6 +26,8 @@ const (
 
 // TLS
 const (
+	extensionNextProtoNeg uint16 = 13172 // not IANA assigned. Removed by crypto/tls since Nov 2019
+
 	utlsExtensionPadding              uint16 = 21
 	utlsExtensionExtendedMasterSecret uint16 = 23    // https://tools.ietf.org/html/rfc7627
 	utlsExtensionCompressCertificate  uint16 = 27    // https://datatracker.ietf.org/doc/html/rfc8879#section-7.1

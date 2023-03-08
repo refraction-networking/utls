@@ -1257,11 +1257,7 @@ func TestServerSelectingUnconfiguredApplicationProtocol(t *testing.T) {
 		cipherSuite:  TLS_RSA_WITH_AES_128_GCM_SHA256,
 		alpnProtocol: "how-about-this",
 	}
-<<<<<<< HEAD
-	serverHelloBytes := serverHello.marshal()
-=======
 	serverHelloBytes := mustMarshal(t, serverHello)
->>>>>>> crypto-tls-1-19-6
 
 	s.Write([]byte{
 		byte(recordTypeHandshake),

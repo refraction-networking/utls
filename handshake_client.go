@@ -230,7 +230,7 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 		}
 
 		// In TLS 1.3, session tickets are delivered after the handshake.
-		return hs.handshake()
+		return hs.handshake() // UTLSTODO: returned error
 	}
 
 	hs := &clientHandshakeState{
@@ -523,43 +523,12 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 
 		c.ocspResponse = cs.response
 
-		msg, err = c.readHandshake(&hs.finishedHash)
+		msg, err = c.readHandshake(&hs.finishedHash) // UTLSTODO: note this added transcriptHash.
 		if err != nil {
 			return err
 		}
 	}
 
-<<<<<<< HEAD
-	msg, err = c.readHandshake()
-	if err != nil {
-		return err
-	}
-
-	cs, ok := msg.(*certificateStatusMsg)
-	if ok {
-		// RFC4366 on Certificate Status Request:
-		// The server MAY return a "certificate_status" message.
-
-		if !hs.serverHello.ocspStapling {
-			// If a server returns a "CertificateStatus" message, then the
-			// server MUST have included an extension of type "status_request"
-			// with empty "extension_data" in the extended server hello.
-
-			c.sendAlert(alertUnexpectedMessage)
-			return errors.New("tls: received unexpected CertificateStatus message")
-		}
-		hs.finishedHash.Write(cs.marshal())
-
-		c.ocspResponse = cs.response
-
-		msg, err = c.readHandshake()
-		if err != nil {
-			return err
-		}
-	}
-
-=======
->>>>>>> crypto-tls-1-19-6
 	if c.handshakes == 0 {
 		// If this is the first handshake on a connection, process and
 		// (optionally) verify the server's certificates.
@@ -926,7 +895,6 @@ func (c *Conn) verifyServerCertificate(certificates [][]byte) error {
 			Intermediates: x509.NewCertPool(),
 		}
 
-<<<<<<< HEAD
 		if len(c.config.InsecureServerNameToVerify) == 0 {
 			opts.DNSName = c.config.ServerName
 		} else if c.config.InsecureServerNameToVerify != "*" {
@@ -934,8 +902,6 @@ func (c *Conn) verifyServerCertificate(certificates [][]byte) error {
 		}
 		// [UTLS SECTION END]
 
-=======
->>>>>>> crypto-tls-1-19-6
 		for _, cert := range certs[1:] {
 			opts.Intermediates.AddCert(cert)
 		}

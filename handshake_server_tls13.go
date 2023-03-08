@@ -767,11 +767,7 @@ func (hs *serverHandshakeStateTLS13) sendSessionTickets() error {
 	// ticket_nonce, which must be unique per connection, is always left at
 	// zero because we only ever send one ticket per connection.
 
-<<<<<<< HEAD
-	if _, err := c.writeRecord(recordTypeHandshake, m.marshal()); err != nil {
-=======
 	if _, err := c.writeHandshakeRecord(m, nil); err != nil {
->>>>>>> crypto-tls-1-19-6
 		return err
 	}
 

@@ -91,13 +91,10 @@ type Conn struct {
 
 	// clientProtocol is the negotiated ALPN protocol.
 	clientProtocol string
-<<<<<<< HEAD
 
 	// [UTLS SECTION START]
 	utls utlsConnExtraFields // used for extensive things such as ALPS
 	// [UTLS SECTION END]
-=======
->>>>>>> crypto-tls-1-19-6
 
 	// input/output
 	in, out   halfConn
@@ -1038,14 +1035,9 @@ func (c *Conn) writeChangeCipherRecord() error {
 }
 
 // readHandshake reads the next handshake message from
-<<<<<<< HEAD
-// the record layer.
-func (c *Conn) readHandshake() (any, error) {
-=======
 // the record layer. If transcript is non-nil, the message
 // is written to the passed transcriptHash.
 func (c *Conn) readHandshake(transcript transcriptHash) (any, error) {
->>>>>>> crypto-tls-1-19-6
 	for c.hand.Len() < 4 {
 		if err := c.readRecord(); err != nil {
 			return nil, err
@@ -1559,10 +1551,6 @@ func (c *Conn) connectionStateLocked() ConnectionState {
 	} else {
 		state.ekm = c.ekm
 	}
-<<<<<<< HEAD
-
-=======
->>>>>>> crypto-tls-1-19-6
 	return state
 }
 

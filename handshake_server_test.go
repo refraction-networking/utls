@@ -324,15 +324,10 @@ func TestTLSPointFormats(t *testing.T) {
 			go func() {
 				cli := Client(c, testConfig)
 				cli.vers = clientHello.vers
-<<<<<<< HEAD
-				cli.writeRecord(recordTypeHandshake, clientHello.marshal())
-				reply, err := cli.readHandshake()
-=======
 				if _, err := cli.writeHandshakeRecord(clientHello, nil); err != nil {
 					testFatal(t, err)
 				}
 				reply, err := cli.readHandshake(nil)
->>>>>>> crypto-tls-1-19-6
 				c.Close()
 				if err != nil {
 					replyChan <- err
