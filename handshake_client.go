@@ -230,7 +230,7 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 		}
 
 		// In TLS 1.3, session tickets are delivered after the handshake.
-		return hs.handshake() // UTLSTODO: returned error
+		return hs.handshake()
 	}
 
 	hs := &clientHandshakeState{
@@ -523,7 +523,7 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 
 		c.ocspResponse = cs.response
 
-		msg, err = c.readHandshake(&hs.finishedHash) // UTLSTODO: note this added transcriptHash.
+		msg, err = c.readHandshake(&hs.finishedHash)
 		if err != nil {
 			return err
 		}

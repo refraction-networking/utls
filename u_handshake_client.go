@@ -25,8 +25,7 @@ func (hs *clientHandshakeStateTLS13) utlsReadServerCertificate(msg any) (process
 			if len(hs.uconn.certCompressionAlgs) > 0 {
 				compressedCertMsg, ok := msg.(*utlsCompressedCertificateMsg)
 				if ok {
-					// hs.transcript.Write(compressedCertMsg.marshal()) // deprecated since Go 1.19.6
-					if err = transcriptMsg(compressedCertMsg, hs.transcript); err != nil { // UTLSTODO: debug
+					if err = transcriptMsg(compressedCertMsg, hs.transcript); err != nil {
 						return nil, err
 					}
 					msg, err = hs.decompressCert(*compressedCertMsg)

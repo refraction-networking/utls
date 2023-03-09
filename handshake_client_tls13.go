@@ -361,9 +361,6 @@ func (hs *clientHandshakeStateTLS13) processHelloRetryRequest() error {
 	}
 	// [uTLS SECTION ENDS]
 
-	// UTLSTODO: delete comment
-	// hs.transcript.Write(hs.hello.marshal())
-	// if _, err := c.writeRecord(recordTypeHandshake, hs.hello.marshal()); err != nil {
 	if _, err := hs.c.writeHandshakeRecord(hs.hello, hs.transcript); err != nil {
 		return err
 	}
@@ -536,8 +533,10 @@ func (hs *clientHandshakeStateTLS13) readServerCertificate() error {
 		return nil
 	}
 
+	// [UTLS SECTION BEGINS]
 	// msg, err := c.readHandshake(hs.transcript)
-	msg, err := c.readHandshake(nil) // [UTLS] we don't write to transcript until make sure it is not compressed cert
+	msg, err := c.readHandshake(nil) // hold writing to transcript until we know it is not compressed cert
+	// [UTLS SECTION ENDS]
 	if err != nil {
 		return err
 	}
@@ -578,9 +577,7 @@ func (hs *clientHandshakeStateTLS13) readServerCertificate() error {
 		return errors.New("tls: received empty certificates message")
 	}
 	// [UTLS SECTION BEGINS]
-	// Previously, this was simply 'hs.transcript.Write(certMsg.marshal())' (without the if).
-	if !skipWritingCertToTranscript { // utlsReadServerCertificate didn't call transcriptMsg()
-		// hs.transcript.Write(certMsg.marshal()) // deprecated since Go 1.19.6
+	if !skipWritingCertToTranscript { // write to transcript only if it is not compressedCert (i.e. if not processed by extension)
 		if err = transcriptMsg(certMsg, hs.transcript); err != nil {
 			return err
 		}
