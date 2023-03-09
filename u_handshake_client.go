@@ -130,8 +130,6 @@ func (hs *clientHandshakeStateTLS13) sendClientEncryptedExtensions() error {
 	if c.utls.hasApplicationSettings {
 		clientEncryptedExtensions.hasApplicationSettings = true
 		clientEncryptedExtensions.applicationSettings = c.utls.localApplicationSettings
-		// hs.transcript.Write(clientEncryptedExtensions.marshal()) // deprecated since Go 1.19.6
-		// transcriptMsg(clientEncryptedExtensions, hs.transcript) // included in writeHandshakeRecord
 		if _, err := c.writeHandshakeRecord(clientEncryptedExtensions, hs.transcript); err != nil {
 			return err
 		}
