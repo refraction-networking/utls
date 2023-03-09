@@ -150,7 +150,8 @@ const (
 
 // TLS CertificateStatusType (RFC 3546)
 const (
-	statusTypeOCSP uint8 = 1
+	statusTypeOCSP   uint8 = 1
+	statusV2TypeOCSP uint8 = 2
 )
 
 // Certificate types (for certificateRequestMsg)

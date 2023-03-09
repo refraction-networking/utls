@@ -501,12 +501,6 @@ func TestUTLSFingerprintClientHelloKeepPSK(t *testing.T) {
 	}
 
 	f := &Fingerprinter{}
-	_, err = f.FingerprintClientHello(helloBytes)
-	if err == nil {
-		t.Errorf("expected error generating spec from client hello with PSK")
-	}
-
-	f = &Fingerprinter{KeepPSK: true}
 	generatedSpec, err := f.FingerprintClientHello(helloBytes)
 	if err != nil {
 		t.Errorf("got error: %v; expected to succeed", err)
@@ -514,10 +508,8 @@ func TestUTLSFingerprintClientHelloKeepPSK(t *testing.T) {
 	}
 
 	for _, ext := range generatedSpec.Extensions {
-		if genericExtension, ok := (ext).(*GenericExtension); ok {
-			if genericExtension.Id == extensionPreSharedKey {
-				return
-			}
+		if _, ok := (ext).(*FakePreSharedKeyExtension); ok {
+			return
 		}
 	}
 	t.Errorf("generated ClientHelloSpec with KeepPSK does not include preshared key extension")

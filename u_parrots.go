@@ -1988,7 +1988,7 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 	hello.CipherSuites = make([]uint16, len(p.CipherSuites))
 	copy(hello.CipherSuites, p.CipherSuites)
 	for i := range hello.CipherSuites {
-		if hello.CipherSuites[i] == GREASE_PLACEHOLDER {
+		if isGREASEUint16(hello.CipherSuites[i]) { // just in case the user set a GREASE value instead of unGREASEd
 			hello.CipherSuites[i] = GetBoringGREASEValue(uconn.greaseSeed, ssl_grease_cipher)
 		}
 	}
@@ -2029,7 +2029,7 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 			}
 		case *SupportedCurvesExtension:
 			for i := range ext.Curves {
-				if ext.Curves[i] == GREASE_PLACEHOLDER {
+				if isGREASEUint16(uint16(ext.Curves[i])) {
 					ext.Curves[i] = CurveID(GetBoringGREASEValue(uconn.greaseSeed, ssl_grease_group))
 				}
 			}
@@ -2037,7 +2037,7 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 			preferredCurveIsSet := false
 			for i := range ext.KeyShares {
 				curveID := ext.KeyShares[i].Group
-				if curveID == GREASE_PLACEHOLDER {
+				if isGREASEUint16(uint16(curveID)) { // just in case the user set a GREASE value instead of unGREASEd
 					ext.KeyShares[i].Group = CurveID(GetBoringGREASEValue(uconn.greaseSeed, ssl_grease_group))
 					continue
 				}
@@ -2059,7 +2059,7 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 			}
 		case *SupportedVersionsExtension:
 			for i := range ext.Versions {
-				if ext.Versions[i] == GREASE_PLACEHOLDER {
+				if isGREASEUint16(ext.Versions[i]) { // just in case the user set a GREASE value instead of unGREASEd
 					ext.Versions[i] = GetBoringGREASEValue(uconn.greaseSeed, ssl_grease_version)
 				}
 			}

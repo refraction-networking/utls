@@ -7,7 +7,78 @@ package tls
 import (
 	"errors"
 	"io"
+	"strings"
+
+	"golang.org/x/crypto/cryptobyte"
 )
+
+// ExtensionIDToExtension returns a TLSExtension for the given extension ID.
+func ExtensionIDToExtension(id uint16) TLSExtensionWriter {
+	// deep copy
+	switch id {
+	case extensionServerName:
+		return &SNIExtension{}
+	case extensionStatusRequest:
+		return &StatusRequestExtension{}
+	case extensionSupportedCurves:
+		return &SupportedCurvesExtension{}
+	case extensionSupportedPoints:
+		return &SupportedPointsExtension{}
+	case extensionSignatureAlgorithms:
+		return &SignatureAlgorithmsExtension{}
+	case extensionALPN:
+		return &ALPNExtension{}
+	case extensionStatusRequestV2:
+		return &StatusRequestV2Extension{}
+	case extensionSCT:
+		return &SCTExtension{}
+	case utlsExtensionPadding:
+		return &UtlsPaddingExtension{}
+	case utlsExtensionExtendedMasterSecret:
+		return &UtlsExtendedMasterSecretExtension{}
+	case fakeExtensionTokenBinding:
+		return &FakeTokenBindingExtension{}
+	case utlsExtensionCompressCertificate:
+		return &UtlsCompressCertExtension{}
+	case fakeExtensionDelegatedCredentials:
+		return &FakeDelegatedCredentialsExtension{}
+	case extensionSessionTicket:
+		return &SessionTicketExtension{}
+	case fakeExtensionPreSharedKey:
+		return &FakePreSharedKeyExtension{}
+	// case extensionEarlyData:
+	// 	return &EarlyDataExtension{}
+	case extensionSupportedVersions:
+		return &SupportedVersionsExtension{}
+	// case extensionCookie:
+	// 	return &CookieExtension{}
+	case extensionPSKModes:
+		return &PSKKeyExchangeModesExtension{}
+	// case extensionCertificateAuthorities:
+	// 	return &CertificateAuthoritiesExtension{}
+	case extensionSignatureAlgorithmsCert:
+		return &SignatureAlgorithmsCertExtension{}
+	case extensionKeyShare:
+		return &KeyShareExtension{}
+	case extensionNextProtoNeg:
+		return &NPNExtension{}
+	case utlsExtensionApplicationSettings:
+		return &ApplicationSettingsExtension{}
+	case fakeOldExtensionChannelID:
+		return &FakeChannelIDExtension{true}
+	case fakeExtensionChannelID:
+		return &FakeChannelIDExtension{}
+	case fakeRecordSizeLimit:
+		return &FakeRecordSizeLimitExtension{}
+	case extensionRenegotiationInfo:
+		return &RenegotiationInfoExtension{}
+	default:
+		if isGREASEUint16(id) {
+			return &UtlsGREASEExtension{}
+		}
+		return nil // not returning GenericExtension, it should be handled by caller
+	}
+}
 
 type TLSExtension interface {
 	writeToUConn(*UConn) error
@@ -17,6 +88,16 @@ type TLSExtension interface {
 	// Read reads up to len(p) bytes into p.
 	// It returns the number of bytes read (0 <= n <= len(p)) and any error encountered.
 	Read(p []byte) (n int, err error) // implements io.Reader
+}
+
+// TLSExtensionWriter is an interface allowing a TLS extension to be
+// auto-constucted/recovered by reading in a byte stream.
+type TLSExtensionWriter interface {
+	TLSExtension
+
+	// Write writes up to len(b) bytes from b.
+	// It returns the number of bytes written (0 <= n <= len(b)) and any error encountered.
+	Write(b []byte) (n int, err error)
 }
 
 type NPNExtension struct {
@@ -41,6 +122,12 @@ func (e *NPNExtension) Read(b []byte) (int, error) {
 	b[1] = byte(extensionNextProtoNeg & 0xff)
 	// The length is always 0
 	return e.Len(), io.EOF
+}
+
+// Write is a no-op for NPNExtension. NextProtos are not included in the
+// ClientHello.
+func (e *NPNExtension) Write(_ []byte) (int, error) {
+	return 0, nil
 }
 
 type SNIExtension struct {
@@ -89,6 +176,42 @@ func (e *SNIExtension) Read(b []byte) (int, error) {
 	return e.Len(), io.EOF
 }
 
+// Write is a no-op for StatusRequestExtension.
+// SNI should not be fingerprinted and is user controlled.
+func (e *SNIExtension) Write(b []byte) (int, error) {
+	fullLen := len(b)
+	extData := cryptobyte.String(b)
+	// RFC 6066, Section 3
+	var nameList cryptobyte.String
+	if !extData.ReadUint16LengthPrefixed(&nameList) || nameList.Empty() {
+		return fullLen, errors.New("unable to read server name extension data")
+	}
+	var serverName string
+	for !nameList.Empty() {
+		var nameType uint8
+		var serverNameBytes cryptobyte.String
+		if !nameList.ReadUint8(&nameType) ||
+			!nameList.ReadUint16LengthPrefixed(&serverNameBytes) ||
+			serverNameBytes.Empty() {
+			return fullLen, errors.New("unable to read server name extension data")
+		}
+		if nameType != 0 {
+			continue
+		}
+		if len(serverName) != 0 {
+			return fullLen, errors.New("multiple names of the same name_type in server name extension are prohibited")
+		}
+		serverName = string(serverNameBytes)
+		if strings.HasSuffix(serverName, ".") {
+			return fullLen, errors.New("SNI value may not include a trailing dot")
+		}
+	}
+	// clientHelloSpec.Extensions = append(clientHelloSpec.Extensions, &SNIExtension{}) // gaukas moved this line out from the loop.
+
+	// don't copy SNI from ClientHello to ClientHelloSpec!
+	return fullLen, nil
+}
+
 type StatusRequestExtension struct {
 }
 
@@ -113,6 +236,26 @@ func (e *StatusRequestExtension) Read(b []byte) (int, error) {
 	b[4] = 1 // OCSP type
 	// Two zero valued uint16s for the two lengths.
 	return e.Len(), io.EOF
+}
+
+// Write is a no-op for StatusRequestExtension. No data for this extension.
+func (e *StatusRequestExtension) Write(b []byte) (int, error) {
+	fullLen := len(b)
+	extData := cryptobyte.String(b)
+	// RFC 4366, Section 3.6
+	var statusType uint8
+	var ignored cryptobyte.String
+	if !extData.ReadUint8(&statusType) ||
+		!extData.ReadUint16LengthPrefixed(&ignored) ||
+		!extData.ReadUint16LengthPrefixed(&ignored) {
+		return fullLen, errors.New("unable to read status request extension data")
+	}
+
+	if statusType != statusTypeOCSP {
+		return fullLen, errors.New("status request extension statusType is not statusTypeOCSP(1)")
+	}
+
+	return fullLen, nil
 }
 
 type StatusRequestV2Extension struct {
@@ -143,6 +286,28 @@ func (e *StatusRequestV2Extension) Read(b []byte) (int, error) {
 	b[8] = 4
 	// Two zero valued uint16s for the two lengths.
 	return e.Len(), io.EOF
+}
+
+// Write is a no-op for StatusRequestV2Extension. No data for this extension.
+func (e *StatusRequestV2Extension) Write(b []byte) (int, error) {
+	fullLen := len(b)
+	extData := cryptobyte.String(b)
+	// RFC 4366, Section 3.6
+	var statusType uint8
+	var ignored cryptobyte.String
+	if !extData.ReadUint16LengthPrefixed(&ignored) ||
+		!extData.ReadUint8(&statusType) ||
+		!extData.ReadUint16LengthPrefixed(&ignored) ||
+		!extData.ReadUint16LengthPrefixed(&ignored) ||
+		!extData.ReadUint16LengthPrefixed(&ignored) {
+		return fullLen, errors.New("unable to read status request v2 extension data")
+	}
+
+	if statusType != statusV2TypeOCSP {
+		return fullLen, errors.New("status request v2 extension statusType is not statusV2TypeOCSP(2)")
+	}
+
+	return fullLen, nil
 }
 
 type SupportedCurvesExtension struct {
@@ -177,6 +342,26 @@ func (e *SupportedCurvesExtension) Read(b []byte) (int, error) {
 	return e.Len(), io.EOF
 }
 
+func (e *SupportedCurvesExtension) Write(b []byte) (int, error) {
+	fullLen := len(b)
+	extData := cryptobyte.String(b)
+	// RFC 4492, sections 5.1.1 and RFC 8446, Section 4.2.7
+	var curvesBytes cryptobyte.String
+	if !extData.ReadUint16LengthPrefixed(&curvesBytes) || curvesBytes.Empty() {
+		return 0, errors.New("unable to read supported curves extension data")
+	}
+	curves := []CurveID{}
+	for !curvesBytes.Empty() {
+		var curve uint16
+		if !curvesBytes.ReadUint16(&curve) {
+			return 0, errors.New("unable to read supported curves extension data")
+		}
+		curves = append(curves, CurveID(unGREASEUint16(curve)))
+	}
+	e.Curves = curves
+	return fullLen, nil
+}
+
 type SupportedPointsExtension struct {
 	SupportedPoints []uint8
 }
@@ -204,6 +389,19 @@ func (e *SupportedPointsExtension) Read(b []byte) (int, error) {
 		b[5+i] = pointFormat
 	}
 	return e.Len(), io.EOF
+}
+
+func (e *SupportedPointsExtension) Write(b []byte) (int, error) {
+	fullLen := len(b)
+	extData := cryptobyte.String(b)
+	// RFC 4492, Section 5.1.2
+	supportedPoints := []uint8{}
+	if !readUint8LengthPrefixed(&extData, &supportedPoints) ||
+		len(supportedPoints) == 0 {
+		return 0, errors.New("unable to read supported points extension data")
+	}
+	e.SupportedPoints = supportedPoints
+	return fullLen, nil
 }
 
 type SignatureAlgorithmsExtension struct {
@@ -237,6 +435,27 @@ func (e *SignatureAlgorithmsExtension) Read(b []byte) (int, error) {
 	return e.Len(), io.EOF
 }
 
+func (e *SignatureAlgorithmsExtension) Write(b []byte) (int, error) {
+	fullLen := len(b)
+	extData := cryptobyte.String(b)
+	// RFC 5246, Section 7.4.1.4.1
+	var sigAndAlgs cryptobyte.String
+	if !extData.ReadUint16LengthPrefixed(&sigAndAlgs) || sigAndAlgs.Empty() {
+		return 0, errors.New("unable to read signature algorithms extension data")
+	}
+	supportedSignatureAlgorithms := []SignatureScheme{}
+	for !sigAndAlgs.Empty() {
+		var sigAndAlg uint16
+		if !sigAndAlgs.ReadUint16(&sigAndAlg) {
+			return 0, errors.New("unable to read signature algorithms extension data")
+		}
+		supportedSignatureAlgorithms = append(
+			supportedSignatureAlgorithms, SignatureScheme(sigAndAlg))
+	}
+	e.SupportedSignatureAlgorithms = supportedSignatureAlgorithms
+	return fullLen, nil
+}
+
 type SignatureAlgorithmsCertExtension struct {
 	SupportedSignatureAlgorithms []SignatureScheme
 }
@@ -266,6 +485,30 @@ func (e *SignatureAlgorithmsCertExtension) Read(b []byte) (int, error) {
 		b[7+2*i] = byte(sigAndHash)
 	}
 	return e.Len(), io.EOF
+}
+
+// Write implementation copied from SignatureAlgorithmsExtension.Write
+//
+// Warning: not tested.
+func (e *SignatureAlgorithmsCertExtension) Write(b []byte) (int, error) {
+	fullLen := len(b)
+	extData := cryptobyte.String(b)
+	// RFC 8446, Section 4.2.3
+	var sigAndAlgs cryptobyte.String
+	if !extData.ReadUint16LengthPrefixed(&sigAndAlgs) || sigAndAlgs.Empty() {
+		return 0, errors.New("unable to read signature algorithms extension data")
+	}
+	supportedSignatureAlgorithms := []SignatureScheme{}
+	for !sigAndAlgs.Empty() {
+		var sigAndAlg uint16
+		if !sigAndAlgs.ReadUint16(&sigAndAlg) {
+			return 0, errors.New("unable to read signature algorithms extension data")
+		}
+		supportedSignatureAlgorithms = append(
+			supportedSignatureAlgorithms, SignatureScheme(sigAndAlg))
+	}
+	e.SupportedSignatureAlgorithms = supportedSignatureAlgorithms
+	return fullLen, nil
 }
 
 type RenegotiationInfoExtension struct {
@@ -308,6 +551,11 @@ func (e *RenegotiationInfoExtension) Read(b []byte) (int, error) {
 	copy(b[5:], extInnerBody)
 
 	return e.Len(), io.EOF
+}
+
+func (e *RenegotiationInfoExtension) Write(_ []byte) (int, error) {
+	e.Renegotiation = RenegotiateOnceAsClient
+	return 0, nil
 }
 
 type ALPNExtension struct {
@@ -354,6 +602,27 @@ func (e *ALPNExtension) Read(b []byte) (int, error) {
 	lengths[1] = byte(stringsLength)
 
 	return e.Len(), io.EOF
+}
+
+func (e *ALPNExtension) Write(b []byte) (int, error) {
+	fullLen := len(b)
+	extData := cryptobyte.String(b)
+	// RFC 7301, Section 3.1
+	var protoList cryptobyte.String
+	if !extData.ReadUint16LengthPrefixed(&protoList) || protoList.Empty() {
+		return 0, errors.New("unable to read ALPN extension data")
+	}
+	alpnProtocols := []string{}
+	for !protoList.Empty() {
+		var proto cryptobyte.String
+		if !protoList.ReadUint8LengthPrefixed(&proto) || proto.Empty() {
+			return 0, errors.New("unable to read ALPN extension data")
+		}
+		alpnProtocols = append(alpnProtocols, string(proto))
+
+	}
+	e.AlpnProtocols = alpnProtocols
+	return fullLen, nil
 }
 
 // ApplicationSettingsExtension represents the TLS ALPS extension.
@@ -405,6 +674,28 @@ func (e *ApplicationSettingsExtension) Read(b []byte) (int, error) {
 	return e.Len(), io.EOF
 }
 
+// Write implementation copied from ALPNExtension.Write
+func (e *ApplicationSettingsExtension) Write(b []byte) (int, error) {
+	fullLen := len(b)
+	extData := cryptobyte.String(b)
+	// https://datatracker.ietf.org/doc/html/draft-vvv-tls-alps-01
+	var protoList cryptobyte.String
+	if !extData.ReadUint16LengthPrefixed(&protoList) || protoList.Empty() {
+		return 0, errors.New("unable to read ALPN extension data")
+	}
+	alpnProtocols := []string{}
+	for !protoList.Empty() {
+		var proto cryptobyte.String
+		if !protoList.ReadUint8LengthPrefixed(&proto) || proto.Empty() {
+			return 0, errors.New("unable to read ALPN extension data")
+		}
+		alpnProtocols = append(alpnProtocols, string(proto))
+
+	}
+	e.SupportedProtocols = alpnProtocols
+	return fullLen, nil
+}
+
 type SCTExtension struct {
 }
 
@@ -426,6 +717,10 @@ func (e *SCTExtension) Read(b []byte) (int, error) {
 	b[1] = byte(extensionSCT)
 	// zero uint16 for the zero-length extension_data
 	return e.Len(), io.EOF
+}
+
+func (e *SCTExtension) Write(_ []byte) (int, error) {
+	return 0, nil
 }
 
 type SessionTicketExtension struct {
@@ -462,6 +757,11 @@ func (e *SessionTicketExtension) Read(b []byte) (int, error) {
 		copy(b[4:], e.Session.sessionTicket)
 	}
 	return e.Len(), io.EOF
+}
+
+func (e *SessionTicketExtension) Write(_ []byte) (int, error) {
+	// RFC 5077, Section 3.2
+	return 0, nil
 }
 
 // GenericExtension allows to include in ClientHello arbitrary unsupported extensions.
@@ -516,6 +816,11 @@ func (e *UtlsExtendedMasterSecretExtension) Read(b []byte) (int, error) {
 	b[1] = byte(utlsExtensionExtendedMasterSecret)
 	// The length is 0
 	return e.Len(), io.EOF
+}
+
+func (e *UtlsExtendedMasterSecretExtension) Write(_ []byte) (int, error) {
+	// https://tools.ietf.org/html/rfc7627
+	return 0, nil
 }
 
 var extendedMasterSecretLabel = []byte("extended master secret")
@@ -580,6 +885,13 @@ func (e *UtlsGREASEExtension) Read(b []byte) (int, error) {
 	return e.Len(), io.EOF
 }
 
+func (e *UtlsGREASEExtension) Write(b []byte) (int, error) {
+	e.Value = GREASE_PLACEHOLDER
+	e.Body = make([]byte, len(b))
+	n := copy(e.Body, b)
+	return n, nil
+}
+
 type UtlsPaddingExtension struct {
 	PaddingLen int
 	WillPad    bool // set to false to disable extension
@@ -620,6 +932,25 @@ func (e *UtlsPaddingExtension) Read(b []byte) (int, error) {
 	b[2] = byte(e.PaddingLen >> 8)
 	b[3] = byte(e.PaddingLen)
 	return e.Len(), io.EOF
+}
+
+func (e *UtlsPaddingExtension) Write(_ []byte) (int, error) {
+	e.GetPaddingLen = BoringPaddingStyle
+	return 0, nil
+}
+
+// https://github.com/google/boringssl/blob/7d7554b6b3c79e707e25521e61e066ce2b996e4c/ssl/t1_lib.c#L2803
+func BoringPaddingStyle(unpaddedLen int) (int, bool) {
+	if unpaddedLen > 0xff && unpaddedLen < 0x200 {
+		paddingLen := 0x200 - unpaddedLen
+		if paddingLen >= 4+1 {
+			paddingLen -= 4
+		} else {
+			paddingLen = 1
+		}
+		return paddingLen, true
+	}
+	return 0, false
 }
 
 // UtlsCompressCertExtension is only implemented client-side, for server certificates. Alternate
@@ -667,18 +998,24 @@ func (e *UtlsCompressCertExtension) Read(b []byte) (int, error) {
 	return e.Len(), io.EOF
 }
 
-// https://github.com/google/boringssl/blob/7d7554b6b3c79e707e25521e61e066ce2b996e4c/ssl/t1_lib.c#L2803
-func BoringPaddingStyle(unpaddedLen int) (int, bool) {
-	if unpaddedLen > 0xff && unpaddedLen < 0x200 {
-		paddingLen := 0x200 - unpaddedLen
-		if paddingLen >= 4+1 {
-			paddingLen -= 4
-		} else {
-			paddingLen = 1
-		}
-		return paddingLen, true
+func (e *UtlsCompressCertExtension) Write(b []byte) (int, error) {
+	fullLen := len(b)
+	extData := cryptobyte.String(b)
+	methods := []CertCompressionAlgo{}
+	methodsRaw := new(cryptobyte.String)
+	if !extData.ReadUint8LengthPrefixed(methodsRaw) {
+		return 0, errors.New("unable to read cert compression algorithms extension data")
 	}
-	return 0, false
+	for !methodsRaw.Empty() {
+		var method uint16
+		if !methodsRaw.ReadUint16(&method) {
+			return 0, errors.New("unable to read cert compression algorithms extension data")
+		}
+		methods = append(methods, CertCompressionAlgo(method))
+	}
+
+	e.Algorithms = methods
+	return fullLen, nil
 }
 
 /* TLS 1.3 */
@@ -724,6 +1061,35 @@ func (e *KeyShareExtension) Read(b []byte) (int, error) {
 	return e.Len(), io.EOF
 }
 
+func (e *KeyShareExtension) Write(b []byte) (int, error) {
+	fullLen := len(b)
+	extData := cryptobyte.String(b)
+	// RFC 8446, Section 4.2.8
+	var clientShares cryptobyte.String
+	if !extData.ReadUint16LengthPrefixed(&clientShares) {
+		return 0, errors.New("unable to read key share extension data")
+	}
+	keyShares := []KeyShare{}
+	for !clientShares.Empty() {
+		var ks KeyShare
+		var group uint16
+		if !clientShares.ReadUint16(&group) ||
+			!readUint16LengthPrefixed(&clientShares, &ks.Data) ||
+			len(ks.Data) == 0 {
+			return 0, errors.New("unable to read key share extension data")
+		}
+		ks.Group = CurveID(unGREASEUint16(group))
+		// if not GREASE, key share data will be discarded as it should
+		// be generated per connection
+		if ks.Group != GREASE_PLACEHOLDER {
+			ks.Data = nil
+		}
+		keyShares = append(keyShares, ks)
+	}
+	e.KeyShares = keyShares
+	return fullLen, nil
+}
+
 func (e *KeyShareExtension) writeToUConn(uc *UConn) error {
 	uc.HandshakeState.Hello.KeyShares = e.KeyShares
 	return nil
@@ -759,6 +1125,22 @@ func (e *PSKKeyExchangeModesExtension) Read(b []byte) (int, error) {
 	}
 
 	return e.Len(), io.EOF
+}
+
+func (e *PSKKeyExchangeModesExtension) Write(b []byte) (int, error) {
+	fullLen := len(b)
+	extData := cryptobyte.String(b)
+	// RFC 8446, Section 4.2.9
+	// TODO: PSK Modes have their own form of GREASE-ing which is not currently implemented
+	// the current functionality will NOT re-GREASE/re-randomize these values when using a fingerprinted spec
+	// https://github.com/refraction-networking/utls/pull/58#discussion_r522354105
+	// https://tools.ietf.org/html/draft-ietf-tls-grease-01#section-2
+	pskModes := []uint8{}
+	if !readUint8LengthPrefixed(&extData, &pskModes) {
+		return 0, errors.New("unable to read PSK extension data")
+	}
+	e.Modes = pskModes
+	return fullLen, nil
 }
 
 func (e *PSKKeyExchangeModesExtension) writeToUConn(uc *UConn) error {
@@ -801,6 +1183,26 @@ func (e *SupportedVersionsExtension) Read(b []byte) (int, error) {
 		i += 2
 	}
 	return e.Len(), io.EOF
+}
+
+func (e *SupportedVersionsExtension) Write(b []byte) (int, error) {
+	fullLen := len(b)
+	extData := cryptobyte.String(b)
+	// RFC 8446, Section 4.2.1
+	var versList cryptobyte.String
+	if !extData.ReadUint8LengthPrefixed(&versList) || versList.Empty() {
+		return 0, errors.New("unable to read supported versions extension data")
+	}
+	supportedVersions := []uint16{}
+	for !versList.Empty() {
+		var vers uint16
+		if !versList.ReadUint16(&vers) {
+			return 0, errors.New("unable to read supported versions extension data")
+		}
+		supportedVersions = append(supportedVersions, unGREASEUint16(vers))
+	}
+	e.Versions = supportedVersions
+	return fullLen, nil
 }
 
 // MUST NOT be part of initial ClientHello
@@ -863,6 +1265,10 @@ func (e *FakeChannelIDExtension) Read(b []byte) (int, error) {
 	return e.Len(), io.EOF
 }
 
+func (e *FakeChannelIDExtension) Write(_ []byte) (int, error) {
+	return 0, nil
+}
+
 type FakeRecordSizeLimitExtension struct {
 	Limit uint16
 }
@@ -889,6 +1295,15 @@ func (e *FakeRecordSizeLimitExtension) Read(b []byte) (int, error) {
 	b[4] = byte(e.Limit >> 8)
 	b[5] = byte(e.Limit & 0xff)
 	return e.Len(), io.EOF
+}
+
+func (e *FakeRecordSizeLimitExtension) Write(b []byte) (int, error) {
+	fullLen := len(b)
+	extData := cryptobyte.String(b)
+	if !extData.ReadUint16(&e.Limit) {
+		return 0, errors.New("unable to read record size limit extension data")
+	}
+	return fullLen, nil
 }
 
 type DelegatedCredentialsExtension struct {
@@ -921,7 +1336,6 @@ func (e *DelegatedCredentialsExtension) Read(b []byte) (int, error) {
 }
 
 // https://tools.ietf.org/html/rfc8472#section-2
-
 type FakeTokenBindingExtension struct {
 	MajorVersion, MinorVersion uint8
 	KeyParameters              []uint8
@@ -954,6 +1368,19 @@ func (e *FakeTokenBindingExtension) Read(b []byte) (int, error) {
 	return e.Len(), io.EOF
 }
 
+func (e *FakeTokenBindingExtension) Write(b []byte) (int, error) {
+	fullLen := len(b)
+	extData := cryptobyte.String(b)
+	var keyParameters cryptobyte.String
+	if !extData.ReadUint8(&e.MajorVersion) ||
+		!extData.ReadUint8(&e.MinorVersion) ||
+		!extData.ReadUint8LengthPrefixed(&keyParameters) {
+		return 0, errors.New("unable to read token binding extension data")
+	}
+	e.KeyParameters = keyParameters
+	return fullLen, nil
+}
+
 // https://datatracker.ietf.org/doc/html/draft-ietf-tls-subcerts-15#section-4.1.1
 
 type FakeDelegatedCredentialsExtension struct {
@@ -984,4 +1411,176 @@ func (e *FakeDelegatedCredentialsExtension) Read(b []byte) (int, error) {
 		b[7+2*i] = byte(sigAndHash)
 	}
 	return e.Len(), io.EOF
+}
+
+func (e *FakeDelegatedCredentialsExtension) Write(b []byte) (int, error) {
+	fullLen := len(b)
+	extData := cryptobyte.String(b)
+	//https://datatracker.ietf.org/doc/html/draft-ietf-tls-subcerts-15#section-4.1.1
+	var supportedAlgs cryptobyte.String
+	if !extData.ReadUint16LengthPrefixed(&supportedAlgs) || supportedAlgs.Empty() {
+		return 0, errors.New("unable to read signature algorithms extension data")
+	}
+	supportedSignatureAlgorithms := []SignatureScheme{}
+	for !supportedAlgs.Empty() {
+		var sigAndAlg uint16
+		if !supportedAlgs.ReadUint16(&sigAndAlg) {
+			return 0, errors.New("unable to read signature algorithms extension data")
+		}
+		supportedSignatureAlgorithms = append(
+			supportedSignatureAlgorithms, SignatureScheme(sigAndAlg))
+	}
+	e.SupportedSignatureAlgorithms = supportedSignatureAlgorithms
+	return fullLen, nil
+}
+
+// FakePreSharedKeyExtension is an extension used to set the PSK extension in the
+// ClientHello.
+//
+// Unfortunately, even when the PSK extension is set, there will be no PSK-based
+// resumption since crypto/tls does not implement PSK.
+type FakePreSharedKeyExtension struct {
+	PskIdentities []PskIdentity
+	PskBinders    [][]byte
+}
+
+func (e *FakePreSharedKeyExtension) writeToUConn(uc *UConn) error {
+	uc.HandshakeState.Hello.PskIdentities = e.PskIdentities
+	uc.HandshakeState.Hello.PskBinders = e.PskBinders
+	return nil
+}
+
+func (e *FakePreSharedKeyExtension) Len() int {
+	length := 4 // extension type + extension length
+	length += 2 // identities length
+	for _, identity := range e.PskIdentities {
+		length += 2 + len(identity.Label) + 4 // identity length + identity + obfuscated ticket age
+	}
+	length += 2 // binders length
+	for _, binder := range e.PskBinders {
+		length += len(binder)
+	}
+	return length
+}
+
+func (e *FakePreSharedKeyExtension) Read(b []byte) (int, error) {
+	if len(b) < e.Len() {
+		return 0, io.ErrShortBuffer
+	}
+
+	b[0] = byte(extensionPreSharedKey >> 8)
+	b[1] = byte(extensionPreSharedKey)
+	b[2] = byte((e.Len() - 4) >> 8)
+	b[3] = byte(e.Len() - 4)
+
+	// identities length
+	identitiesLength := 0
+	for _, identity := range e.PskIdentities {
+		identitiesLength += 2 + len(identity.Label) + 4 // identity length + identity + obfuscated ticket age
+	}
+	b[4] = byte(identitiesLength >> 8)
+	b[5] = byte(identitiesLength)
+
+	// identities
+	offset := 6
+	for _, identity := range e.PskIdentities {
+		b[offset] = byte(len(identity.Label) >> 8)
+		b[offset+1] = byte(len(identity.Label))
+		offset += 2
+		copy(b[offset:], identity.Label)
+		offset += len(identity.Label)
+		b[offset] = byte(identity.ObfuscatedTicketAge >> 24)
+		b[offset+1] = byte(identity.ObfuscatedTicketAge >> 16)
+		b[offset+2] = byte(identity.ObfuscatedTicketAge >> 8)
+		b[offset+3] = byte(identity.ObfuscatedTicketAge)
+		offset += 4
+	}
+
+	// binders length
+	bindersLength := 0
+	for _, binder := range e.PskBinders {
+		bindersLength += len(binder)
+	}
+	b[offset] = byte(bindersLength >> 8)
+	b[offset+1] = byte(bindersLength)
+	offset += 2
+
+	// binders
+	for _, binder := range e.PskBinders {
+		copy(b[offset:], binder)
+		offset += len(binder)
+	}
+
+	return e.Len(), io.EOF
+}
+
+func (e *FakePreSharedKeyExtension) Write(b []byte) (n int, err error) {
+	fullLen := len(b)
+	s := cryptobyte.String(b)
+
+	var identitiesLength uint16
+	if !s.ReadUint16(&identitiesLength) {
+		return 0, errors.New("tls: invalid PSK extension")
+	}
+
+	// identities
+	for identitiesLength > 0 {
+		var identityLength uint16
+		if !s.ReadUint16(&identityLength) {
+			return 0, errors.New("tls: invalid PSK extension")
+		}
+		identitiesLength -= 2
+
+		if identityLength > identitiesLength {
+			return 0, errors.New("tls: invalid PSK extension")
+		}
+
+		var identity []byte
+		if !s.ReadBytes(&identity, int(identityLength)) {
+			return 0, errors.New("tls: invalid PSK extension")
+		}
+
+		identitiesLength -= identityLength // identity
+
+		var obfuscatedTicketAge uint32
+		if !s.ReadUint32(&obfuscatedTicketAge) {
+			return 0, errors.New("tls: invalid PSK extension")
+		}
+
+		e.PskIdentities = append(e.PskIdentities, PskIdentity{
+			Label:               identity,
+			ObfuscatedTicketAge: obfuscatedTicketAge,
+		})
+
+		identitiesLength -= 4 // obfuscated ticket age
+	}
+
+	var bindersLength uint16
+	if !s.ReadUint16(&bindersLength) {
+		return 0, errors.New("tls: invalid PSK extension")
+	}
+
+	// binders
+	for bindersLength > 0 {
+		var binderLength uint8
+		if !s.ReadUint8(&binderLength) {
+			return 0, errors.New("tls: invalid PSK extension")
+		}
+		bindersLength -= 1
+
+		if uint16(binderLength) > bindersLength {
+			return 0, errors.New("tls: invalid PSK extension")
+		}
+
+		var binder []byte
+		if !s.ReadBytes(&binder, int(binderLength)) {
+			return 0, errors.New("tls: invalid PSK extension")
+		}
+
+		e.PskBinders = append(e.PskBinders, binder)
+
+		bindersLength -= uint16(binderLength)
+	}
+
+	return fullLen, nil
 }

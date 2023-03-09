@@ -599,7 +599,7 @@ func (uconn *UConn) SetTLSVers(minTLSVers, maxTLSVers uint16, specExtensions []T
 					minVers := uint16(0)
 					maxVers := uint16(0)
 					for _, vers := range versions {
-						if vers == GREASE_PLACEHOLDER {
+						if isGREASEUint16(vers) {
 							continue
 						}
 						if maxVers < vers || maxVers == 0 {

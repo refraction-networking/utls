@@ -7,8 +7,14 @@ package tls
 import (
 	"crypto/hmac"
 	"crypto/sha512"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"hash"
+	"log"
+
+	"github.com/refraction-networking/utls/internal/helper"
+	"golang.org/x/crypto/cryptobyte"
 )
 
 // Naming convention:
@@ -35,10 +41,12 @@ const (
 	utlsFakeExtensionCustom           uint16 = 1234  // not IANA assigned, for ALPS
 
 	// extensions with 'fake' prefix break connection, if server echoes them back
+	fakeExtensionEncryptThenMAC       uint16 = 22
 	fakeExtensionTokenBinding         uint16 = 24
+	fakeExtensionDelegatedCredentials uint16 = 34
+	fakeExtensionPreSharedKey         uint16 = 41
 	fakeOldExtensionChannelID         uint16 = 30031 // not IANA assigned
 	fakeExtensionChannelID            uint16 = 30032 // not IANA assigned
-	fakeExtensionDelegatedCredentials uint16 = 34
 )
 
 const (
@@ -159,6 +167,268 @@ type ClientHelloSpec struct {
 	GetSessionID func(ticket []byte) [32]byte
 
 	// TLSFingerprintLink string // ?? link to tlsfingerprint.io for informational purposes
+}
+
+// ReadCipherSuites is a helper function to construct a list of cipher suites from
+// a []byte into []uint16.
+//
+// example: []byte{0x13, 0x01, 0x13, 0x02, 0x13, 0x03} => []uint16{0x1301, 0x1302, 0x1303}
+func (chs *ClientHelloSpec) ReadCipherSuites(b []byte) error {
+	cipherSuites := []uint16{}
+	s := cryptobyte.String(b)
+	for !s.Empty() {
+		var suite uint16
+		if !s.ReadUint16(&suite) {
+			return errors.New("unable to read ciphersuite")
+		}
+		cipherSuites = append(cipherSuites, unGREASEUint16(suite))
+	}
+	chs.CipherSuites = cipherSuites
+	return nil
+}
+
+// ReadCompressionMethods is a helper function to construct a list of compression
+// methods from a []byte into []uint8.
+func (chs *ClientHelloSpec) ReadCompressionMethods(compressionMethods []byte) error {
+	chs.CompressionMethods = compressionMethods
+	return nil
+}
+
+// ReadTLSExtensions is a helper function to construct a list of TLS extensions from
+// a byte slice into []TLSExtension.
+//
+// If keepPSK is not set, the PSK extension will cause an error.
+func (chs *ClientHelloSpec) ReadTLSExtensions(b []byte, allowBluntMimicry bool) error {
+	extensions := cryptobyte.String(b)
+	for !extensions.Empty() {
+		var extension uint16
+		var extData cryptobyte.String
+		if !extensions.ReadUint16(&extension) {
+			return fmt.Errorf("unable to read extension ID")
+		}
+		if !extensions.ReadUint16LengthPrefixed(&extData) {
+			return fmt.Errorf("unable to read data for extension %x", extension)
+		}
+
+		extWriter := ExtensionIDToExtension(extension)
+		if extWriter != nil {
+			if extension == extensionSupportedVersions {
+				chs.TLSVersMin = 0
+				chs.TLSVersMax = 0
+			}
+			if _, err := extWriter.Write(extData); err != nil {
+				return err
+			}
+
+			chs.Extensions = append(chs.Extensions, extWriter)
+		} else {
+			if allowBluntMimicry {
+				chs.Extensions = append(chs.Extensions, &GenericExtension{extension, extData})
+			} else {
+				return fmt.Errorf("unsupported extension %d", extension)
+			}
+		}
+	}
+	return nil
+}
+
+func (chs *ClientHelloSpec) AlwaysAddPadding() {
+	alreadyHasPadding := false
+	for _, ext := range chs.Extensions {
+		if _, ok := ext.(*UtlsPaddingExtension); ok {
+			alreadyHasPadding = true
+			break
+		}
+		if _, ok := ext.(*FakePreSharedKeyExtension); ok {
+			alreadyHasPadding = true // PSK must be last, so we don't need to add padding
+			break
+		}
+	}
+	if !alreadyHasPadding {
+		chs.Extensions = append(chs.Extensions, &UtlsPaddingExtension{GetPaddingLen: BoringPaddingStyle})
+	}
+}
+
+// Import TLS ClientHello data from client.tlsfingerprint.io:8443
+//
+// data is a map of []byte with following keys:
+// - cipher_suites: [10, 10, 19, 1, 19, 2, 19, 3, 192, 43, 192, 47, 192, 44, 192, 48, 204, 169, 204, 168, 192, 19, 192, 20, 0, 156, 0, 157, 0, 47, 0, 53]
+// - compression_methods: [0] => null
+// - extensions: [10, 10, 255, 1, 0, 45, 0, 35, 0, 16, 68, 105, 0, 11, 0, 43, 0, 18, 0, 13, 0, 0, 0, 10, 0, 27, 0, 5, 0, 51, 0, 23, 10, 10, 0, 21]
+// - pt_fmts (ec_point_formats): [1, 0] => len: 1, content: 0x00
+// - sig_algs （signature_algorithms): [0, 16, 4, 3, 8, 4, 4, 1, 5, 3, 8, 5, 5, 1, 8, 6, 6, 1] => len: 16, content: 0x0403, 0x0804, 0x0401, 0x0503, 0x0805, 0x0501, 0x0806, 0x0601
+// - supported_versions: [10, 10, 3, 4, 3, 3] => 0x0a0a, 0x0304, 0x0303 (GREASE, TLS 1.3, TLS 1.2)
+// - curves (named_groups, supported_groups): [0, 8, 10, 10, 0, 29, 0, 23, 0, 24] => len: 8, content: GREASE, 0x001d, 0x0017, 0x0018
+// - alpn: [0, 12, 2, 104, 50, 8, 104, 116, 116, 112, 47, 49, 46, 49] => len: 12, content: h2, http/1.1
+// - key_share: [10, 10, 0, 1, 0, 29, 0, 32] => {group: 0x0a0a, len:1}, {group: 0x001d, len:32}
+// - psk_key_exchange_modes: [1] => psk_dhe_ke(0x01)
+// - cert_compression_algs: [2, 0, 2] => brotli (0x0002)
+// - record_size_limit: [0, 255] => 255
+//
+// TLSVersMin/TLSVersMax are set to 0 if supported_versions is present.
+// To prevent conflict, they should be set manually if needed BEFORE calling this function.
+func (chs *ClientHelloSpec) ImportTLSClientHello(data map[string][]byte) error {
+	var tlsExtensionTypes []uint16
+	var err error
+
+	if data["cipher_suites"] == nil {
+		return errors.New("cipher_suites is required")
+	}
+	chs.CipherSuites, err = helper.Uint8to16(data["cipher_suites"])
+	if err != nil {
+		return err
+	}
+
+	if data["compression_methods"] == nil {
+		return errors.New("compression_methods is required")
+	}
+	chs.CompressionMethods = data["compression_methods"]
+
+	if data["extensions"] == nil {
+		return errors.New("extensions is required")
+	}
+	tlsExtensionTypes, err = helper.Uint8to16(data["extensions"])
+	if err != nil {
+		return err
+	}
+
+	for _, extType := range tlsExtensionTypes {
+		extension := ExtensionIDToExtension(extType)
+		if extension == nil {
+			log.Printf("[Warning] Unsupported extension %d added as a &GenericExtension without Data", extType)
+			chs.Extensions = append(chs.Extensions, &GenericExtension{extType, []byte{}})
+		} else {
+			switch extType {
+			case extensionSupportedPoints:
+				if data["pt_fmts"] == nil {
+					return errors.New("pt_fmts is required")
+				}
+				_, err = extension.Write(data["pt_fmts"])
+				if err != nil {
+					return err
+				}
+			case extensionSignatureAlgorithms:
+				if data["sig_algs"] == nil {
+					return errors.New("sig_algs is required")
+				}
+				_, err = extension.Write(data["sig_algs"])
+				if err != nil {
+					return err
+				}
+			case extensionSupportedVersions:
+				chs.TLSVersMin = 0
+				chs.TLSVersMax = 0
+
+				if data["supported_versions"] == nil {
+					return errors.New("supported_versions is required")
+				}
+
+				// need to add uint8 length prefix
+				fixedData := make([]byte, len(data["supported_versions"])+1)
+				fixedData[0] = uint8(len(data["supported_versions"]) & 0xff)
+				copy(fixedData[1:], data["supported_versions"])
+				_, err = extension.Write(fixedData)
+				if err != nil {
+					return err
+				}
+			case extensionSupportedCurves:
+				if data["curves"] == nil {
+					return errors.New("curves is required")
+				}
+
+				_, err = extension.Write(data["curves"])
+				if err != nil {
+					return err
+				}
+			case extensionALPN:
+				if data["alpn"] == nil {
+					return errors.New("alpn is required")
+				}
+
+				_, err = extension.Write(data["alpn"])
+				if err != nil {
+					return err
+				}
+			case extensionKeyShare:
+				if data["key_share"] == nil {
+					return errors.New("key_share is required")
+				}
+
+				// need to add (zero) data per each key share, [10, 10, 0, 1] => [10, 10, 0, 1, 0]
+				fixedData := make([]byte, 0)
+				for i := 0; i < len(data["key_share"]); i += 4 {
+					fixedData = append(fixedData, data["key_share"][i:i+4]...)
+					for j := 0; j < int(data["key_share"][i+3]); j++ {
+						fixedData = append(fixedData, 0)
+					}
+				}
+				// add uint16 length prefix
+				fixedData = append([]byte{uint8(len(fixedData) >> 8), uint8(len(fixedData) & 0xff)}, fixedData...)
+
+				_, err = extension.Write(fixedData)
+				if err != nil {
+					return err
+				}
+			case extensionPSKModes:
+				if data["psk_key_exchange_modes"] == nil {
+					return errors.New("psk_key_exchange_modes is required")
+				}
+
+				// need to add uint8 length prefix
+				fixedData := make([]byte, len(data["psk_key_exchange_modes"])+1)
+				fixedData[0] = uint8(len(data["psk_key_exchange_modes"]) & 0xff)
+				copy(fixedData[1:], data["psk_key_exchange_modes"])
+				_, err = extension.Write(fixedData)
+				if err != nil {
+					return err
+				}
+			case utlsExtensionCompressCertificate:
+				if data["cert_compression_algs"] == nil {
+					return errors.New("cert_compression_algs is required")
+				}
+
+				// need to add uint8 length prefix
+				fixedData := make([]byte, len(data["cert_compression_algs"])+1)
+				fixedData[0] = uint8(len(data["cert_compression_algs"]) & 0xff)
+				copy(fixedData[1:], data["cert_compression_algs"])
+				_, err = extension.Write(fixedData)
+				if err != nil {
+					return err
+				}
+			case fakeRecordSizeLimit:
+				if data["record_size_limit"] == nil {
+					return errors.New("record_size_limit is required")
+				}
+
+				_, err = extension.Write(data["record_size_limit"]) // uint16 as []byte
+				if err != nil {
+					return err
+				}
+			case utlsExtensionApplicationSettings:
+				// TODO: tlsfingerprint.io should record/provide application settings data
+				extension.(*ApplicationSettingsExtension).SupportedProtocols = []string{"h2"}
+			case fakeExtensionPreSharedKey:
+				log.Printf("[Warning] PSK extension added without data")
+			default:
+				if !isGREASEUint16(extType) {
+					log.Printf("[Warning] extension %d added without data", extType)
+				} /*else {
+					log.Printf("[Warning] GREASE extension added but ID/Data discarded. They will be automatically re-GREASEd on ApplyPreset() call.")
+				}*/
+			}
+			chs.Extensions = append(chs.Extensions, extension)
+		}
+	}
+	return nil
+}
+
+func (chs *ClientHelloSpec) ImportTLSClientHelloFromJSON(jsonB []byte) error {
+	var data map[string][]byte
+	err := json.Unmarshal(jsonB, &data)
+	if err != nil {
+		return err
+	}
+	return chs.ImportTLSClientHello(data)
 }
 
 var (
