@@ -319,7 +319,7 @@ func (ka *ecdheKeyAgreement) processServerKeyExchange(config *Config, clientHell
 		}
 
 		if !isSupportedSignatureAlgorithm(signatureAlgorithm, clientHello.supportedSignatureAlgorithms) {
-			return fmt.Errorf("tls: certificate used with invalid signature algorithm -- ClientHello not advertising %04x", uint16(signatureAlgorithm))
+			return errors.New("tls: certificate used with invalid signature algorithm")
 		}
 		sigType, sigHash, err = typeAndHashFromSignatureScheme(signatureAlgorithm)
 		if err != nil {
