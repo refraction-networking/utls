@@ -501,12 +501,6 @@ func TestUTLSFingerprintClientHelloKeepPSK(t *testing.T) {
 	}
 
 	f := &Fingerprinter{}
-	_, err = f.FingerprintClientHello(helloBytes)
-	if err == nil {
-		t.Errorf("expected error generating spec from client hello with PSK")
-	}
-
-	f = &Fingerprinter{KeepPSK: true}
 	generatedSpec, err := f.FingerprintClientHello(helloBytes)
 	if err != nil {
 		t.Errorf("got error: %v; expected to succeed", err)

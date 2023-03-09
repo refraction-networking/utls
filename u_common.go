@@ -7,6 +7,7 @@ package tls
 import (
 	"crypto/hmac"
 	"crypto/sha512"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"hash"
@@ -189,7 +190,9 @@ func (chs *ClientHelloSpec) ReadCompressionMethods(compressionMethods []byte) er
 
 // ReadTLSExtensions is a helper function to construct a list of TLS extensions from
 // a byte slice into []TLSExtension.
-func (chs *ClientHelloSpec) ReadTLSExtensions(b []byte, keepPSK, allowBluntMimicry bool) error {
+//
+// If keepPSK is not set, the PSK extension will cause an error.
+func (chs *ClientHelloSpec) ReadTLSExtensions(b []byte, allowBluntMimicry bool) error {
 	extensions := cryptobyte.String(b)
 	for !extensions.Empty() {
 		var extension uint16
@@ -199,11 +202,6 @@ func (chs *ClientHelloSpec) ReadTLSExtensions(b []byte, keepPSK, allowBluntMimic
 		}
 		if !extensions.ReadUint16LengthPrefixed(&extData) {
 			return fmt.Errorf("unable to read data for extension %x", extension)
-		}
-
-		if extension == extensionPreSharedKey && !keepPSK {
-			return fmt.Errorf("PSK extension is not allowed unless keepPSK is set")
-			// continue // skip PSK, this will result in fingerprint change!!!!
 		}
 
 		extWriter := ExtensionIDToExtension(extension)
@@ -263,16 +261,26 @@ func (chs *ClientHelloSpec) AlwaysAddPadding() {
 //
 // TLSVersMin/TLSVersMax are set to 0 if supported_versions is present.
 // To prevent conflict, they should be set manually if needed BEFORE calling this function.
-func (chs *ClientHelloSpec) ImportTLSClientHello(data map[string][]byte, keepPSK bool) error {
+func (chs *ClientHelloSpec) ImportTLSClientHello(data map[string][]byte) error {
 	var tlsExtensionTypes []uint16
 	var err error
 
+	if data["cipher_suites"] == nil {
+		return errors.New("cipher_suites is required")
+	}
 	chs.CipherSuites, err = helper.Uint8to16(data["cipher_suites"])
 	if err != nil {
 		return err
 	}
+
+	if data["compression_methods"] == nil {
+		return errors.New("compression_methods is required")
+	}
 	chs.CompressionMethods = data["compression_methods"]
 
+	if data["extensions"] == nil {
+		return errors.New("extensions is required")
+	}
 	tlsExtensionTypes, err = helper.Uint8to16(data["extensions"])
 	if err != nil {
 		return err
@@ -284,22 +292,31 @@ func (chs *ClientHelloSpec) ImportTLSClientHello(data map[string][]byte, keepPSK
 			log.Printf("[Warning] Unsupported extension %d added as a &GenericExtension without Data", extType)
 			chs.Extensions = append(chs.Extensions, &GenericExtension{extType, []byte{}})
 		} else {
-			if extType == extensionSupportedVersions {
-				chs.TLSVersMin = 0
-				chs.TLSVersMax = 0
-			}
 			switch extType {
 			case extensionSupportedPoints:
+				if data["pt_fmts"] == nil {
+					return errors.New("pt_fmts is required")
+				}
 				_, err = extension.Write(data["pt_fmts"])
 				if err != nil {
 					return err
 				}
 			case extensionSignatureAlgorithms:
+				if data["sig_algs"] == nil {
+					return errors.New("sig_algs is required")
+				}
 				_, err = extension.Write(data["sig_algs"])
 				if err != nil {
 					return err
 				}
 			case extensionSupportedVersions:
+				chs.TLSVersMin = 0
+				chs.TLSVersMax = 0
+
+				if data["supported_versions"] == nil {
+					return errors.New("supported_versions is required")
+				}
+
 				// need to add uint8 length prefix
 				fixedData := make([]byte, len(data["supported_versions"])+1)
 				fixedData[0] = uint8(len(data["supported_versions"]) & 0xff)
@@ -309,16 +326,28 @@ func (chs *ClientHelloSpec) ImportTLSClientHello(data map[string][]byte, keepPSK
 					return err
 				}
 			case extensionSupportedCurves:
+				if data["curves"] == nil {
+					return errors.New("curves is required")
+				}
+
 				_, err = extension.Write(data["curves"])
 				if err != nil {
 					return err
 				}
 			case extensionALPN:
+				if data["alpn"] == nil {
+					return errors.New("alpn is required")
+				}
+
 				_, err = extension.Write(data["alpn"])
 				if err != nil {
 					return err
 				}
 			case extensionKeyShare:
+				if data["key_share"] == nil {
+					return errors.New("key_share is required")
+				}
+
 				// need to add (zero) data per each key share, [10, 10, 0, 1] => [10, 10, 0, 1, 0]
 				fixedData := make([]byte, 0)
 				for i := 0; i < len(data["key_share"]); i += 4 {
@@ -335,6 +364,10 @@ func (chs *ClientHelloSpec) ImportTLSClientHello(data map[string][]byte, keepPSK
 					return err
 				}
 			case extensionPSKModes:
+				if data["psk_key_exchange_modes"] == nil {
+					return errors.New("psk_key_exchange_modes is required")
+				}
+
 				// need to add uint8 length prefix
 				fixedData := make([]byte, len(data["psk_key_exchange_modes"])+1)
 				fixedData[0] = uint8(len(data["psk_key_exchange_modes"]) & 0xff)
@@ -344,6 +377,10 @@ func (chs *ClientHelloSpec) ImportTLSClientHello(data map[string][]byte, keepPSK
 					return err
 				}
 			case utlsExtensionCompressCertificate:
+				if data["cert_compression_algs"] == nil {
+					return errors.New("cert_compression_algs is required")
+				}
+
 				// need to add uint8 length prefix
 				fixedData := make([]byte, len(data["cert_compression_algs"])+1)
 				fixedData[0] = uint8(len(data["cert_compression_algs"]) & 0xff)
@@ -353,13 +390,19 @@ func (chs *ClientHelloSpec) ImportTLSClientHello(data map[string][]byte, keepPSK
 					return err
 				}
 			case fakeRecordSizeLimit:
+				if data["record_size_limit"] == nil {
+					return errors.New("record_size_limit is required")
+				}
+
 				_, err = extension.Write(data["record_size_limit"]) // uint16 as []byte
 				if err != nil {
 					return err
 				}
 			case utlsExtensionApplicationSettings:
-				// TODO: tlsfingerprint.io should also provide application settings data
+				// TODO: tlsfingerprint.io should record/provide application settings data
 				extension.(*ApplicationSettingsExtension).SupportedProtocols = []string{"h2"}
+			case fakeExtensionPreSharedKey:
+				log.Printf("[Warning] PSK extension added without data")
 			default:
 				if !isGREASEUint16(extType) {
 					log.Printf("[Warning] extension %d added without data", extType)
@@ -371,6 +414,15 @@ func (chs *ClientHelloSpec) ImportTLSClientHello(data map[string][]byte, keepPSK
 		}
 	}
 	return nil
+}
+
+func (chs *ClientHelloSpec) ImportTLSClientHelloFromJSON(jsonB []byte) error {
+	var data map[string][]byte
+	err := json.Unmarshal(jsonB, &data)
+	if err != nil {
+		return err
+	}
+	return chs.ImportTLSClientHello(data)
 }
 
 var (

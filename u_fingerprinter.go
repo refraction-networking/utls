@@ -12,8 +12,6 @@ import (
 
 // Fingerprinter is a struct largely for holding options for the FingerprintClientHello func
 type Fingerprinter struct {
-	// KeepPSK will ensure that the PreSharedKey extension is passed along into the resulting ClientHelloSpec as-is
-	KeepPSK bool
 	// AllowBluntMimicry will ensure that unknown extensions are
 	// passed along into the resulting ClientHelloSpec as-is
 	// It will not ensure that the PSK is passed along, if you require that, use KeepPSK
@@ -103,7 +101,7 @@ func (f *Fingerprinter) FingerprintClientHello(data []byte) (clientHelloSpec *Cl
 		return nil, errors.New("unable to read extensions data")
 	}
 
-	err = clientHelloSpec.ReadTLSExtensions(extensions, f.KeepPSK, f.AllowBluntMimicry)
+	err = clientHelloSpec.ReadTLSExtensions(extensions, f.AllowBluntMimicry)
 	if err != nil {
 		return nil, err
 	}
