@@ -310,8 +310,16 @@ func (c *Conn) loadSession(hello *clientHelloMsg) (cacheKey string,
 				return cacheKey, nil, nil, nil, nil
 			}
 		}
-		if err := serverCert.VerifyHostname(c.config.ServerName); err != nil {
-			return cacheKey, nil, nil, nil, nil
+		var dnsName string
+		if len(c.config.InsecureServerNameToVerify) == 0 {
+			dnsName = c.config.ServerName
+		} else if c.config.InsecureServerNameToVerify != "*" {
+			dnsName = c.config.InsecureServerNameToVerify
+		}
+		if len(dnsName) > 0 {
+			if err := serverCert.VerifyHostname(dnsName); err != nil {
+				return cacheKey, nil, nil, nil, nil
+			}
 		}
 	}
 
