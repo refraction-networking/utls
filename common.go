@@ -656,6 +656,14 @@ type Config struct {
 	// testing or in combination with VerifyConnection or VerifyPeerCertificate.
 	InsecureSkipVerify bool
 
+	// InsecureSkipTimeVerify is used to verify the time on the returned
+	// certificates.
+	// If InsecureSkipTimeVerify true, crypto/tls will do normal
+	// certificate validation but ignore certifacate's time.
+	//
+	// This field is ignored when InsecureSkipVerify is true.
+	InsecureSkipTimeVerify bool // [uTLS]
+
 	// InsecureServerNameToVerify is used to verify the hostname on the returned
 	// certificates. It is intended to use with spoofed ServerName.
 	// If InsecureServerNameToVerify is "*", crypto/tls will do normal
@@ -821,6 +829,7 @@ func (c *Config) Clone() *Config {
 		ClientAuth:                  c.ClientAuth,
 		ClientCAs:                   c.ClientCAs,
 		InsecureSkipVerify:          c.InsecureSkipVerify,
+		InsecureSkipTimeVerify:      c.InsecureSkipTimeVerify,
 		InsecureServerNameToVerify:  c.InsecureServerNameToVerify,
 		CipherSuites:                c.CipherSuites,
 		PreferServerCipherSuites:    c.PreferServerCipherSuites,

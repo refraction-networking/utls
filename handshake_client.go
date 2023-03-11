@@ -303,10 +303,12 @@ func (c *Conn) loadSession(hello *clientHelloMsg) (cacheKey string,
 			return cacheKey, nil, nil, nil, nil
 		}
 		serverCert := session.serverCertificates[0]
-		if c.config.time().After(serverCert.NotAfter) {
-			// Expired certificate, delete the entry.
-			c.config.ClientSessionCache.Put(cacheKey, nil)
-			return cacheKey, nil, nil, nil, nil
+		if !c.config.InsecureSkipTimeVerify {
+			if c.config.time().After(serverCert.NotAfter) {
+				// Expired certificate, delete the entry.
+				c.config.ClientSessionCache.Put(cacheKey, nil)
+				return cacheKey, nil, nil, nil, nil
+			}
 		}
 		if err := serverCert.VerifyHostname(c.config.ServerName); err != nil {
 			return cacheKey, nil, nil, nil, nil
@@ -891,8 +893,13 @@ func (c *Conn) verifyServerCertificate(certificates [][]byte) error {
 		// [UTLS SECTION START]
 		opts := x509.VerifyOptions{
 			Roots:         c.config.RootCAs,
-			CurrentTime:   c.config.time(),
 			Intermediates: x509.NewCertPool(),
+		}
+
+		if c.config.InsecureSkipTimeVerify {
+			opts.CurrentTime = certs[0].NotAfter
+		} else {
+			opts.CurrentTime = c.config.time()
 		}
 
 		if len(c.config.InsecureServerNameToVerify) == 0 {
