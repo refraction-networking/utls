@@ -303,14 +303,26 @@ func (c *Conn) loadSession(hello *clientHelloMsg) (cacheKey string,
 			return cacheKey, nil, nil, nil, nil
 		}
 		serverCert := session.serverCertificates[0]
-		if c.config.time().After(serverCert.NotAfter) {
-			// Expired certificate, delete the entry.
-			c.config.ClientSessionCache.Put(cacheKey, nil)
-			return cacheKey, nil, nil, nil, nil
+		// [UTLS SECTION START]
+		if !c.config.InsecureSkipTimeVerify {
+			if c.config.time().After(serverCert.NotAfter) {
+				// Expired certificate, delete the entry.
+				c.config.ClientSessionCache.Put(cacheKey, nil)
+				return cacheKey, nil, nil, nil, nil
+			}
 		}
-		if err := serverCert.VerifyHostname(c.config.ServerName); err != nil {
-			return cacheKey, nil, nil, nil, nil
+		var dnsName string
+		if len(c.config.InsecureServerNameToVerify) == 0 {
+			dnsName = c.config.ServerName
+		} else if c.config.InsecureServerNameToVerify != "*" {
+			dnsName = c.config.InsecureServerNameToVerify
 		}
+		if len(dnsName) > 0 {
+			if err := serverCert.VerifyHostname(dnsName); err != nil {
+				return cacheKey, nil, nil, nil, nil
+			}
+		}
+		// [UTLS SECTION END]
 	}
 
 	if session.vers != VersionTLS13 {
@@ -893,6 +905,10 @@ func (c *Conn) verifyServerCertificate(certificates [][]byte) error {
 			Roots:         c.config.RootCAs,
 			CurrentTime:   c.config.time(),
 			Intermediates: x509.NewCertPool(),
+		}
+
+		if c.config.InsecureSkipTimeVerify {
+			opts.CurrentTime = certs[0].NotAfter
 		}
 
 		if len(c.config.InsecureServerNameToVerify) == 0 {
