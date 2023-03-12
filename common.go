@@ -656,11 +656,11 @@ type Config struct {
 	// testing or in combination with VerifyConnection or VerifyPeerCertificate.
 	InsecureSkipVerify bool
 
-        // InsecureSkipTimeVerify controls whether a client verifies the server's
-        // certificate chain against time. If InsecureSkipTimeVerify is true, 
-        // crypto/tls accepts the certificate even when it is expired. 
-        //
-        // This field is ignored when InsecureSkipVerify is true.
+	// InsecureSkipTimeVerify controls whether a client verifies the server's
+	// certificate chain against time. If InsecureSkipTimeVerify is true, 
+	// crypto/tls accepts the certificate even when it is expired. 
+	//
+	// This field is ignored when InsecureSkipVerify is true.
 	InsecureSkipTimeVerify bool // [uTLS]
 
 	// InsecureServerNameToVerify is used to verify the hostname on the returned
