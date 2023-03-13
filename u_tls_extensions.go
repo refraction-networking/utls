@@ -5,6 +5,7 @@
 package tls
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"strings"
@@ -219,6 +220,10 @@ func (e *SNIExtension) Write(b []byte) (int, error) {
 	return fullLen, nil
 }
 
+func (e *SNIExtension) UnmarshalJSON(_ []byte) error {
+	return nil // no-op
+}
+
 type StatusRequestExtension struct {
 }
 
@@ -263,6 +268,10 @@ func (e *StatusRequestExtension) Write(b []byte) (int, error) {
 	}
 
 	return fullLen, nil
+}
+
+func (e *StatusRequestExtension) UnmarshalJSON(_ []byte) error {
+	return nil // no-op
 }
 
 type StatusRequestV2Extension struct {
@@ -369,6 +378,23 @@ func (e *SupportedCurvesExtension) Write(b []byte) (int, error) {
 	return fullLen, nil
 }
 
+func (e *SupportedCurvesExtension) UnmarshalJSON(data []byte) error {
+	var namedGroupList struct {
+		NamedGroups []struct {
+			ID   uint16 `json:"id"`
+			Name string `json:"name,omitempty"`
+		} `json:"named_group_list"`
+	}
+	if err := json.Unmarshal(data, &namedGroupList); err != nil {
+		return err
+	}
+
+	for _, namedGroup := range namedGroupList.NamedGroups {
+		e.Curves = append(e.Curves, CurveID(unGREASEUint16(namedGroup.ID)))
+	}
+	return nil
+}
+
 type SupportedPointsExtension struct {
 	SupportedPoints []uint8
 }
@@ -396,6 +422,23 @@ func (e *SupportedPointsExtension) Read(b []byte) (int, error) {
 		b[5+i] = pointFormat
 	}
 	return e.Len(), io.EOF
+}
+
+func (e *SupportedPointsExtension) UnmarshalJSON(data []byte) error {
+	var pointFormatList struct {
+		PointFormats []struct {
+			ID   uint8  `json:"id"`
+			Name string `json:"name,omitempty"`
+		} `json:"ec_point_format_list"`
+	}
+	if err := json.Unmarshal(data, &pointFormatList); err != nil {
+		return err
+	}
+
+	for _, pointFormat := range pointFormatList.PointFormats {
+		e.SupportedPoints = append(e.SupportedPoints, pointFormat.ID)
+	}
+	return nil
 }
 
 func (e *SupportedPointsExtension) Write(b []byte) (int, error) {
@@ -521,7 +564,15 @@ func (e *SignatureAlgorithmsCertExtension) Write(b []byte) (int, error) {
 type RenegotiationInfoExtension struct {
 	// Renegotiation field limits how many times client will perform renegotiation: no limit, once, or never.
 	// The extension still will be sent, even if Renegotiation is set to RenegotiateNever.
-	Renegotiation RenegotiationSupport
+	Renegotiation RenegotiationSupport // [UTLS] added for internal use only
+
+	// RenegotiatedConnection is not yet properly handled, now we
+	// are just copying it to the client hello.
+	//
+	// If this is the initial handshake for a connection, then the
+	// "renegotiated_connection" field is of zero length in both the
+	// ClientHello and the ServerHello.
+	// RenegotiatedConnection []byte
 }
 
 func (e *RenegotiationInfoExtension) writeToUConn(uc *UConn) error {
@@ -538,7 +589,7 @@ func (e *RenegotiationInfoExtension) writeToUConn(uc *UConn) error {
 }
 
 func (e *RenegotiationInfoExtension) Len() int {
-	return 5
+	return 5 // + len(e.RenegotiatedConnection)
 }
 
 func (e *RenegotiationInfoExtension) Read(b []byte) (int, error) {
@@ -546,23 +597,34 @@ func (e *RenegotiationInfoExtension) Read(b []byte) (int, error) {
 		return 0, io.ErrShortBuffer
 	}
 
-	var extInnerBody []byte // inner body is empty
-	innerBodyLen := len(extInnerBody)
-	extBodyLen := innerBodyLen + 1
+	// dataLen := len(e.RenegotiatedConnection)
+	extBodyLen := 1 // + len(dataLen)
 
 	b[0] = byte(extensionRenegotiationInfo >> 8)
 	b[1] = byte(extensionRenegotiationInfo & 0xff)
 	b[2] = byte(extBodyLen >> 8)
 	b[3] = byte(extBodyLen)
-	b[4] = byte(innerBodyLen)
-	copy(b[5:], extInnerBody)
+	// b[4] = byte(dataLen)
+	// copy(b[5:], e.RenegotiatedConnection)
 
 	return e.Len(), io.EOF
 }
 
 func (e *RenegotiationInfoExtension) Write(_ []byte) (int, error) {
 	e.Renegotiation = RenegotiateOnceAsClient // none empty or other modes are unsupported
+	// extData := cryptobyte.String(b)
+	// var renegotiatedConnection cryptobyte.String
+	// if !extData.ReadUint8LengthPrefixed(&renegotiatedConnection) || !extData.Empty() {
+	// 	return 0, errors.New("unable to read renegotiation info extension data")
+	// }
+	// e.RenegotiatedConnection = make([]byte, len(renegotiatedConnection))
+	// copy(e.RenegotiatedConnection, renegotiatedConnection)
 	return 0, nil
+}
+
+func (e *RenegotiationInfoExtension) UnmarshalJSON(_ []byte) error {
+	e.Renegotiation = RenegotiateOnceAsClient
+	return nil
 }
 
 type ALPNExtension struct {
@@ -630,6 +692,19 @@ func (e *ALPNExtension) Write(b []byte) (int, error) {
 	}
 	e.AlpnProtocols = alpnProtocols
 	return fullLen, nil
+}
+
+func (e *ALPNExtension) UnmarshalJSON(b []byte) error {
+	var protocolNameList struct {
+		ProtocolNames []string `json:"protocol_name_list"`
+	}
+
+	if err := json.Unmarshal(b, &protocolNameList); err != nil {
+		return err
+	}
+
+	e.AlpnProtocols = protocolNameList.ProtocolNames
+	return nil
 }
 
 // ApplicationSettingsExtension represents the TLS ALPS extension.
@@ -771,6 +846,10 @@ func (e *SessionTicketExtension) Write(_ []byte) (int, error) {
 	return 0, nil
 }
 
+func (e *SessionTicketExtension) UnmarshalJSON(_ []byte) error {
+	return nil // no-op
+}
+
 // GenericExtension allows to include in ClientHello arbitrary unsupported extensions.
 type GenericExtension struct {
 	Id   uint16
@@ -828,6 +907,10 @@ func (e *UtlsExtendedMasterSecretExtension) Read(b []byte) (int, error) {
 func (e *UtlsExtendedMasterSecretExtension) Write(_ []byte) (int, error) {
 	// https://tools.ietf.org/html/rfc7627
 	return 0, nil
+}
+
+func (e *UtlsExtendedMasterSecretExtension) UnmarshalJSON(_ []byte) error {
+	return nil // no-op
 }
 
 var extendedMasterSecretLabel = []byte("extended master secret")
@@ -897,6 +980,25 @@ func (e *UtlsGREASEExtension) Write(b []byte) (int, error) {
 	e.Body = make([]byte, len(b))
 	n := copy(e.Body, b)
 	return n, nil
+}
+
+func (e *UtlsGREASEExtension) UnmarshalJSON(b []byte) error {
+	var jsonObj struct {
+		Id   uint16 `json:"id"`
+		Data []byte `json:"data"`
+	}
+
+	if err := json.Unmarshal(b, &jsonObj); err != nil {
+		return err
+	}
+
+	if isGREASEUint16(jsonObj.Id) {
+		e.Value = GREASE_PLACEHOLDER
+		e.Body = jsonObj.Data
+		return nil
+	} else {
+		return errors.New("GREASE extension id must be a GREASE value")
+	}
 }
 
 type UtlsPaddingExtension struct {
