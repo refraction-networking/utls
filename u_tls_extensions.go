@@ -12,8 +12,8 @@ import (
 	"golang.org/x/crypto/cryptobyte"
 )
 
-// ExtensionIDToExtension returns a TLSExtension for the given extension ID.
-func ExtensionIDToExtension(id uint16) TLSExtensionWriter {
+// ExtensionFromID returns a TLSExtension for the given extension ID.
+func ExtensionFromID(id uint16) TLSExtension {
 	// deep copy
 	switch id {
 	case extensionServerName:
@@ -98,6 +98,13 @@ type TLSExtensionWriter interface {
 	// Write writes up to len(b) bytes from b.
 	// It returns the number of bytes written (0 <= n <= len(b)) and any error encountered.
 	Write(b []byte) (n int, err error)
+}
+
+type TLSExtensionJSON interface {
+	TLSExtension
+
+	// UnmarshalJSON unmarshals the JSON-encoded data into the extension.
+	UnmarshalJSON([]byte) error
 }
 
 type NPNExtension struct {
@@ -554,7 +561,7 @@ func (e *RenegotiationInfoExtension) Read(b []byte) (int, error) {
 }
 
 func (e *RenegotiationInfoExtension) Write(_ []byte) (int, error) {
-	e.Renegotiation = RenegotiateOnceAsClient
+	e.Renegotiation = RenegotiateOnceAsClient // none empty or other modes are unsupported
 	return 0, nil
 }
 

@@ -4,12 +4,6 @@
 
 package tls
 
-import (
-	"errors"
-
-	"golang.org/x/crypto/cryptobyte"
-)
-
 // Fingerprinter is a struct largely for holding options for the FingerprintClientHello func
 type Fingerprinter struct {
 	// AllowBluntMimicry will ensure that unknown extensions are
@@ -36,72 +30,36 @@ type Fingerprinter struct {
 // as well as the handshake type/length/version header
 // https://tools.ietf.org/html/rfc5246#section-6.2
 // https://tools.ietf.org/html/rfc5246#section-7.4
+//
+// It calls UnmarshalClientHello internally, and is kept for backwards compatibility
 func (f *Fingerprinter) FingerprintClientHello(data []byte) (clientHelloSpec *ClientHelloSpec, err error) {
+	return f.RawClientHello(data)
+}
+
+// RawClientHello returns a ClientHelloSpec which is based on the
+// ClientHello raw bytes that is passed in as the raw argument.
+//
+// It was renamed from FingerprintClientHello in v1.3.1 and earlier versions
+// as a more precise name for the function
+func (f *Fingerprinter) RawClientHello(raw []byte) (clientHelloSpec *ClientHelloSpec, err error) {
 	clientHelloSpec = &ClientHelloSpec{}
-	s := cryptobyte.String(data)
-
-	var contentType uint8
-	var recordVersion uint16
-	if !s.ReadUint8(&contentType) || // record type
-		!s.ReadUint16(&recordVersion) || !s.Skip(2) { // record version and length
-		return nil, errors.New("unable to read record type, version, and length")
-	}
-
-	if recordType(contentType) != recordTypeHandshake {
-		return nil, errors.New("record is not a handshake")
-	}
-
-	var handshakeVersion uint16
-	var handshakeType uint8
-
-	if !s.ReadUint8(&handshakeType) || !s.Skip(3) || // message type and 3 byte length
-		!s.ReadUint16(&handshakeVersion) || !s.Skip(32) { // 32 byte random
-		return nil, errors.New("unable to read handshake message type, length, and random")
-	}
-
-	if handshakeType != typeClientHello {
-		return nil, errors.New("handshake message is not a ClientHello")
-	}
-
-	clientHelloSpec.TLSVersMin = recordVersion
-	clientHelloSpec.TLSVersMax = handshakeVersion
-
-	var ignoredSessionID cryptobyte.String
-	if !s.ReadUint8LengthPrefixed(&ignoredSessionID) {
-		return nil, errors.New("unable to read session id")
-	}
-
-	// CipherSuites
-	var cipherSuitesBytes cryptobyte.String
-	if !s.ReadUint16LengthPrefixed(&cipherSuitesBytes) {
-		return nil, errors.New("unable to read ciphersuites")
-	}
-	err = clientHelloSpec.ReadCipherSuites(cipherSuitesBytes)
+	err = clientHelloSpec.FromRaw(raw, f.AllowBluntMimicry)
 	if err != nil {
 		return nil, err
 	}
 
-	// CompressionMethods
-	var compressionMethods cryptobyte.String
-	if !s.ReadUint8LengthPrefixed(&compressionMethods) {
-		return nil, errors.New("unable to read compression methods")
-	}
-	err = clientHelloSpec.ReadCompressionMethods(compressionMethods)
-	if err != nil {
-		return nil, err
+	if f.AlwaysAddPadding {
+		clientHelloSpec.AlwaysAddPadding()
 	}
 
-	if s.Empty() {
-		// ClientHello is optionally followed by extension data
-		return clientHelloSpec, nil
-	}
+	return clientHelloSpec, nil
+}
 
-	var extensions cryptobyte.String
-	if !s.ReadUint16LengthPrefixed(&extensions) {
-		return nil, errors.New("unable to read extensions data")
-	}
-
-	err = clientHelloSpec.ReadTLSExtensions(extensions, f.AllowBluntMimicry)
+// UnmarshalJSONClientHello returns a ClientHelloSpec which is based on the
+// ClientHello JSON bytes that is passed in as the json argument.
+func (f *Fingerprinter) UnmarshalJSONClientHello(json []byte) (clientHelloSpec *ClientHelloSpec, err error) {
+	clientHelloSpec = &ClientHelloSpec{}
+	err = clientHelloSpec.UnmarshalJSON(json)
 	if err != nil {
 		return nil, err
 	}
