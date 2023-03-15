@@ -17,12 +17,27 @@ import (
 	"time"
 )
 
+type KeySharesEcdheParameters map[CurveID]ecdheParameters
+
+func (keymap KeySharesEcdheParameters) AddEcdheParams(curveID CurveID, params ecdheParameters) {
+	keymap[curveID] = params
+}
+func (keymap KeySharesEcdheParameters) GetEcdheParams(curveID CurveID) (params ecdheParameters, ok bool) {
+	params, ok = keymap[curveID]
+	return
+}
+func (keymap KeySharesEcdheParameters) GetPublicEcdheParams(curveID CurveID) (params EcdheParameters, ok bool) {
+	params, ok = keymap[curveID]
+	return
+}
+
 type clientHandshakeStateTLS13 struct {
-	c           *Conn
-	ctx         context.Context
-	serverHello *serverHelloMsg
-	hello       *clientHelloMsg
-	ecdheParams ecdheParameters
+	c                    *Conn
+	ctx                  context.Context
+	serverHello          *serverHelloMsg
+	hello                *clientHelloMsg
+	ecdheParams          ecdheParameters
+	keySharesEcdheParams KeySharesEcdheParameters
 
 	session     *ClientSessionState
 	earlySecret []byte
@@ -53,6 +68,11 @@ func (hs *clientHandshakeStateTLS13) handshake() error {
 	if c.handshakes > 0 {
 		c.sendAlert(alertProtocolVersion)
 		return errors.New("tls: server selected TLS 1.3 in a renegotiation")
+	}
+
+	// set echdheParams to what we received from server
+	if ecdheParams, ok := hs.keySharesEcdheParams.GetEcdheParams(hs.serverHello.serverShare.group); ok {
+		hs.ecdheParams = ecdheParams
 	}
 
 	// Consistency check on the presence of a keyShare and its parameters.

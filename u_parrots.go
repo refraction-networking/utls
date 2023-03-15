@@ -1948,6 +1948,7 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 	}
 	uconn.HandshakeState.Hello = privateHello.getPublicPtr()
 	uconn.HandshakeState.State13.EcdheParams = ecdheParams
+	uconn.HandshakeState.State13.KeySharesEcdheParams = make(KeySharesEcdheParameters, 2)
 	hello := uconn.HandshakeState.Hello
 	session := uconn.HandshakeState.Session
 
@@ -2050,6 +2051,7 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 					return fmt.Errorf("unsupported Curve in KeyShareExtension: %v."+
 						"To mimic it, fill the Data(key) field manually", curveID)
 				}
+				uconn.HandshakeState.State13.KeySharesEcdheParams.AddEcdheParams(curveID, ecdheParams)
 				ext.KeyShares[i].Data = ecdheParams.PublicKey()
 				if !preferredCurveIsSet {
 					// only do this once for the first non-grease curve
