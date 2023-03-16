@@ -1,0 +1,75 @@
+{
+	"cipher_suites": [
+        {"id": 2570, "description": "GREASE"},
+		{"id": 4865, "description": "TLS_AES_128_GCM_SHA256"},
+		{"id": 4866, "description": "TLS_AES_256_GCM_SHA384"},
+        {"id": 4867, "description": "TLS_CHACHA20_POLY1305_SHA256"},
+        {"id": 49195, "description": "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"},
+        {"id": 49199, "description": "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"},
+        {"id": 49196, "description": "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"},
+        {"id": 49200, "description": "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"},
+        {"id": 52393, "description": "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305"},
+        {"id": 52392, "description": "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305"},
+        {"id": 49171, "description": "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA"},
+        {"id": 49172, "description": "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA"},
+        {"id": 156, "description": "TLS_RSA_WITH_AES_128_GCM_SHA256"},
+        {"id": 157, "description": "TLS_RSA_WITH_AES_256_GCM_SHA384"},
+        {"id": 47, "description": "TLS_RSA_WITH_AES_128_CBC_SHA"},
+        {"id": 53, "description": "TLS_RSA_WITH_AES_256_CBC_SHA"}
+	],
+	"compression_methods": [
+		{"id": 0, "description": "null"}
+	],
+	"extensions": [
+		{"id": 31354, "description": "GREASE"},
+		{"id": 0, "description": "server_name"},
+		{"id": 23, "description": "extended_master_secret"},
+		{"id": 65281, "description": "renegotiation_info", "renegotiated_connection": []},
+		{"id": 10, "description": "supported_groups", "named_group_list": [
+			{"id": 6682, "description": "GREASE"},
+			{"id": 29, "description": "x25519"},
+			{"id": 23, "description": "secp256r1"},
+			{"id": 24, "description": "secp384r1"}
+		]},
+		{"id": 11, "description": "ec_point_formats", "ec_point_format_list": [
+			{"id": 0, "description": "uncompressed"}
+		]},
+		{"id": 35, "description": "session_ticket"},
+		{"id": 16, "description": "application_layer_protocol_negotiation", "protocol_name_list": [
+			"h2",
+			"http/1.1"
+		]},
+		{"id": 5, "description": "status_request"},
+		{"id": 13, "description": "signature_algorithms", "supported_signature_algorithms": [
+			{"id": 1027, "description": "ecdsa_secp256r1_sha256"},
+			{"id": 2052, "description": "rsa_pss_rsae_sha256"},
+			{"id": 1025, "description": "rsa_pkcs1_sha256"},
+			{"id": 1283, "description": "ecdsa_secp384r1_sha384"},
+			{"id": 2053, "description": "rsa_pss_rsae_sha384"},
+			{"id": 1281, "description": "rsa_pkcs1_sha384"},
+			{"id": 2054, "description": "rsa_pss_rsae_sha512"},
+			{"id": 1537, "description": "rsa_pkcs1_sha512"}
+		]},
+		{"id": 18, "description": "signed_certificate_timestamp"},
+		{"id": 51, "description": "key_share", "client_shares": [
+			{"group": 10794, "description": "GREASE", "key_exchange": [0]},
+			{"group": 29, "description": "x25519"}
+		]},
+		{"id": 45, "description": "psk_key_exchange_modes", "ke_modes": [
+			{"mode": 1, "description": "psk_dhe_ke"}
+		]},
+		{"id": 43, "description": "supported_versions", "versions": [
+			{"version": 14906, "description": "GREASE"},
+			{"version": 772, "description": "TLSv1.3"},
+			{"version": 771, "description": "TLSv1.2"}
+		]},
+		{"id": 27, "description": "compress_certificate", "algorithms": [
+			{"algorithm": 2, "description": "brotli"}
+		]},
+		{"id": 17513, "description": "application_settings", "supported_protocols": [
+			"h2"
+		]},
+		{"id": 19018, "description": "GREASE"},
+		{"id": 21, "description": "padding", "len": 0}
+	]
+}

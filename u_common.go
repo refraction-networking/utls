@@ -523,7 +523,13 @@ func (chs *ClientHelloSpec) FromRaw(raw []byte, allowBluntMimicry ...bool) error
 
 // UnmarshalJSON unmarshals a ClientHello message in the form of JSON into a ClientHelloSpec.
 func (chs *ClientHelloSpec) UnmarshalJSON(jsonB []byte) error {
-	return errors.New("unimplemented")
+	var chsju ClientHelloSpecJSONUnmarshaler
+	if err := json.Unmarshal(jsonB, &chsju); err != nil {
+		return err
+	}
+
+	*chs = chsju.ClientHelloSpec()
+	return nil
 }
 
 var (

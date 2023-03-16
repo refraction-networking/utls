@@ -379,17 +379,16 @@ func (e *SupportedCurvesExtension) Write(b []byte) (int, error) {
 }
 
 func (e *SupportedCurvesExtension) UnmarshalJSON(data []byte) error {
-	var namedGroupList struct {
-		NamedGroups []struct {
-			ID   uint16 `json:"id"`
-			Name string `json:"name,omitempty"`
+	var namedGroups struct {
+		NamedGroupList []struct {
+			ID uint16 `json:"id"`
 		} `json:"named_group_list"`
 	}
-	if err := json.Unmarshal(data, &namedGroupList); err != nil {
+	if err := json.Unmarshal(data, &namedGroups); err != nil {
 		return err
 	}
 
-	for _, namedGroup := range namedGroupList.NamedGroups {
+	for _, namedGroup := range namedGroups.NamedGroupList {
 		e.Curves = append(e.Curves, CurveID(unGREASEUint16(namedGroup.ID)))
 	}
 	return nil
@@ -426,16 +425,15 @@ func (e *SupportedPointsExtension) Read(b []byte) (int, error) {
 
 func (e *SupportedPointsExtension) UnmarshalJSON(data []byte) error {
 	var pointFormatList struct {
-		PointFormats []struct {
-			ID   uint8  `json:"id"`
-			Name string `json:"name,omitempty"`
+		ECPointFormatList []struct {
+			ID uint8 `json:"id"`
 		} `json:"ec_point_format_list"`
 	}
 	if err := json.Unmarshal(data, &pointFormatList); err != nil {
 		return err
 	}
 
-	for _, pointFormat := range pointFormatList.PointFormats {
+	for _, pointFormat := range pointFormatList.ECPointFormatList {
 		e.SupportedPoints = append(e.SupportedPoints, pointFormat.ID)
 	}
 	return nil
@@ -504,6 +502,22 @@ func (e *SignatureAlgorithmsExtension) Write(b []byte) (int, error) {
 	}
 	e.SupportedSignatureAlgorithms = supportedSignatureAlgorithms
 	return fullLen, nil
+}
+
+func (e *SignatureAlgorithmsExtension) UnmarshalJSON(data []byte) error {
+	var signatureAlgorithms struct {
+		SignatureAlgorithms []struct {
+			ID uint16 `json:"id"`
+		} `json:"supported_signature_algorithms"`
+	}
+	if err := json.Unmarshal(data, &signatureAlgorithms); err != nil {
+		return err
+	}
+
+	for _, sigAndHash := range signatureAlgorithms.SignatureAlgorithms {
+		e.SupportedSignatureAlgorithms = append(e.SupportedSignatureAlgorithms, SignatureScheme(unGREASEUint16(sigAndHash.ID)))
+	}
+	return nil
 }
 
 type SignatureAlgorithmsCertExtension struct {
@@ -695,15 +709,15 @@ func (e *ALPNExtension) Write(b []byte) (int, error) {
 }
 
 func (e *ALPNExtension) UnmarshalJSON(b []byte) error {
-	var protocolNameList struct {
-		ProtocolNames []string `json:"protocol_name_list"`
+	var protocolNames struct {
+		ProtocolNameList []string `json:"protocol_name_list"`
 	}
 
-	if err := json.Unmarshal(b, &protocolNameList); err != nil {
+	if err := json.Unmarshal(b, &protocolNames); err != nil {
 		return err
 	}
 
-	e.AlpnProtocols = protocolNameList.ProtocolNames
+	e.AlpnProtocols = protocolNames.ProtocolNameList
 	return nil
 }
 
@@ -778,6 +792,20 @@ func (e *ApplicationSettingsExtension) Write(b []byte) (int, error) {
 	return fullLen, nil
 }
 
+func (e *ApplicationSettingsExtension) UnmarshalJSON(b []byte) error {
+	var applicationSettingsSupport struct {
+		SupportedProtocols []string `json:"supported_protocols"`
+	}
+
+	if err := json.Unmarshal(b, &applicationSettingsSupport); err != nil {
+		return err
+	}
+
+	e.SupportedProtocols = applicationSettingsSupport.SupportedProtocols
+	return nil
+}
+
+// SCTExtension stands for SignedCertificateTimestamp
 type SCTExtension struct {
 }
 
@@ -803,6 +831,10 @@ func (e *SCTExtension) Read(b []byte) (int, error) {
 
 func (e *SCTExtension) Write(_ []byte) (int, error) {
 	return 0, nil
+}
+
+func (e *SCTExtension) UnmarshalJSON(_ []byte) error {
+	return nil // no-op
 }
 
 type SessionTicketExtension struct {
@@ -984,8 +1016,10 @@ func (e *UtlsGREASEExtension) Write(b []byte) (int, error) {
 
 func (e *UtlsGREASEExtension) UnmarshalJSON(b []byte) error {
 	var jsonObj struct {
-		Id   uint16 `json:"id"`
-		Data []byte `json:"data"`
+		Id       uint16 `json:"id"`
+		Data     []byte `json:"data"`
+		KeepID   bool   `json:"keep_id"`
+		KeepData bool   `json:"keep_data"`
 	}
 
 	if err := json.Unmarshal(b, &jsonObj); err != nil {
@@ -993,8 +1027,12 @@ func (e *UtlsGREASEExtension) UnmarshalJSON(b []byte) error {
 	}
 
 	if isGREASEUint16(jsonObj.Id) {
-		e.Value = GREASE_PLACEHOLDER
-		e.Body = jsonObj.Data
+		if jsonObj.KeepID {
+			e.Value = jsonObj.Id
+		}
+		if jsonObj.KeepData {
+			e.Body = jsonObj.Data
+		}
 		return nil
 	} else {
 		return errors.New("GREASE extension id must be a GREASE value")
@@ -1046,6 +1084,24 @@ func (e *UtlsPaddingExtension) Read(b []byte) (int, error) {
 func (e *UtlsPaddingExtension) Write(_ []byte) (int, error) {
 	e.GetPaddingLen = BoringPaddingStyle
 	return 0, nil
+}
+
+func (e *UtlsPaddingExtension) UnmarshalJSON(b []byte) error {
+	var jsonObj struct {
+		Length uint `json:"len"`
+	}
+	if err := json.Unmarshal(b, &jsonObj); err != nil {
+		return err
+	}
+
+	if jsonObj.Length == 0 {
+		e.GetPaddingLen = BoringPaddingStyle
+	} else {
+		e.PaddingLen = int(jsonObj.Length)
+		e.WillPad = true
+	}
+
+	return nil
 }
 
 // https://github.com/google/boringssl/blob/7d7554b6b3c79e707e25521e61e066ce2b996e4c/ssl/t1_lib.c#L2803
@@ -1127,6 +1183,24 @@ func (e *UtlsCompressCertExtension) Write(b []byte) (int, error) {
 	return fullLen, nil
 }
 
+func (e *UtlsCompressCertExtension) UnmarshalJSON(b []byte) error {
+	var certificateCompressionAlgorithms struct {
+		Algorithms []struct {
+			Algorithm uint16 `json:"algorithm"`
+		} `json:"algorithms"`
+	}
+	if err := json.Unmarshal(b, &certificateCompressionAlgorithms); err != nil {
+		return err
+	}
+
+	algorithms := []CertCompressionAlgo{}
+	for _, algo := range certificateCompressionAlgorithms.Algorithms {
+		algorithms = append(algorithms, CertCompressionAlgo(algo.Algorithm))
+	}
+	e.Algorithms = algorithms
+	return nil
+}
+
 /* TLS 1.3 */
 type KeyShareExtension struct {
 	KeyShares []KeyShare
@@ -1204,6 +1278,22 @@ func (e *KeyShareExtension) writeToUConn(uc *UConn) error {
 	return nil
 }
 
+func (e *KeyShareExtension) UnmarshalJSON(b []byte) error {
+	var keyShareClientHello struct {
+		ClientShares []KeyShare `json:"client_shares"`
+	}
+	if err := json.Unmarshal(b, &keyShareClientHello); err != nil {
+		return err
+	}
+
+	for i := range keyShareClientHello.ClientShares {
+		keyShareClientHello.ClientShares[i].Group = CurveID(unGREASEUint16(uint16(keyShareClientHello.ClientShares[i].Group)))
+	}
+	e.KeyShares = make([]KeyShare, len(keyShareClientHello.ClientShares))
+	copy(e.KeyShares, keyShareClientHello.ClientShares)
+	return nil
+}
+
 type PSKKeyExchangeModesExtension struct {
 	Modes []uint8
 }
@@ -1254,6 +1344,22 @@ func (e *PSKKeyExchangeModesExtension) Write(b []byte) (int, error) {
 
 func (e *PSKKeyExchangeModesExtension) writeToUConn(uc *UConn) error {
 	uc.HandshakeState.Hello.PskModes = e.Modes
+	return nil
+}
+
+func (e *PSKKeyExchangeModesExtension) UnmarshalJSON(b []byte) error {
+	var pskKeyExchangeModes struct {
+		Modes []struct {
+			Mode uint8 `json:"mode"`
+		} `json:"ke_modes"`
+	}
+	if err := json.Unmarshal(b, &pskKeyExchangeModes); err != nil {
+		return err
+	}
+
+	for _, mode := range pskKeyExchangeModes.Modes {
+		e.Modes = append(e.Modes, mode.Mode)
+	}
 	return nil
 }
 
@@ -1312,6 +1418,22 @@ func (e *SupportedVersionsExtension) Write(b []byte) (int, error) {
 	}
 	e.Versions = supportedVersions
 	return fullLen, nil
+}
+
+func (e *SupportedVersionsExtension) UnmarshalJSON(b []byte) error {
+	var supportedVersions struct {
+		Versions []struct {
+			Version uint16 `json:"version"`
+		} `json:"versions"`
+	}
+	if err := json.Unmarshal(b, &supportedVersions); err != nil {
+		return err
+	}
+
+	for _, version := range supportedVersions.Versions {
+		e.Versions = append(e.Versions, unGREASEUint16(version.Version))
+	}
+	return nil
 }
 
 // MUST NOT be part of initial ClientHello

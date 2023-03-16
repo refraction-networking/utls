@@ -540,8 +540,8 @@ func (fh *finishedHash) getPublicObj() FinishedHash {
 
 // TLS 1.3 Key Share. See RFC 8446, Section 4.2.8.
 type KeyShare struct {
-	Group CurveID
-	Data  []byte
+	Group CurveID `json:"group"`
+	Data  []byte  `json:"key_exchange,omitempty"` // optional
 }
 
 type KeyShares []KeyShare
