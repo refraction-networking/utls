@@ -37,7 +37,7 @@ type clientHandshakeStateTLS13 struct {
 	serverHello          *serverHelloMsg
 	hello                *clientHelloMsg
 	ecdheParams          ecdheParameters
-	keySharesEcdheParams KeySharesEcdheParameters
+	keySharesEcdheParams KeySharesEcdheParameters // [UTLS]
 
 	session     *ClientSessionState
 	earlySecret []byte
