@@ -17,6 +17,7 @@ import (
 	"time"
 )
 
+// [uTLS SECTION START]
 type KeySharesEcdheParameters map[CurveID]ecdheParameters
 
 func (keymap KeySharesEcdheParameters) AddEcdheParams(curveID CurveID, params ecdheParameters) {
@@ -31,13 +32,15 @@ func (keymap KeySharesEcdheParameters) GetPublicEcdheParams(curveID CurveID) (pa
 	return
 }
 
+// [uTLS SECTION END]
+
 type clientHandshakeStateTLS13 struct {
 	c                    *Conn
 	ctx                  context.Context
 	serverHello          *serverHelloMsg
 	hello                *clientHelloMsg
 	ecdheParams          ecdheParameters
-	keySharesEcdheParams KeySharesEcdheParameters // [UTLS]
+	keySharesEcdheParams KeySharesEcdheParameters // [uTLS]
 
 	session     *ClientSessionState
 	earlySecret []byte
@@ -70,10 +73,13 @@ func (hs *clientHandshakeStateTLS13) handshake() error {
 		return errors.New("tls: server selected TLS 1.3 in a renegotiation")
 	}
 
+	// [uTLS SECTION START]
+
 	// set echdheParams to what we received from server
 	if ecdheParams, ok := hs.keySharesEcdheParams.GetEcdheParams(hs.serverHello.serverShare.group); ok {
 		hs.ecdheParams = ecdheParams
 	}
+	// [uTLS SECTION END]
 
 	// Consistency check on the presence of a keyShare and its parameters.
 	if hs.ecdheParams == nil || len(hs.hello.keyShares) < 1 { // [uTLS]

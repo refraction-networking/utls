@@ -224,7 +224,7 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 			serverHello:          serverHello,
 			hello:                hello,
 			ecdheParams:          ecdheParams,
-			keySharesEcdheParams: make(KeySharesEcdheParameters, 2),
+			keySharesEcdheParams: make(KeySharesEcdheParameters, 2), // [uTLS]
 			session:              session,
 			earlySecret:          earlySecret,
 			binderKey:            binderKey,
