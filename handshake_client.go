@@ -219,14 +219,15 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 
 	if c.vers == VersionTLS13 {
 		hs := &clientHandshakeStateTLS13{
-			c:           c,
-			ctx:         ctx,
-			serverHello: serverHello,
-			hello:       hello,
-			ecdheParams: ecdheParams,
-			session:     session,
-			earlySecret: earlySecret,
-			binderKey:   binderKey,
+			c:                    c,
+			ctx:                  ctx,
+			serverHello:          serverHello,
+			hello:                hello,
+			ecdheParams:          ecdheParams,
+			keySharesEcdheParams: make(KeySharesEcdheParameters, 2), // [uTLS]
+			session:              session,
+			earlySecret:          earlySecret,
+			binderKey:            binderKey,
 		}
 
 		// In TLS 1.3, session tickets are delivered after the handshake.
