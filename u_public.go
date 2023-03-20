@@ -565,8 +565,8 @@ func (KSS KeyShares) ToPrivate() []keyShare {
 // TLS 1.3 PSK Identity. Can be a Session Ticket, or a reference to a saved
 // session. See RFC 8446, Section 4.2.11.
 type PskIdentity struct {
-	Label               []byte
-	ObfuscatedTicketAge uint32
+	Label               []byte `json:"identity"`
+	ObfuscatedTicketAge uint32 `json:"obfuscated_ticket_age"`
 }
 
 type PskIdentities []PskIdentity

@@ -4,9 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+
+	"github.com/gaukas/godicttls"
 )
 
-var ErrNoExtensionID = errors.New("no extension ID in JSON object")
+var ErrUnknownExtension = errors.New("extension name is unknown to the dictionary")
 
 type ClientHelloSpecJSONUnmarshaler struct {
 	CipherSuites       *CipherSuitesJSONUnmarshaler       `json:"cipher_suites"`
@@ -31,20 +34,24 @@ type CipherSuitesJSONUnmarshaler struct {
 }
 
 func (c *CipherSuitesJSONUnmarshaler) UnmarshalJSON(jsonStr []byte) error {
-	var accepters []struct {
-		ID   uint16 `json:"id"`
-		Name string `json:"name,omitempty"` // optional
-	}
-	if err := json.Unmarshal(jsonStr, &accepters); err != nil {
+	var cipherSuiteNames []string
+	if err := json.Unmarshal(jsonStr, &cipherSuiteNames); err != nil {
 		return err
 	}
 
-	var ciphers []uint16 = make([]uint16, 0, len(accepters))
-	for _, accepter := range accepters {
-		ciphers = append(ciphers, unGREASEUint16(accepter.ID))
+	for _, name := range cipherSuiteNames {
+		if name == "GREASE" {
+			c.cipherSuites = append(c.cipherSuites, GREASE_PLACEHOLDER)
+			continue
+		}
+
+		if id, ok := godicttls.DictCipherSuiteNameIndexed[name]; ok {
+			c.cipherSuites = append(c.cipherSuites, id)
+		} else {
+			return fmt.Errorf("unknown cipher suite name: %s", name)
+		}
 	}
 
-	c.cipherSuites = ciphers
 	return nil
 }
 
@@ -57,20 +64,19 @@ type CompressionMethodsJSONUnmarshaler struct {
 }
 
 func (c *CompressionMethodsJSONUnmarshaler) UnmarshalJSON(jsonStr []byte) error {
-	var accepters []struct {
-		ID   uint8  `json:"id"`
-		Name string `json:"name,omitempty"` // optional
-	}
-	if err := json.Unmarshal(jsonStr, &accepters); err != nil {
+	var compressionMethodNames []string
+	if err := json.Unmarshal(jsonStr, &compressionMethodNames); err != nil {
 		return err
 	}
 
-	var compressions []uint8 = make([]uint8, 0, len(accepters))
-	for _, accepter := range accepters {
-		compressions = append(compressions, accepter.ID)
+	for _, name := range compressionMethodNames {
+		if id, ok := godicttls.DictCompMethNameIndexed[name]; ok {
+			c.compressionMethods = append(c.compressionMethods, id)
+		} else {
+			return fmt.Errorf("unknown compression method name: %s", name)
+		}
 	}
 
-	c.compressionMethods = compressions
 	return nil
 }
 
@@ -90,27 +96,33 @@ func (e *TLSExtensionsJSONUnmarshaler) UnmarshalJSON(jsonStr []byte) error {
 
 	var exts []TLSExtensionJSON = make([]TLSExtensionJSON, 0, len(accepters))
 	for _, accepter := range accepters {
-		var extID uint16 = accepter.idDescObj.ID
-		var extName string = accepter.idDescObj.Description
-
-		// get extension type from ID
-		var ext TLSExtension = ExtensionFromID(extID)
-		if ext == nil {
-			// fallback to generic extension
-			ext = genericExtension(extID, extName)
+		if accepter.extNameOnly.Name == "GREASE" {
+			exts = append(exts, &UtlsGREASEExtension{})
+			continue
 		}
 
-		if extJsonCompatible, ok := ext.(TLSExtensionJSON); ok {
-			exts = append(exts, extJsonCompatible)
+		if extID, ok := godicttls.DictExtTypeNameIndexed[accepter.extNameOnly.Name]; !ok {
+			return fmt.Errorf("%w: %s", ErrUnknownExtension, accepter.extNameOnly.Name)
 		} else {
-			return fmt.Errorf("extension %d (%s) is not JSON compatible", extID, extName)
+			// get extension type from ID
+			var ext TLSExtension = ExtensionFromID(extID)
+			if ext == nil {
+				// fallback to generic extension
+				ext = genericExtension(extID, accepter.extNameOnly.Name)
+			}
+
+			if extJsonCompatible, ok := ext.(TLSExtensionJSON); ok {
+				exts = append(exts, extJsonCompatible)
+			} else {
+				return fmt.Errorf("extension %d (%s) is not JSON compatible", extID, accepter.extNameOnly.Name)
+			}
 		}
 	}
 
 	// unmashal extensions
 	for idx, ext := range exts {
 		// json.Unmarshal will call the UnmarshalJSON method of the extension
-		if err := json.Unmarshal(accepters[idx].jsonStr, ext); err != nil {
+		if err := json.Unmarshal(accepters[idx].origJsonInput, ext); err != nil {
 			return err
 		}
 	}
@@ -136,20 +148,21 @@ func genericExtension(id uint16, name string) TLSExtension {
 	warningMsg += "is falling back to generic extension"
 	warningMsg += "\n"
 
+	fmt.Fprint(os.Stderr, warningMsg)
+
 	// fallback to generic extension
 	return &GenericExtension{Id: id}
 }
 
 type tlsExtensionJSONAccepter struct {
-	idDescObj struct {
-		ID          uint16 `json:"id"`
-		Description string `json:"description,omitempty"`
+	extNameOnly struct {
+		Name string `json:"name"`
 	}
-	jsonStr []byte
+	origJsonInput []byte
 }
 
 func (t *tlsExtensionJSONAccepter) UnmarshalJSON(jsonStr []byte) error {
-	t.jsonStr = make([]byte, len(jsonStr))
-	copy(t.jsonStr, jsonStr)
-	return json.Unmarshal(jsonStr, &t.idDescObj)
+	t.origJsonInput = make([]byte, len(jsonStr))
+	copy(t.origJsonInput, jsonStr)
+	return json.Unmarshal(jsonStr, &t.extNameOnly)
 }

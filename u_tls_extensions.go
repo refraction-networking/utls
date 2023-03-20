@@ -7,9 +7,11 @@ package tls
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 
+	"github.com/gaukas/godicttls"
 	"golang.org/x/crypto/cryptobyte"
 )
 
@@ -108,46 +110,9 @@ type TLSExtensionJSON interface {
 	UnmarshalJSON([]byte) error
 }
 
-type NPNExtension struct {
-	NextProtos []string
-}
-
-func (e *NPNExtension) writeToUConn(uc *UConn) error {
-	uc.config.NextProtos = e.NextProtos
-	uc.HandshakeState.Hello.NextProtoNeg = true
-	return nil
-}
-
-func (e *NPNExtension) Len() int {
-	return 4
-}
-
-func (e *NPNExtension) Read(b []byte) (int, error) {
-	if len(b) < e.Len() {
-		return 0, io.ErrShortBuffer
-	}
-	b[0] = byte(extensionNextProtoNeg >> 8)
-	b[1] = byte(extensionNextProtoNeg & 0xff)
-	// The length is always 0
-	return e.Len(), io.EOF
-}
-
-// Write is a no-op for NPNExtension. NextProtos are not included in the
-// ClientHello.
-func (e *NPNExtension) Write(_ []byte) (int, error) {
-	return 0, nil
-}
-
+// SNIExtension implements server_name (0)
 type SNIExtension struct {
 	ServerName string // not an array because go crypto/tls doesn't support multiple SNIs
-}
-
-func (e *SNIExtension) writeToUConn(uc *UConn) error {
-	uc.config.ServerName = e.ServerName
-	hostName := hostnameInSNI(e.ServerName)
-	uc.HandshakeState.Hello.ServerName = hostName
-
-	return nil
 }
 
 func (e *SNIExtension) Len() int {
@@ -182,6 +147,10 @@ func (e *SNIExtension) Read(b []byte) (int, error) {
 	b[8] = byte(len(hostName))
 	copy(b[9:], []byte(hostName))
 	return e.Len(), io.EOF
+}
+
+func (e *SNIExtension) UnmarshalJSON(_ []byte) error {
+	return nil // no-op
 }
 
 // Write is a no-op for StatusRequestExtension.
@@ -220,16 +189,16 @@ func (e *SNIExtension) Write(b []byte) (int, error) {
 	return fullLen, nil
 }
 
-func (e *SNIExtension) UnmarshalJSON(_ []byte) error {
-	return nil // no-op
-}
+func (e *SNIExtension) writeToUConn(uc *UConn) error {
+	uc.config.ServerName = e.ServerName
+	hostName := hostnameInSNI(e.ServerName)
+	uc.HandshakeState.Hello.ServerName = hostName
 
-type StatusRequestExtension struct {
-}
-
-func (e *StatusRequestExtension) writeToUConn(uc *UConn) error {
-	uc.HandshakeState.Hello.OcspStapling = true
 	return nil
+}
+
+// StatusRequestExtension implements status_request (5)
+type StatusRequestExtension struct {
 }
 
 func (e *StatusRequestExtension) Len() int {
@@ -248,6 +217,10 @@ func (e *StatusRequestExtension) Read(b []byte) (int, error) {
 	b[4] = 1 // OCSP type
 	// Two zero valued uint16s for the two lengths.
 	return e.Len(), io.EOF
+}
+
+func (e *StatusRequestExtension) UnmarshalJSON(_ []byte) error {
+	return nil // no-op
 }
 
 // Write is a no-op for StatusRequestExtension. No data for this extension.
@@ -270,10 +243,225 @@ func (e *StatusRequestExtension) Write(b []byte) (int, error) {
 	return fullLen, nil
 }
 
-func (e *StatusRequestExtension) UnmarshalJSON(_ []byte) error {
-	return nil // no-op
+func (e *StatusRequestExtension) writeToUConn(uc *UConn) error {
+	uc.HandshakeState.Hello.OcspStapling = true
+	return nil
 }
 
+// SupportedCurvesExtension implements supported_groups (renamed from "elliptic_curves") (10)
+type SupportedCurvesExtension struct {
+	Curves []CurveID
+}
+
+func (e *SupportedCurvesExtension) Len() int {
+	return 6 + 2*len(e.Curves)
+}
+
+func (e *SupportedCurvesExtension) Read(b []byte) (int, error) {
+	if len(b) < e.Len() {
+		return 0, io.ErrShortBuffer
+	}
+	// http://tools.ietf.org/html/rfc4492#section-5.5.1
+	b[0] = byte(extensionSupportedCurves >> 8)
+	b[1] = byte(extensionSupportedCurves)
+	b[2] = byte((2 + 2*len(e.Curves)) >> 8)
+	b[3] = byte(2 + 2*len(e.Curves))
+	b[4] = byte((2 * len(e.Curves)) >> 8)
+	b[5] = byte(2 * len(e.Curves))
+	for i, curve := range e.Curves {
+		b[6+2*i] = byte(curve >> 8)
+		b[7+2*i] = byte(curve)
+	}
+	return e.Len(), io.EOF
+}
+
+func (e *SupportedCurvesExtension) UnmarshalJSON(data []byte) error {
+	var namedGroups struct {
+		NamedGroupList []string `json:"named_group_list"`
+	}
+	if err := json.Unmarshal(data, &namedGroups); err != nil {
+		return err
+	}
+
+	for _, namedGroup := range namedGroups.NamedGroupList {
+		if namedGroup == "GREASE" {
+			e.Curves = append(e.Curves, GREASE_PLACEHOLDER)
+			continue
+		}
+
+		if group, ok := godicttls.DictSupportedGroupsNameIndexed[namedGroup]; ok {
+			e.Curves = append(e.Curves, CurveID(group))
+		} else {
+			return fmt.Errorf("unknown named group: %s", namedGroup)
+		}
+	}
+	return nil
+}
+
+func (e *SupportedCurvesExtension) Write(b []byte) (int, error) {
+	fullLen := len(b)
+	extData := cryptobyte.String(b)
+	// RFC 4492, sections 5.1.1 and RFC 8446, Section 4.2.7
+	var curvesBytes cryptobyte.String
+	if !extData.ReadUint16LengthPrefixed(&curvesBytes) || curvesBytes.Empty() {
+		return 0, errors.New("unable to read supported curves extension data")
+	}
+	curves := []CurveID{}
+	for !curvesBytes.Empty() {
+		var curve uint16
+		if !curvesBytes.ReadUint16(&curve) {
+			return 0, errors.New("unable to read supported curves extension data")
+		}
+		curves = append(curves, CurveID(unGREASEUint16(curve)))
+	}
+	e.Curves = curves
+	return fullLen, nil
+}
+
+func (e *SupportedCurvesExtension) writeToUConn(uc *UConn) error {
+	uc.config.CurvePreferences = e.Curves
+	uc.HandshakeState.Hello.SupportedCurves = e.Curves
+	return nil
+}
+
+// SupportedPointsExtension implements ec_point_formats (11)
+type SupportedPointsExtension struct {
+	SupportedPoints []uint8
+}
+
+func (e *SupportedPointsExtension) Len() int {
+	return 5 + len(e.SupportedPoints)
+}
+
+func (e *SupportedPointsExtension) Read(b []byte) (int, error) {
+	if len(b) < e.Len() {
+		return 0, io.ErrShortBuffer
+	}
+	// http://tools.ietf.org/html/rfc4492#section-5.5.2
+	b[0] = byte(extensionSupportedPoints >> 8)
+	b[1] = byte(extensionSupportedPoints)
+	b[2] = byte((1 + len(e.SupportedPoints)) >> 8)
+	b[3] = byte(1 + len(e.SupportedPoints))
+	b[4] = byte(len(e.SupportedPoints))
+	for i, pointFormat := range e.SupportedPoints {
+		b[5+i] = pointFormat
+	}
+	return e.Len(), io.EOF
+}
+
+func (e *SupportedPointsExtension) UnmarshalJSON(data []byte) error {
+	var pointFormatList struct {
+		ECPointFormatList []string `json:"ec_point_format_list"`
+	}
+	if err := json.Unmarshal(data, &pointFormatList); err != nil {
+		return err
+	}
+
+	for _, pointFormat := range pointFormatList.ECPointFormatList {
+		if format, ok := godicttls.DictECPointFormatNameIndexed[pointFormat]; ok {
+			e.SupportedPoints = append(e.SupportedPoints, format)
+		} else {
+			return fmt.Errorf("unknown point format: %s", pointFormat)
+		}
+	}
+	return nil
+}
+
+func (e *SupportedPointsExtension) Write(b []byte) (int, error) {
+	fullLen := len(b)
+	extData := cryptobyte.String(b)
+	// RFC 4492, Section 5.1.2
+	supportedPoints := []uint8{}
+	if !readUint8LengthPrefixed(&extData, &supportedPoints) ||
+		len(supportedPoints) == 0 {
+		return 0, errors.New("unable to read supported points extension data")
+	}
+	e.SupportedPoints = supportedPoints
+	return fullLen, nil
+}
+
+func (e *SupportedPointsExtension) writeToUConn(uc *UConn) error {
+	uc.HandshakeState.Hello.SupportedPoints = e.SupportedPoints
+	return nil
+}
+
+// SignatureAlgorithmsExtension implements signature_algorithms (13)
+type SignatureAlgorithmsExtension struct {
+	SupportedSignatureAlgorithms []SignatureScheme
+}
+
+func (e *SignatureAlgorithmsExtension) Len() int {
+	return 6 + 2*len(e.SupportedSignatureAlgorithms)
+}
+
+func (e *SignatureAlgorithmsExtension) Read(b []byte) (int, error) {
+	if len(b) < e.Len() {
+		return 0, io.ErrShortBuffer
+	}
+	// https://tools.ietf.org/html/rfc5246#section-7.4.1.4.1
+	b[0] = byte(extensionSignatureAlgorithms >> 8)
+	b[1] = byte(extensionSignatureAlgorithms)
+	b[2] = byte((2 + 2*len(e.SupportedSignatureAlgorithms)) >> 8)
+	b[3] = byte(2 + 2*len(e.SupportedSignatureAlgorithms))
+	b[4] = byte((2 * len(e.SupportedSignatureAlgorithms)) >> 8)
+	b[5] = byte(2 * len(e.SupportedSignatureAlgorithms))
+	for i, sigScheme := range e.SupportedSignatureAlgorithms {
+		b[6+2*i] = byte(sigScheme >> 8)
+		b[7+2*i] = byte(sigScheme)
+	}
+	return e.Len(), io.EOF
+}
+
+func (e *SignatureAlgorithmsExtension) UnmarshalJSON(data []byte) error {
+	var signatureAlgorithms struct {
+		Algorithms []string `json:"supported_signature_algorithms"`
+	}
+	if err := json.Unmarshal(data, &signatureAlgorithms); err != nil {
+		return err
+	}
+
+	for _, sigScheme := range signatureAlgorithms.Algorithms {
+		if sigScheme == "GREASE" {
+			e.SupportedSignatureAlgorithms = append(e.SupportedSignatureAlgorithms, GREASE_PLACEHOLDER)
+			continue
+		}
+
+		if scheme, ok := godicttls.DictSignatureSchemeNameIndexed[sigScheme]; ok {
+			e.SupportedSignatureAlgorithms = append(e.SupportedSignatureAlgorithms, SignatureScheme(scheme))
+		} else {
+			return fmt.Errorf("unknown signature scheme: %s", sigScheme)
+		}
+	}
+	return nil
+}
+
+func (e *SignatureAlgorithmsExtension) Write(b []byte) (int, error) {
+	fullLen := len(b)
+	extData := cryptobyte.String(b)
+	// RFC 5246, Section 7.4.1.4.1
+	var sigAndAlgs cryptobyte.String
+	if !extData.ReadUint16LengthPrefixed(&sigAndAlgs) || sigAndAlgs.Empty() {
+		return 0, errors.New("unable to read signature algorithms extension data")
+	}
+	supportedSignatureAlgorithms := []SignatureScheme{}
+	for !sigAndAlgs.Empty() {
+		var sigAndAlg uint16
+		if !sigAndAlgs.ReadUint16(&sigAndAlg) {
+			return 0, errors.New("unable to read signature algorithms extension data")
+		}
+		supportedSignatureAlgorithms = append(
+			supportedSignatureAlgorithms, SignatureScheme(sigAndAlg))
+	}
+	e.SupportedSignatureAlgorithms = supportedSignatureAlgorithms
+	return fullLen, nil
+}
+
+func (e *SignatureAlgorithmsExtension) writeToUConn(uc *UConn) error {
+	uc.HandshakeState.Hello.SupportedSignatureAlgorithms = e.SupportedSignatureAlgorithms
+	return nil
+}
+
+// StatusRequestV2Extension implements status_request_v2 (17)
 type StatusRequestV2Extension struct {
 }
 
@@ -326,207 +514,13 @@ func (e *StatusRequestV2Extension) Write(b []byte) (int, error) {
 	return fullLen, nil
 }
 
-type SupportedCurvesExtension struct {
-	Curves []CurveID
+func (e *StatusRequestV2Extension) UnmarshalJSON(_ []byte) error {
+	return nil // no-op
 }
 
-func (e *SupportedCurvesExtension) writeToUConn(uc *UConn) error {
-	uc.config.CurvePreferences = e.Curves
-	uc.HandshakeState.Hello.SupportedCurves = e.Curves
-	return nil
-}
-
-func (e *SupportedCurvesExtension) Len() int {
-	return 6 + 2*len(e.Curves)
-}
-
-func (e *SupportedCurvesExtension) Read(b []byte) (int, error) {
-	if len(b) < e.Len() {
-		return 0, io.ErrShortBuffer
-	}
-	// http://tools.ietf.org/html/rfc4492#section-5.5.1
-	b[0] = byte(extensionSupportedCurves >> 8)
-	b[1] = byte(extensionSupportedCurves)
-	b[2] = byte((2 + 2*len(e.Curves)) >> 8)
-	b[3] = byte(2 + 2*len(e.Curves))
-	b[4] = byte((2 * len(e.Curves)) >> 8)
-	b[5] = byte(2 * len(e.Curves))
-	for i, curve := range e.Curves {
-		b[6+2*i] = byte(curve >> 8)
-		b[7+2*i] = byte(curve)
-	}
-	return e.Len(), io.EOF
-}
-
-func (e *SupportedCurvesExtension) Write(b []byte) (int, error) {
-	fullLen := len(b)
-	extData := cryptobyte.String(b)
-	// RFC 4492, sections 5.1.1 and RFC 8446, Section 4.2.7
-	var curvesBytes cryptobyte.String
-	if !extData.ReadUint16LengthPrefixed(&curvesBytes) || curvesBytes.Empty() {
-		return 0, errors.New("unable to read supported curves extension data")
-	}
-	curves := []CurveID{}
-	for !curvesBytes.Empty() {
-		var curve uint16
-		if !curvesBytes.ReadUint16(&curve) {
-			return 0, errors.New("unable to read supported curves extension data")
-		}
-		curves = append(curves, CurveID(unGREASEUint16(curve)))
-	}
-	e.Curves = curves
-	return fullLen, nil
-}
-
-func (e *SupportedCurvesExtension) UnmarshalJSON(data []byte) error {
-	var namedGroups struct {
-		NamedGroupList []struct {
-			ID uint16 `json:"id"`
-		} `json:"named_group_list"`
-	}
-	if err := json.Unmarshal(data, &namedGroups); err != nil {
-		return err
-	}
-
-	for _, namedGroup := range namedGroups.NamedGroupList {
-		e.Curves = append(e.Curves, CurveID(unGREASEUint16(namedGroup.ID)))
-	}
-	return nil
-}
-
-type SupportedPointsExtension struct {
-	SupportedPoints []uint8
-}
-
-func (e *SupportedPointsExtension) writeToUConn(uc *UConn) error {
-	uc.HandshakeState.Hello.SupportedPoints = e.SupportedPoints
-	return nil
-}
-
-func (e *SupportedPointsExtension) Len() int {
-	return 5 + len(e.SupportedPoints)
-}
-
-func (e *SupportedPointsExtension) Read(b []byte) (int, error) {
-	if len(b) < e.Len() {
-		return 0, io.ErrShortBuffer
-	}
-	// http://tools.ietf.org/html/rfc4492#section-5.5.2
-	b[0] = byte(extensionSupportedPoints >> 8)
-	b[1] = byte(extensionSupportedPoints)
-	b[2] = byte((1 + len(e.SupportedPoints)) >> 8)
-	b[3] = byte(1 + len(e.SupportedPoints))
-	b[4] = byte(len(e.SupportedPoints))
-	for i, pointFormat := range e.SupportedPoints {
-		b[5+i] = pointFormat
-	}
-	return e.Len(), io.EOF
-}
-
-func (e *SupportedPointsExtension) UnmarshalJSON(data []byte) error {
-	var pointFormatList struct {
-		ECPointFormatList []struct {
-			ID uint8 `json:"id"`
-		} `json:"ec_point_format_list"`
-	}
-	if err := json.Unmarshal(data, &pointFormatList); err != nil {
-		return err
-	}
-
-	for _, pointFormat := range pointFormatList.ECPointFormatList {
-		e.SupportedPoints = append(e.SupportedPoints, pointFormat.ID)
-	}
-	return nil
-}
-
-func (e *SupportedPointsExtension) Write(b []byte) (int, error) {
-	fullLen := len(b)
-	extData := cryptobyte.String(b)
-	// RFC 4492, Section 5.1.2
-	supportedPoints := []uint8{}
-	if !readUint8LengthPrefixed(&extData, &supportedPoints) ||
-		len(supportedPoints) == 0 {
-		return 0, errors.New("unable to read supported points extension data")
-	}
-	e.SupportedPoints = supportedPoints
-	return fullLen, nil
-}
-
-type SignatureAlgorithmsExtension struct {
-	SupportedSignatureAlgorithms []SignatureScheme
-}
-
-func (e *SignatureAlgorithmsExtension) writeToUConn(uc *UConn) error {
-	uc.HandshakeState.Hello.SupportedSignatureAlgorithms = e.SupportedSignatureAlgorithms
-	return nil
-}
-
-func (e *SignatureAlgorithmsExtension) Len() int {
-	return 6 + 2*len(e.SupportedSignatureAlgorithms)
-}
-
-func (e *SignatureAlgorithmsExtension) Read(b []byte) (int, error) {
-	if len(b) < e.Len() {
-		return 0, io.ErrShortBuffer
-	}
-	// https://tools.ietf.org/html/rfc5246#section-7.4.1.4.1
-	b[0] = byte(extensionSignatureAlgorithms >> 8)
-	b[1] = byte(extensionSignatureAlgorithms)
-	b[2] = byte((2 + 2*len(e.SupportedSignatureAlgorithms)) >> 8)
-	b[3] = byte(2 + 2*len(e.SupportedSignatureAlgorithms))
-	b[4] = byte((2 * len(e.SupportedSignatureAlgorithms)) >> 8)
-	b[5] = byte(2 * len(e.SupportedSignatureAlgorithms))
-	for i, sigAndHash := range e.SupportedSignatureAlgorithms {
-		b[6+2*i] = byte(sigAndHash >> 8)
-		b[7+2*i] = byte(sigAndHash)
-	}
-	return e.Len(), io.EOF
-}
-
-func (e *SignatureAlgorithmsExtension) Write(b []byte) (int, error) {
-	fullLen := len(b)
-	extData := cryptobyte.String(b)
-	// RFC 5246, Section 7.4.1.4.1
-	var sigAndAlgs cryptobyte.String
-	if !extData.ReadUint16LengthPrefixed(&sigAndAlgs) || sigAndAlgs.Empty() {
-		return 0, errors.New("unable to read signature algorithms extension data")
-	}
-	supportedSignatureAlgorithms := []SignatureScheme{}
-	for !sigAndAlgs.Empty() {
-		var sigAndAlg uint16
-		if !sigAndAlgs.ReadUint16(&sigAndAlg) {
-			return 0, errors.New("unable to read signature algorithms extension data")
-		}
-		supportedSignatureAlgorithms = append(
-			supportedSignatureAlgorithms, SignatureScheme(sigAndAlg))
-	}
-	e.SupportedSignatureAlgorithms = supportedSignatureAlgorithms
-	return fullLen, nil
-}
-
-func (e *SignatureAlgorithmsExtension) UnmarshalJSON(data []byte) error {
-	var signatureAlgorithms struct {
-		SignatureAlgorithms []struct {
-			ID uint16 `json:"id"`
-		} `json:"supported_signature_algorithms"`
-	}
-	if err := json.Unmarshal(data, &signatureAlgorithms); err != nil {
-		return err
-	}
-
-	for _, sigAndHash := range signatureAlgorithms.SignatureAlgorithms {
-		e.SupportedSignatureAlgorithms = append(e.SupportedSignatureAlgorithms, SignatureScheme(unGREASEUint16(sigAndHash.ID)))
-	}
-	return nil
-}
-
+// SignatureAlgorithmsCertExtension implements signature_algorithms_cert (50)
 type SignatureAlgorithmsCertExtension struct {
 	SupportedSignatureAlgorithms []SignatureScheme
-}
-
-func (e *SignatureAlgorithmsCertExtension) writeToUConn(uc *UConn) error {
-	uc.HandshakeState.Hello.SupportedSignatureAlgorithms = e.SupportedSignatureAlgorithms
-	return nil
 }
 
 func (e *SignatureAlgorithmsCertExtension) Len() int {
@@ -549,6 +543,30 @@ func (e *SignatureAlgorithmsCertExtension) Read(b []byte) (int, error) {
 		b[7+2*i] = byte(sigAndHash)
 	}
 	return e.Len(), io.EOF
+}
+
+// Copied from SignatureAlgorithmsExtension.UnmarshalJSON
+func (e *SignatureAlgorithmsCertExtension) UnmarshalJSON(data []byte) error {
+	var signatureAlgorithms struct {
+		Algorithms []string `json:"supported_signature_algorithms"`
+	}
+	if err := json.Unmarshal(data, &signatureAlgorithms); err != nil {
+		return err
+	}
+
+	for _, sigScheme := range signatureAlgorithms.Algorithms {
+		if sigScheme == "GREASE" {
+			e.SupportedSignatureAlgorithms = append(e.SupportedSignatureAlgorithms, GREASE_PLACEHOLDER)
+			continue
+		}
+
+		if scheme, ok := godicttls.DictSignatureSchemeNameIndexed[sigScheme]; ok {
+			e.SupportedSignatureAlgorithms = append(e.SupportedSignatureAlgorithms, SignatureScheme(scheme))
+		} else {
+			return fmt.Errorf("unknown cert signature scheme: %s", sigScheme)
+		}
+	}
+	return nil
 }
 
 // Write implementation copied from SignatureAlgorithmsExtension.Write
@@ -575,72 +593,12 @@ func (e *SignatureAlgorithmsCertExtension) Write(b []byte) (int, error) {
 	return fullLen, nil
 }
 
-type RenegotiationInfoExtension struct {
-	// Renegotiation field limits how many times client will perform renegotiation: no limit, once, or never.
-	// The extension still will be sent, even if Renegotiation is set to RenegotiateNever.
-	Renegotiation RenegotiationSupport // [UTLS] added for internal use only
-
-	// RenegotiatedConnection is not yet properly handled, now we
-	// are just copying it to the client hello.
-	//
-	// If this is the initial handshake for a connection, then the
-	// "renegotiated_connection" field is of zero length in both the
-	// ClientHello and the ServerHello.
-	// RenegotiatedConnection []byte
-}
-
-func (e *RenegotiationInfoExtension) writeToUConn(uc *UConn) error {
-	uc.config.Renegotiation = e.Renegotiation
-	switch e.Renegotiation {
-	case RenegotiateOnceAsClient:
-		fallthrough
-	case RenegotiateFreelyAsClient:
-		uc.HandshakeState.Hello.SecureRenegotiationSupported = true
-	case RenegotiateNever:
-	default:
-	}
+func (e *SignatureAlgorithmsCertExtension) writeToUConn(uc *UConn) error {
+	uc.HandshakeState.Hello.SupportedSignatureAlgorithms = e.SupportedSignatureAlgorithms
 	return nil
 }
 
-func (e *RenegotiationInfoExtension) Len() int {
-	return 5 // + len(e.RenegotiatedConnection)
-}
-
-func (e *RenegotiationInfoExtension) Read(b []byte) (int, error) {
-	if len(b) < e.Len() {
-		return 0, io.ErrShortBuffer
-	}
-
-	// dataLen := len(e.RenegotiatedConnection)
-	extBodyLen := 1 // + len(dataLen)
-
-	b[0] = byte(extensionRenegotiationInfo >> 8)
-	b[1] = byte(extensionRenegotiationInfo & 0xff)
-	b[2] = byte(extBodyLen >> 8)
-	b[3] = byte(extBodyLen)
-	// b[4] = byte(dataLen)
-	// copy(b[5:], e.RenegotiatedConnection)
-
-	return e.Len(), io.EOF
-}
-
-func (e *RenegotiationInfoExtension) Write(_ []byte) (int, error) {
-	e.Renegotiation = RenegotiateOnceAsClient // none empty or other modes are unsupported
-	// extData := cryptobyte.String(b)
-	// var renegotiatedConnection cryptobyte.String
-	// if !extData.ReadUint8LengthPrefixed(&renegotiatedConnection) || !extData.Empty() {
-	// 	return 0, errors.New("unable to read renegotiation info extension data")
-	// }
-	// e.RenegotiatedConnection = make([]byte, len(renegotiatedConnection))
-	// copy(e.RenegotiatedConnection, renegotiatedConnection)
-	return 0, nil
-}
-
-func (e *RenegotiationInfoExtension) UnmarshalJSON(_ []byte) error {
-	e.Renegotiation = RenegotiateOnceAsClient
-	return nil
-}
-
+// ALPNExtension implements application_layer_protocol_negotiation (16)
 type ALPNExtension struct {
 	AlpnProtocols []string
 }
@@ -687,6 +645,19 @@ func (e *ALPNExtension) Read(b []byte) (int, error) {
 	return e.Len(), io.EOF
 }
 
+func (e *ALPNExtension) UnmarshalJSON(b []byte) error {
+	var protocolNames struct {
+		ProtocolNameList []string `json:"protocol_name_list"`
+	}
+
+	if err := json.Unmarshal(b, &protocolNames); err != nil {
+		return err
+	}
+
+	e.AlpnProtocols = protocolNames.ProtocolNameList
+	return nil
+}
+
 func (e *ALPNExtension) Write(b []byte) (int, error) {
 	fullLen := len(b)
 	extData := cryptobyte.String(b)
@@ -706,19 +677,6 @@ func (e *ALPNExtension) Write(b []byte) (int, error) {
 	}
 	e.AlpnProtocols = alpnProtocols
 	return fullLen, nil
-}
-
-func (e *ALPNExtension) UnmarshalJSON(b []byte) error {
-	var protocolNames struct {
-		ProtocolNameList []string `json:"protocol_name_list"`
-	}
-
-	if err := json.Unmarshal(b, &protocolNames); err != nil {
-		return err
-	}
-
-	e.AlpnProtocols = protocolNames.ProtocolNameList
-	return nil
 }
 
 // ApplicationSettingsExtension represents the TLS ALPS extension.
@@ -770,6 +728,19 @@ func (e *ApplicationSettingsExtension) Read(b []byte) (int, error) {
 	return e.Len(), io.EOF
 }
 
+func (e *ApplicationSettingsExtension) UnmarshalJSON(b []byte) error {
+	var applicationSettingsSupport struct {
+		SupportedProtocols []string `json:"supported_protocols"`
+	}
+
+	if err := json.Unmarshal(b, &applicationSettingsSupport); err != nil {
+		return err
+	}
+
+	e.SupportedProtocols = applicationSettingsSupport.SupportedProtocols
+	return nil
+}
+
 // Write implementation copied from ALPNExtension.Write
 func (e *ApplicationSettingsExtension) Write(b []byte) (int, error) {
 	fullLen := len(b)
@@ -792,20 +763,7 @@ func (e *ApplicationSettingsExtension) Write(b []byte) (int, error) {
 	return fullLen, nil
 }
 
-func (e *ApplicationSettingsExtension) UnmarshalJSON(b []byte) error {
-	var applicationSettingsSupport struct {
-		SupportedProtocols []string `json:"supported_protocols"`
-	}
-
-	if err := json.Unmarshal(b, &applicationSettingsSupport); err != nil {
-		return err
-	}
-
-	e.SupportedProtocols = applicationSettingsSupport.SupportedProtocols
-	return nil
-}
-
-// SCTExtension stands for SignedCertificateTimestamp
+// SCTExtension implements signed_certificate_timestamp (18)
 type SCTExtension struct {
 }
 
@@ -829,14 +787,15 @@ func (e *SCTExtension) Read(b []byte) (int, error) {
 	return e.Len(), io.EOF
 }
 
-func (e *SCTExtension) Write(_ []byte) (int, error) {
-	return 0, nil
-}
-
 func (e *SCTExtension) UnmarshalJSON(_ []byte) error {
 	return nil // no-op
 }
 
+func (e *SCTExtension) Write(_ []byte) (int, error) {
+	return 0, nil
+}
+
+// SessionTicketExtension implements session_ticket (35)
 type SessionTicketExtension struct {
 	Session *ClientSessionState
 }
@@ -873,16 +832,18 @@ func (e *SessionTicketExtension) Read(b []byte) (int, error) {
 	return e.Len(), io.EOF
 }
 
+func (e *SessionTicketExtension) UnmarshalJSON(_ []byte) error {
+	return nil // no-op
+}
+
 func (e *SessionTicketExtension) Write(_ []byte) (int, error) {
 	// RFC 5077, Section 3.2
 	return 0, nil
 }
 
-func (e *SessionTicketExtension) UnmarshalJSON(_ []byte) error {
-	return nil // no-op
-}
-
 // GenericExtension allows to include in ClientHello arbitrary unsupported extensions.
+// It is not defined in TLS RFCs nor by IANA.
+// If a server echoes this extension back, the handshake will likely fail due to no further support.
 type GenericExtension struct {
 	Id   uint16
 	Data []byte
@@ -911,6 +872,26 @@ func (e *GenericExtension) Read(b []byte) (int, error) {
 	return e.Len(), io.EOF
 }
 
+func (e *GenericExtension) UnmarshalJSON(b []byte) error {
+	var genericExtension struct {
+		Name string `json:"name"`
+		Data []byte `json:"data"`
+	}
+	if err := json.Unmarshal(b, &genericExtension); err != nil {
+		return err
+	}
+
+	// lookup extension ID by name
+	if id, ok := godicttls.DictExtTypeNameIndexed[genericExtension.Name]; ok {
+		e.Id = id
+	} else {
+		return fmt.Errorf("unknown extension name %s", genericExtension.Name)
+	}
+	e.Data = genericExtension.Data
+	return nil
+}
+
+// UtlsExtendedMasterSecretExtension implements extended_master_secret (23)
 type UtlsExtendedMasterSecretExtension struct {
 }
 
@@ -936,13 +917,13 @@ func (e *UtlsExtendedMasterSecretExtension) Read(b []byte) (int, error) {
 	return e.Len(), io.EOF
 }
 
+func (e *UtlsExtendedMasterSecretExtension) UnmarshalJSON(_ []byte) error {
+	return nil // no-op
+}
+
 func (e *UtlsExtendedMasterSecretExtension) Write(_ []byte) (int, error) {
 	// https://tools.ietf.org/html/rfc7627
 	return 0, nil
-}
-
-func (e *UtlsExtendedMasterSecretExtension) UnmarshalJSON(_ []byte) error {
-	return nil // no-op
 }
 
 var extendedMasterSecretLabel = []byte("extended master secret")
@@ -1026,6 +1007,10 @@ func (e *UtlsGREASEExtension) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
+	if jsonObj.Id == 0 {
+		return nil
+	}
+
 	if isGREASEUint16(jsonObj.Id) {
 		if jsonObj.KeepID {
 			e.Value = jsonObj.Id
@@ -1039,6 +1024,7 @@ func (e *UtlsGREASEExtension) UnmarshalJSON(b []byte) error {
 	}
 }
 
+// UtlsPaddingExtension implements padding (21)
 type UtlsPaddingExtension struct {
 	PaddingLen int
 	WillPad    bool // set to false to disable extension
@@ -1081,11 +1067,6 @@ func (e *UtlsPaddingExtension) Read(b []byte) (int, error) {
 	return e.Len(), io.EOF
 }
 
-func (e *UtlsPaddingExtension) Write(_ []byte) (int, error) {
-	e.GetPaddingLen = BoringPaddingStyle
-	return 0, nil
-}
-
 func (e *UtlsPaddingExtension) UnmarshalJSON(b []byte) error {
 	var jsonObj struct {
 		Length uint `json:"len"`
@@ -1104,6 +1085,11 @@ func (e *UtlsPaddingExtension) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (e *UtlsPaddingExtension) Write(_ []byte) (int, error) {
+	e.GetPaddingLen = BoringPaddingStyle
+	return 0, nil
+}
+
 // https://github.com/google/boringssl/blob/7d7554b6b3c79e707e25521e61e066ce2b996e4c/ssl/t1_lib.c#L2803
 func BoringPaddingStyle(unpaddedLen int) (int, bool) {
 	if unpaddedLen > 0xff && unpaddedLen < 0x200 {
@@ -1118,8 +1104,9 @@ func BoringPaddingStyle(unpaddedLen int) (int, bool) {
 	return 0, false
 }
 
-// UtlsCompressCertExtension is only implemented client-side, for server certificates. Alternate
-// certificate message formats (https://datatracker.ietf.org/doc/html/rfc7250) are not supported.
+// UtlsCompressCertExtension implements compress_certificate (27) and is only implemented client-side
+// for server certificates. Alternate certificate message formats
+// (https://datatracker.ietf.org/doc/html/rfc7250) are not supported.
 //
 // See https://datatracker.ietf.org/doc/html/rfc8879#section-3
 type UtlsCompressCertExtension struct {
@@ -1185,23 +1172,23 @@ func (e *UtlsCompressCertExtension) Write(b []byte) (int, error) {
 
 func (e *UtlsCompressCertExtension) UnmarshalJSON(b []byte) error {
 	var certificateCompressionAlgorithms struct {
-		Algorithms []struct {
-			Algorithm uint16 `json:"algorithm"`
-		} `json:"algorithms"`
+		Algorithms []string `json:"algorithms"`
 	}
 	if err := json.Unmarshal(b, &certificateCompressionAlgorithms); err != nil {
 		return err
 	}
 
-	algorithms := []CertCompressionAlgo{}
-	for _, algo := range certificateCompressionAlgorithms.Algorithms {
-		algorithms = append(algorithms, CertCompressionAlgo(algo.Algorithm))
+	for _, algorithm := range certificateCompressionAlgorithms.Algorithms {
+		if alg, ok := godicttls.DictCertificateCompressionAlgorithmNameIndexed[algorithm]; ok {
+			e.Algorithms = append(e.Algorithms, CertCompressionAlgo(alg))
+		} else {
+			return fmt.Errorf("unknown certificate compression algorithm %s", algorithm)
+		}
 	}
-	e.Algorithms = algorithms
 	return nil
 }
 
-/* TLS 1.3 */
+// KeyShareExtension implements key_share (51) and is for TLS 1.3 only.
 type KeyShareExtension struct {
 	KeyShares []KeyShare
 }
@@ -1280,20 +1267,38 @@ func (e *KeyShareExtension) writeToUConn(uc *UConn) error {
 
 func (e *KeyShareExtension) UnmarshalJSON(b []byte) error {
 	var keyShareClientHello struct {
-		ClientShares []KeyShare `json:"client_shares"`
+		ClientShares []struct {
+			Group       string  `json:"group"`
+			KeyExchange []uint8 `json:"key_exchange"`
+		} `json:"client_shares"`
 	}
 	if err := json.Unmarshal(b, &keyShareClientHello); err != nil {
 		return err
 	}
 
-	for i := range keyShareClientHello.ClientShares {
-		keyShareClientHello.ClientShares[i].Group = CurveID(unGREASEUint16(uint16(keyShareClientHello.ClientShares[i].Group)))
+	for _, clientShare := range keyShareClientHello.ClientShares {
+		if clientShare.Group == "GREASE" {
+			e.KeyShares = append(e.KeyShares, KeyShare{
+				Group: GREASE_PLACEHOLDER,
+				Data:  clientShare.KeyExchange,
+			})
+			continue
+		}
+
+		if groupID, ok := godicttls.DictSupportedGroupsNameIndexed[clientShare.Group]; ok {
+			ks := KeyShare{
+				Group: CurveID(groupID),
+				Data:  clientShare.KeyExchange,
+			}
+			e.KeyShares = append(e.KeyShares, ks)
+		} else {
+			return fmt.Errorf("unknown group %s", clientShare.Group)
+		}
 	}
-	e.KeyShares = make([]KeyShare, len(keyShareClientHello.ClientShares))
-	copy(e.KeyShares, keyShareClientHello.ClientShares)
 	return nil
 }
 
+// PSKKeyExchangeModesExtension implements psk_key_exchange_modes (45).
 type PSKKeyExchangeModesExtension struct {
 	Modes []uint8
 }
@@ -1349,20 +1354,23 @@ func (e *PSKKeyExchangeModesExtension) writeToUConn(uc *UConn) error {
 
 func (e *PSKKeyExchangeModesExtension) UnmarshalJSON(b []byte) error {
 	var pskKeyExchangeModes struct {
-		Modes []struct {
-			Mode uint8 `json:"mode"`
-		} `json:"ke_modes"`
+		Modes []string `json:"ke_modes"`
 	}
 	if err := json.Unmarshal(b, &pskKeyExchangeModes); err != nil {
 		return err
 	}
 
 	for _, mode := range pskKeyExchangeModes.Modes {
-		e.Modes = append(e.Modes, mode.Mode)
+		if modeID, ok := godicttls.DictPSKKeyExchangeModeNameIndexed[mode]; ok {
+			e.Modes = append(e.Modes, modeID)
+		} else {
+			return fmt.Errorf("unknown PSK Key Exchange Mode %s", mode)
+		}
 	}
 	return nil
 }
 
+// SupportedVersionsExtension implements supported_versions (43).
 type SupportedVersionsExtension struct {
 	Versions []uint16
 }
@@ -1422,20 +1430,35 @@ func (e *SupportedVersionsExtension) Write(b []byte) (int, error) {
 
 func (e *SupportedVersionsExtension) UnmarshalJSON(b []byte) error {
 	var supportedVersions struct {
-		Versions []struct {
-			Version uint16 `json:"version"`
-		} `json:"versions"`
+		Versions []string `json:"versions"`
 	}
 	if err := json.Unmarshal(b, &supportedVersions); err != nil {
 		return err
 	}
 
 	for _, version := range supportedVersions.Versions {
-		e.Versions = append(e.Versions, unGREASEUint16(version.Version))
+		switch version {
+		case "GREASE":
+			e.Versions = append(e.Versions, GREASE_PLACEHOLDER)
+		case "TLS 1.3":
+			e.Versions = append(e.Versions, VersionTLS13)
+		case "TLS 1.2":
+			e.Versions = append(e.Versions, VersionTLS12)
+		case "TLS 1.1":
+			e.Versions = append(e.Versions, VersionTLS11)
+		case "TLS 1.0":
+			e.Versions = append(e.Versions, VersionTLS10)
+		case "SSL 3.0": // deprecated
+			// 	e.Versions = append(e.Versions, VersionSSL30)
+			return fmt.Errorf("SSL 3.0 is deprecated")
+		default:
+			return fmt.Errorf("unknown version %s", version)
+		}
 	}
 	return nil
 }
 
+// CookieExtension implements cookie (44).
 // MUST NOT be part of initial ClientHello
 type CookieExtension struct {
 	Cookie []byte
@@ -1462,6 +1485,122 @@ func (e *CookieExtension) Read(b []byte) (int, error) {
 		copy(b[4:], e.Cookie)
 	}
 	return e.Len(), io.EOF
+}
+
+func (e *CookieExtension) UnmarshalJSON(data []byte) error {
+	var cookie struct {
+		Cookie []uint8 `json:"cookie"`
+	}
+	if err := json.Unmarshal(data, &cookie); err != nil {
+		return err
+	}
+	e.Cookie = []byte(cookie.Cookie)
+	return nil
+}
+
+// NPNExtension implements next_protocol_negotiation (Not IANA assigned)
+type NPNExtension struct {
+	NextProtos []string
+}
+
+func (e *NPNExtension) writeToUConn(uc *UConn) error {
+	uc.config.NextProtos = e.NextProtos
+	uc.HandshakeState.Hello.NextProtoNeg = true
+	return nil
+}
+
+func (e *NPNExtension) Len() int {
+	return 4
+}
+
+func (e *NPNExtension) Read(b []byte) (int, error) {
+	if len(b) < e.Len() {
+		return 0, io.ErrShortBuffer
+	}
+	b[0] = byte(extensionNextProtoNeg >> 8)
+	b[1] = byte(extensionNextProtoNeg & 0xff)
+	// The length is always 0
+	return e.Len(), io.EOF
+}
+
+// Write is a no-op for NPNExtension. NextProtos are not included in the
+// ClientHello.
+func (e *NPNExtension) Write(_ []byte) (int, error) {
+	return 0, nil
+}
+
+// draft-agl-tls-nextprotoneg-04:
+// The "extension_data" field of a "next_protocol_negotiation" extension
+// in a "ClientHello" MUST be empty.
+func (e *NPNExtension) UnmarshalJSON(_ []byte) error {
+	return nil
+}
+
+// RenegotiationInfoExtension implements renegotiation_info (65281)
+type RenegotiationInfoExtension struct {
+	// Renegotiation field limits how many times client will perform renegotiation: no limit, once, or never.
+	// The extension still will be sent, even if Renegotiation is set to RenegotiateNever.
+	Renegotiation RenegotiationSupport // [UTLS] added for internal use only
+
+	// RenegotiatedConnection is not yet properly handled, now we
+	// are just copying it to the client hello.
+	//
+	// If this is the initial handshake for a connection, then the
+	// "renegotiated_connection" field is of zero length in both the
+	// ClientHello and the ServerHello.
+	// RenegotiatedConnection []byte
+}
+
+func (e *RenegotiationInfoExtension) Len() int {
+	return 5 // + len(e.RenegotiatedConnection)
+}
+
+func (e *RenegotiationInfoExtension) Read(b []byte) (int, error) {
+	if len(b) < e.Len() {
+		return 0, io.ErrShortBuffer
+	}
+
+	// dataLen := len(e.RenegotiatedConnection)
+	extBodyLen := 1 // + len(dataLen)
+
+	b[0] = byte(extensionRenegotiationInfo >> 8)
+	b[1] = byte(extensionRenegotiationInfo & 0xff)
+	b[2] = byte(extBodyLen >> 8)
+	b[3] = byte(extBodyLen)
+	// b[4] = byte(dataLen)
+	// copy(b[5:], e.RenegotiatedConnection)
+
+	return e.Len(), io.EOF
+}
+
+func (e *RenegotiationInfoExtension) UnmarshalJSON(_ []byte) error {
+	e.Renegotiation = RenegotiateOnceAsClient
+	return nil
+}
+
+func (e *RenegotiationInfoExtension) Write(_ []byte) (int, error) {
+	e.Renegotiation = RenegotiateOnceAsClient // none empty or other modes are unsupported
+	// extData := cryptobyte.String(b)
+	// var renegotiatedConnection cryptobyte.String
+	// if !extData.ReadUint8LengthPrefixed(&renegotiatedConnection) || !extData.Empty() {
+	// 	return 0, errors.New("unable to read renegotiation info extension data")
+	// }
+	// e.RenegotiatedConnection = make([]byte, len(renegotiatedConnection))
+	// copy(e.RenegotiatedConnection, renegotiatedConnection)
+	return 0, nil
+}
+
+func (e *RenegotiationInfoExtension) writeToUConn(uc *UConn) error {
+	uc.config.Renegotiation = e.Renegotiation
+	switch e.Renegotiation {
+	case RenegotiateOnceAsClient:
+		fallthrough
+	case RenegotiateFreelyAsClient:
+		uc.HandshakeState.Hello.SecureRenegotiationSupported = true
+	case RenegotiateNever:
+	default:
+	}
+	return nil
 }
 
 /*
@@ -1500,6 +1639,12 @@ func (e *FakeChannelIDExtension) Write(_ []byte) (int, error) {
 	return 0, nil
 }
 
+func (e *FakeChannelIDExtension) UnmarshalJSON(_ []byte) error {
+	return nil
+}
+
+// FakeRecordSizeLimitExtension implements record_size_limit (28)
+// but with no support.
 type FakeRecordSizeLimitExtension struct {
 	Limit uint16
 }
@@ -1537,34 +1682,19 @@ func (e *FakeRecordSizeLimitExtension) Write(b []byte) (int, error) {
 	return fullLen, nil
 }
 
-type DelegatedCredentialsExtension struct {
-	AlgorithmsSignature []SignatureScheme
-}
+func (e *FakeRecordSizeLimitExtension) UnmarshalJSON(data []byte) error {
+	var limitAccepter struct {
+		Limit uint16 `json:"record_size_limit"`
+	}
+	if err := json.Unmarshal(data, &limitAccepter); err != nil {
+		return err
+	}
 
-func (e *DelegatedCredentialsExtension) writeToUConn(uc *UConn) error {
+	e.Limit = limitAccepter.Limit
 	return nil
 }
 
-func (e *DelegatedCredentialsExtension) Len() int {
-	return 6 + 2*len(e.AlgorithmsSignature)
-}
-
-func (e *DelegatedCredentialsExtension) Read(b []byte) (int, error) {
-	if len(b) < e.Len() {
-		return 0, io.ErrShortBuffer
-	}
-	b[0] = byte(extensionDelegatedCredentials >> 8)
-	b[1] = byte(extensionDelegatedCredentials)
-	b[2] = byte((2 + 2*len(e.AlgorithmsSignature)) >> 8)
-	b[3] = byte(2 + 2*len(e.AlgorithmsSignature))
-	b[4] = byte((2 * len(e.AlgorithmsSignature)) >> 8)
-	b[5] = byte(2 * len(e.AlgorithmsSignature))
-	for i, sigAndHash := range e.AlgorithmsSignature {
-		b[6+2*i] = byte(sigAndHash >> 8)
-		b[7+2*i] = byte(sigAndHash)
-	}
-	return e.Len(), io.EOF
-}
+type DelegatedCredentialsExtension = FakeDelegatedCredentialsExtension
 
 // https://tools.ietf.org/html/rfc8472#section-2
 type FakeTokenBindingExtension struct {
@@ -1610,6 +1740,35 @@ func (e *FakeTokenBindingExtension) Write(b []byte) (int, error) {
 	}
 	e.KeyParameters = keyParameters
 	return fullLen, nil
+}
+
+func (e *FakeTokenBindingExtension) UnmarshalJSON(data []byte) error {
+	var tokenBindingAccepter struct {
+		TB_ProtocolVersion struct {
+			Major uint8 `json:"major"`
+			Minor uint8 `json:"minor"`
+		} `json:"token_binding_version"`
+		TokenBindingKeyParameters []string `json:"key_parameters_list"`
+	}
+	if err := json.Unmarshal(data, &tokenBindingAccepter); err != nil {
+		return err
+	}
+
+	e.MajorVersion = tokenBindingAccepter.TB_ProtocolVersion.Major
+	e.MinorVersion = tokenBindingAccepter.TB_ProtocolVersion.Minor
+	for _, param := range tokenBindingAccepter.TokenBindingKeyParameters {
+		switch param {
+		case "rsa2048_pkcs1.5":
+			e.KeyParameters = append(e.KeyParameters, 0)
+		case "rsa2048_pss":
+			e.KeyParameters = append(e.KeyParameters, 1)
+		case "ecdsap256":
+			e.KeyParameters = append(e.KeyParameters, 2)
+		default:
+			return fmt.Errorf("unknown token binding key parameter: %s", param)
+		}
+	}
+	return nil
 }
 
 // https://datatracker.ietf.org/doc/html/draft-ietf-tls-subcerts-15#section-4.1.1
@@ -1665,14 +1824,38 @@ func (e *FakeDelegatedCredentialsExtension) Write(b []byte) (int, error) {
 	return fullLen, nil
 }
 
+// Implementation copied from SignatureAlgorithmsExtension.UnmarshalJSON
+func (e *FakeDelegatedCredentialsExtension) UnmarshalJSON(data []byte) error {
+	var signatureAlgorithms struct {
+		Algorithms []string `json:"supported_signature_algorithms"`
+	}
+	if err := json.Unmarshal(data, &signatureAlgorithms); err != nil {
+		return err
+	}
+
+	for _, sigScheme := range signatureAlgorithms.Algorithms {
+		if sigScheme == "GREASE" {
+			e.SupportedSignatureAlgorithms = append(e.SupportedSignatureAlgorithms, GREASE_PLACEHOLDER)
+			continue
+		}
+
+		if scheme, ok := godicttls.DictSignatureSchemeNameIndexed[sigScheme]; ok {
+			e.SupportedSignatureAlgorithms = append(e.SupportedSignatureAlgorithms, SignatureScheme(scheme))
+		} else {
+			return fmt.Errorf("unknown delegated credentials signature scheme: %s", sigScheme)
+		}
+	}
+	return nil
+}
+
 // FakePreSharedKeyExtension is an extension used to set the PSK extension in the
 // ClientHello.
 //
 // Unfortunately, even when the PSK extension is set, there will be no PSK-based
 // resumption since crypto/tls does not implement PSK.
 type FakePreSharedKeyExtension struct {
-	PskIdentities []PskIdentity
-	PskBinders    [][]byte
+	PskIdentities []PskIdentity `json:"identities"`
+	PskBinders    [][]byte      `json:"binders"`
 }
 
 func (e *FakePreSharedKeyExtension) writeToUConn(uc *UConn) error {
@@ -1814,4 +1997,19 @@ func (e *FakePreSharedKeyExtension) Write(b []byte) (n int, err error) {
 	}
 
 	return fullLen, nil
+}
+
+func (e *FakePreSharedKeyExtension) UnmarshalJSON(data []byte) error {
+	var pskAccepter struct {
+		PskIdentities []PskIdentity `json:"identities"`
+		PskBinders    [][]byte      `json:"binders"`
+	}
+
+	if err := json.Unmarshal(data, &pskAccepter); err != nil {
+		return err
+	}
+
+	e.PskIdentities = pskAccepter.PskIdentities
+	e.PskBinders = pskAccepter.PskBinders
+	return nil
 }

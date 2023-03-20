@@ -8,11 +8,18 @@ import (
 )
 
 func TestClientHelloSpecJSONUnmarshaler(t *testing.T) {
-	testClientHelloSpecJSONUnmarshaler_Chrome102(t)
+	testClientHelloSpecJSONUnmarshaler(t, "testdata/ClientHello-JSON-Chrome102.json", HelloChrome_102)
+	testClientHelloSpecJSONUnmarshaler(t, "testdata/ClientHello-JSON-Firefox105.json", HelloFirefox_105)
+	testClientHelloSpecJSONUnmarshaler(t, "testdata/ClientHello-JSON-iOS14.json", HelloIOS_14)
+	testClientHelloSpecJSONUnmarshaler(t, "testdata/ClientHello-JSON-Edge106.json", HelloEdge_106)
 }
 
-func testClientHelloSpecJSONUnmarshaler_Chrome102(t *testing.T) {
-	jsonCH, err := os.ReadFile("testdata/ClientHello-JSON-Chrome102.json")
+func testClientHelloSpecJSONUnmarshaler(
+	t *testing.T,
+	jsonFilepath string,
+	truthClientHelloID ClientHelloID,
+) {
+	jsonCH, err := os.ReadFile(jsonFilepath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,72 +29,95 @@ func testClientHelloSpecJSONUnmarshaler_Chrome102(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	savedChrome102, _ := utlsIdToSpec(HelloChrome_102)
-	jsonCHS := chsju.ClientHelloSpec()
+	truthSpec, _ := utlsIdToSpec(truthClientHelloID)
+	jsonSpec := chsju.ClientHelloSpec()
 
 	// Compare CipherSuites
-	if !reflect.DeepEqual(jsonCHS.CipherSuites, savedChrome102.CipherSuites) {
-		t.Errorf("got %#v, want %#v", jsonCHS.CipherSuites, savedChrome102.CipherSuites)
+	if !reflect.DeepEqual(jsonSpec.CipherSuites, truthSpec.CipherSuites) {
+		t.Errorf("JSONUnmarshaler %s: got %#v, want %#v", clientHelloSpecJSONTestIdentifier(truthClientHelloID), jsonSpec.CipherSuites, truthSpec.CipherSuites)
 	}
 
 	// Compare CompressionMethods
-	if !reflect.DeepEqual(jsonCHS.CompressionMethods, savedChrome102.CompressionMethods) {
-		t.Errorf("got %#v, want %#v", jsonCHS.CompressionMethods, savedChrome102.CompressionMethods)
+	if !reflect.DeepEqual(jsonSpec.CompressionMethods, truthSpec.CompressionMethods) {
+		t.Errorf("JSONUnmarshaler %s: got %#v, want %#v", clientHelloSpecJSONTestIdentifier(truthClientHelloID), jsonSpec.CompressionMethods, truthSpec.CompressionMethods)
 	}
 
 	// Compare Extensions
-	if len(jsonCHS.Extensions) != len(savedChrome102.Extensions) {
-		t.Errorf("len(jsonCHS.Extensions) = %d != %d = len(savedChrome102.Extensions)", len(jsonCHS.Extensions), len(savedChrome102.Extensions))
+	if len(jsonSpec.Extensions) != len(truthSpec.Extensions) {
+		t.Errorf("JSONUnmarshaler %s: len(jsonExtensions) = %d != %d = len(truthExtensions)", clientHelloSpecJSONTestIdentifier(truthClientHelloID), len(jsonSpec.Extensions), len(truthSpec.Extensions))
 	}
 
-	for i := range jsonCHS.Extensions {
-		if !reflect.DeepEqual(jsonCHS.Extensions[i], savedChrome102.Extensions[i]) {
-			if _, ok := jsonCHS.Extensions[i].(*UtlsPaddingExtension); ok {
-				continue // UtlsPaddingExtension has non-nil function member
+	for i := range jsonSpec.Extensions {
+		if !reflect.DeepEqual(jsonSpec.Extensions[i], truthSpec.Extensions[i]) {
+			if _, ok := jsonSpec.Extensions[i].(*UtlsPaddingExtension); ok {
+				testedPaddingExt := jsonSpec.Extensions[i].(*UtlsPaddingExtension)
+				savedPaddingExt := truthSpec.Extensions[i].(*UtlsPaddingExtension)
+				if testedPaddingExt.PaddingLen != savedPaddingExt.PaddingLen || testedPaddingExt.WillPad != savedPaddingExt.WillPad {
+					t.Errorf("got %#v, want %#v", testedPaddingExt, savedPaddingExt)
+				} else {
+					continue // UtlsPaddingExtension has non-nil function member
+				}
 			}
-			t.Errorf("got %#v, want %#v", jsonCHS.Extensions[i], savedChrome102.Extensions[i])
+			t.Errorf("JSONUnmarshaler %s: got %#v, want %#v", clientHelloSpecJSONTestIdentifier(truthClientHelloID), jsonSpec.Extensions[i], truthSpec.Extensions[i])
 		}
 	}
 }
 
 func TestClientHelloSpecUnmarshalJSON(t *testing.T) {
-	testClientHelloSpecUnmarshalJSON_Chrome102(t)
+	testClientHelloSpecUnmarshalJSON(t, "testdata/ClientHello-JSON-Chrome102.json", HelloChrome_102)
+	testClientHelloSpecUnmarshalJSON(t, "testdata/ClientHello-JSON-Firefox105.json", HelloFirefox_105)
+	testClientHelloSpecUnmarshalJSON(t, "testdata/ClientHello-JSON-iOS14.json", HelloIOS_14)
+	testClientHelloSpecUnmarshalJSON(t, "testdata/ClientHello-JSON-Edge106.json", HelloEdge_106)
 }
 
-func testClientHelloSpecUnmarshalJSON_Chrome102(t *testing.T) {
-	var chs ClientHelloSpec
-	jsonCH, err := os.ReadFile("testdata/ClientHello-JSON-Chrome102.json")
+func testClientHelloSpecUnmarshalJSON(
+	t *testing.T,
+	jsonFilepath string,
+	truthClientHelloID ClientHelloID,
+) {
+	var jsonSpec ClientHelloSpec
+	jsonCH, err := os.ReadFile(jsonFilepath)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if err := json.Unmarshal(jsonCH, &chs); err != nil {
+	if err := json.Unmarshal(jsonCH, &jsonSpec); err != nil {
 		t.Fatal(err)
 	}
 
-	savedChrome102, _ := utlsIdToSpec(HelloChrome_102)
+	truthSpec, _ := utlsIdToSpec(truthClientHelloID)
 
 	// Compare CipherSuites
-	if !reflect.DeepEqual(chs.CipherSuites, savedChrome102.CipherSuites) {
-		t.Errorf("got %#v, want %#v", chs.CipherSuites, savedChrome102.CipherSuites)
+	if !reflect.DeepEqual(jsonSpec.CipherSuites, truthSpec.CipherSuites) {
+		t.Errorf("UnmarshalJSON %s: got %#v, want %#v", clientHelloSpecJSONTestIdentifier(truthClientHelloID), jsonSpec.CipherSuites, truthSpec.CipherSuites)
 	}
 
 	// Compare CompressionMethods
-	if !reflect.DeepEqual(chs.CompressionMethods, savedChrome102.CompressionMethods) {
-		t.Errorf("got %#v, want %#v", chs.CompressionMethods, savedChrome102.CompressionMethods)
+	if !reflect.DeepEqual(jsonSpec.CompressionMethods, truthSpec.CompressionMethods) {
+		t.Errorf("UnmarshalJSON %s: got %#v, want %#v", clientHelloSpecJSONTestIdentifier(truthClientHelloID), jsonSpec.CompressionMethods, truthSpec.CompressionMethods)
 	}
 
 	// Compare Extensions
-	if len(chs.Extensions) != len(savedChrome102.Extensions) {
-		t.Errorf("len(chs.Extensions) = %d != %d = len(savedChrome102.Extensions)", len(chs.Extensions), len(savedChrome102.Extensions))
+	if len(jsonSpec.Extensions) != len(truthSpec.Extensions) {
+		t.Errorf("UnmarshalJSON %s: len(jsonExtensions) = %d != %d = len(truthExtensions)", jsonFilepath, len(jsonSpec.Extensions), len(truthSpec.Extensions))
 	}
 
-	for i := range chs.Extensions {
-		if !reflect.DeepEqual(chs.Extensions[i], savedChrome102.Extensions[i]) {
-			if _, ok := chs.Extensions[i].(*UtlsPaddingExtension); ok {
-				continue // UtlsPaddingExtension has non-nil function member
+	for i := range jsonSpec.Extensions {
+		if !reflect.DeepEqual(jsonSpec.Extensions[i], truthSpec.Extensions[i]) {
+			if _, ok := jsonSpec.Extensions[i].(*UtlsPaddingExtension); ok {
+				testedPaddingExt := jsonSpec.Extensions[i].(*UtlsPaddingExtension)
+				savedPaddingExt := truthSpec.Extensions[i].(*UtlsPaddingExtension)
+				if testedPaddingExt.PaddingLen != savedPaddingExt.PaddingLen || testedPaddingExt.WillPad != savedPaddingExt.WillPad {
+					t.Errorf("got %#v, want %#v", testedPaddingExt, savedPaddingExt)
+				} else {
+					continue // UtlsPaddingExtension has non-nil function member
+				}
 			}
-			t.Errorf("got %#v, want %#v", chs.Extensions[i], savedChrome102.Extensions[i])
+			t.Errorf("UnmarshalJSON %s: got %#v, want %#v", clientHelloSpecJSONTestIdentifier(truthClientHelloID), jsonSpec.Extensions[i], truthSpec.Extensions[i])
 		}
 	}
+}
+
+func clientHelloSpecJSONTestIdentifier(id ClientHelloID) string {
+	return id.Client + id.Version
 }
