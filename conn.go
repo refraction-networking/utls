@@ -1551,6 +1551,9 @@ func (c *Conn) connectionStateLocked() ConnectionState {
 	} else {
 		state.ekm = c.ekm
 	}
+	// [UTLS SECTION START]
+	c.utlsConnectionStateLocked(&state)
+	// [UTLS SECTION END]
 	return state
 }
 
