@@ -1859,8 +1859,11 @@ type FakePreSharedKeyExtension struct {
 }
 
 func (e *FakePreSharedKeyExtension) writeToUConn(uc *UConn) error {
+	if uc.config.ClientSessionCache == nil {
+		return nil // don't write the extension if there is no session cache
+	}
 	if session, ok := uc.config.ClientSessionCache.Get(clientSessionCacheKey(uc.conn.RemoteAddr(), uc.config)); !ok || session == nil {
-		return nil // don't write the extension if there is no session
+		return nil // don't write the extension if there is no session cache available for this session
 	}
 	uc.HandshakeState.Hello.PskIdentities = e.PskIdentities
 	uc.HandshakeState.Hello.PskBinders = e.PskBinders
