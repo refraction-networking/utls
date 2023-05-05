@@ -2036,9 +2036,7 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 		return errors.New("ClientHello expected length: 32 bytes. Got: " +
 			strconv.Itoa(len(hello.Random)) + " bytes")
 	}
-	if len(hello.CipherSuites) == 0 {
-		hello.CipherSuites = defaultCipherSuites
-	}
+
 	if len(hello.CompressionMethods) == 0 {
 		hello.CompressionMethods = []uint8{compressionNone}
 	}
