@@ -3,11 +3,11 @@
 // license that can be found in the LICENSE file.
 
 //go:build loong64
-// +build loong64
 
 package cpu
 
-const CacheLineSize = 64
+// CacheLinePadSize is used to prevent false sharing of cache lines.
+// We choose 64 because Loongson 3A5000 the L1 Dcache is 4-way 256-line 64-byte-per-line.
+const CacheLinePadSize = 64
 
-func initOptions() {
-}
+func doinit() {}
