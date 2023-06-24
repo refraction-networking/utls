@@ -631,7 +631,7 @@ func (uconn *UConn) SetTLSVers(minTLSVers, maxTLSVers uint16, specExtensions []T
 		}
 	}
 
-	if minTLSVers < VersionTLS10 || minTLSVers > VersionTLS12 {
+	if minTLSVers < VersionTLS10 || minTLSVers > VersionTLS13 {
 		return fmt.Errorf("uTLS does not support 0x%X as min version", minTLSVers)
 	}
 
