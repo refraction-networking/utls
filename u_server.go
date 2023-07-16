@@ -34,8 +34,7 @@ type ServerSessionState struct {
 //
 // Warning: you should probably not use this function, unless you are absolutely
 // sure this is the functionality you are looking for.
-func ForgeServerSessionState(masterSecret []byte, chID ClientHelloID) (*ServerSessionState, error) {
-	config := &Config{}
+func ForgeServerSessionState(masterSecret []byte, serverConfig *Config, chID ClientHelloID) (*ServerSessionState, error) {
 	chSpec, err := utlsIdToSpec(chID)
 	if err != nil {
 		return nil, err
@@ -48,15 +47,17 @@ func ForgeServerSessionState(masterSecret []byte, chID ClientHelloID) (*ServerSe
 	}
 	clientVersions = makeSupportedVersions(minVers, maxVers)
 
-	vers, ok := config.mutualVersion(roleServer, clientVersions)
+	vers, ok := serverConfig.mutualVersion(roleServer, clientVersions)
 	if !ok {
 		return nil, fmt.Errorf("unable to select mutual version")
+	} else if vers < VersionTLS12 {
+		return nil, fmt.Errorf("selected mutual version too old")
 	}
 
 	clientCipherSuites := make([]uint16, len(chSpec.CipherSuites))
 	copy(clientCipherSuites, chSpec.CipherSuites)
 
-	chosenCiphersuite, err := pickCipherSuite(clientCipherSuites, vers, config)
+	chosenCiphersuite, err := pickCipherSuite(clientCipherSuites, vers, serverConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -73,6 +74,29 @@ func ForgeServerSessionState(masterSecret []byte, chID ClientHelloID) (*ServerSe
 
 	return sessionState, nil
 }
+
+func filterClientCiphers(c []*cipherSuite) []*cipherSuite {
+
+	return []*cipherSuite{}
+}
+
+// func filterClientCipher(c *cipherSuite) bool {
+// 	if c.flags&suiteECDHE != 0 {
+// 		if !hs.ecdheOk {
+// 			return false
+// 		}
+// 		if c.flags&suiteECSign != 0 {
+// 			if !hs.ecSignOk {
+// 				return false
+// 			}
+// 		} else if !hs.rsaSignOk {
+// 			return false
+// 		}
+// 	} else if !hs.rsaDecryptOk {
+// 		return false
+// 	}
+// 	return true
+// }
 
 // Marshal serializes the sessionState object to bytes.
 func (ss *ServerSessionState) Marshal() ([]byte, error) {
