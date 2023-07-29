@@ -171,35 +171,171 @@ func TestDialTimeout(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping in short mode")
 	}
-	listener := newLocalListener(t)
 
-	addr := listener.Addr().String()
-	defer listener.Close()
+	timeout := 100 * time.Microsecond
+	for !t.Failed() {
+		acceptc := make(chan net.Conn)
+		listener := newLocalListener(t)
+		go func() {
+			for {
+				conn, err := listener.Accept()
+				if err != nil {
+					close(acceptc)
+					return
+				}
+				acceptc <- conn
+			}
+		}()
 
-	complete := make(chan bool)
-	defer close(complete)
+		addr := listener.Addr().String()
+		dialer := &net.Dialer{
+			Timeout: timeout,
+		}
+		if conn, err := DialWithDialer(dialer, "tcp", addr, nil); err == nil {
+			conn.Close()
+			t.Errorf("DialWithTimeout unexpectedly completed successfully")
+		} else if !isTimeoutError(err) {
+			t.Errorf("resulting error not a timeout: %v\nType %T: %#v", err, err, err)
+		}
+
+		listener.Close()
+
+		// We're looking for a timeout during the handshake, so check that the
+		// Listener actually accepted the connection to initiate it. (If the server
+		// takes too long to accept the connection, we might cancel before the
+		// underlying net.Conn is ever dialed — without ever attempting a
+		// handshake.)
+		lconn, ok := <-acceptc
+		if ok {
+			// The Listener accepted a connection, so assume that it was from our
+			// Dial: we triggered the timeout at the point where we wanted it!
+			t.Logf("Listener accepted a connection from %s", lconn.RemoteAddr())
+			lconn.Close()
+		}
+		// Close any spurious extra connecitions from the listener. (This is
+		// possible if there are, for example, stray Dial calls from other tests.)
+		for extraConn := range acceptc {
+			t.Logf("spurious extra connection from %s", extraConn.RemoteAddr())
+			extraConn.Close()
+		}
+		if ok {
+			break
+		}
+
+		t.Logf("with timeout %v, DialWithDialer returned before listener accepted any connections; retrying", timeout)
+		timeout *= 2
+	}
+}
+
+func TestDeadlineOnWrite(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping in short mode")
+	}
+
+	ln := newLocalListener(t)
+	defer ln.Close()
+
+	srvCh := make(chan *Conn, 1)
 
 	go func() {
-		conn, err := listener.Accept()
+		sconn, err := ln.Accept()
 		if err != nil {
-			t.Error(err)
+			srvCh <- nil
 			return
 		}
-		<-complete
-		conn.Close()
+		srv := Server(sconn, testConfig.Clone())
+		if err := srv.Handshake(); err != nil {
+			srvCh <- nil
+			return
+		}
+		srvCh <- srv
 	}()
 
-	dialer := &net.Dialer{
-		Timeout: 10 * time.Millisecond,
+	clientConfig := testConfig.Clone()
+	clientConfig.MaxVersion = VersionTLS12
+	conn, err := Dial("tcp", ln.Addr().String(), clientConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	srv := <-srvCh
+	if srv == nil {
+		t.Error(err)
 	}
 
-	var err error
-	if _, err = DialWithDialer(dialer, "tcp", addr, nil); err == nil {
-		t.Fatal("DialWithTimeout completed successfully")
+	// Make sure the client/server is setup correctly and is able to do a typical Write/Read
+	buf := make([]byte, 6)
+	if _, err := srv.Write([]byte("foobar")); err != nil {
+		t.Errorf("Write err: %v", err)
+	}
+	if n, err := conn.Read(buf); n != 6 || err != nil || string(buf) != "foobar" {
+		t.Errorf("Read = %d, %v, data %q; want 6, nil, foobar", n, err, buf)
 	}
 
+	// Set a deadline which should cause Write to timeout
+	if err = srv.SetDeadline(time.Now()); err != nil {
+		t.Fatalf("SetDeadline(time.Now()) err: %v", err)
+	}
+	if _, err = srv.Write([]byte("should fail")); err == nil {
+		t.Fatal("Write should have timed out")
+	}
+
+	// Clear deadline and make sure it still times out
+	if err = srv.SetDeadline(time.Time{}); err != nil {
+		t.Fatalf("SetDeadline(time.Time{}) err: %v", err)
+	}
+	if _, err = srv.Write([]byte("This connection is permanently broken")); err == nil {
+		t.Fatal("Write which previously failed should still time out")
+	}
+
+	// Verify the error
+	if ne := err.(net.Error); ne.Temporary() != false {
+		t.Error("Write timed out but incorrectly classified the error as Temporary")
+	}
 	if !isTimeoutError(err) {
-		t.Errorf("resulting error not a timeout: %v\nType %T: %#v", err, err, err)
+		t.Error("Write timed out but did not classify the error as a Timeout")
+	}
+}
+
+type readerFunc func([]byte) (int, error)
+
+func (f readerFunc) Read(b []byte) (int, error) { return f(b) }
+
+// TestDialer tests that tls.Dialer.DialContext can abort in the middle of a handshake.
+// (The other cases are all handled by the existing dial tests in this package, which
+// all also flow through the same code shared code paths)
+func TestDialer(t *testing.T) {
+	ln := newLocalListener(t)
+	defer ln.Close()
+
+	unblockServer := make(chan struct{}) // close-only
+	defer close(unblockServer)
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		<-unblockServer
+	}()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	d := Dialer{Config: &Config{
+		Rand: readerFunc(func(b []byte) (n int, err error) {
+			// By the time crypto/tls wants randomness, that means it has a TCP
+			// connection, so we're past the Dialer's dial and now blocked
+			// in a handshake. Cancel our context and see if we get unstuck.
+			// (Our TCP listener above never reads or writes, so the Handshake
+			// would otherwise be stuck forever)
+			cancel()
+			return len(b), nil
+		}),
+		ServerName: "foo",
+	}}
+	_, err := d.DialContext(ctx, "tcp", ln.Addr().String())
+	if err != context.Canceled {
+		t.Errorf("err = %v; want context.Canceled", err)
 	}
 }
 
@@ -451,6 +587,9 @@ func TestTLSUniqueMatches(t *testing.T) {
 	if !bytes.Equal(conn.ConnectionState().TLSUnique, serverTLSUniquesValue) {
 		t.Error("client and server channel bindings differ")
 	}
+	if serverTLSUniquesValue == nil || bytes.Equal(serverTLSUniquesValue, make([]byte, 12)) {
+		t.Error("tls-unique is empty or zero")
+	}
 	conn.Close()
 
 	conn, err = Dial("tcp", ln.Addr().String(), clientConfig)
@@ -470,6 +609,9 @@ func TestTLSUniqueMatches(t *testing.T) {
 
 	if !bytes.Equal(conn.ConnectionState().TLSUnique, serverTLSUniquesValue) {
 		t.Error("client and server channel bindings differ when session resumption is used")
+	}
+	if serverTLSUniquesValue == nil || bytes.Equal(serverTLSUniquesValue, make([]byte, 12)) {
+		t.Error("resumption tls-unique is empty or zero")
 	}
 }
 
@@ -735,7 +877,7 @@ func TestWarningAlertFlood(t *testing.T) {
 }
 
 func TestCloneFuncFields(t *testing.T) {
-	const expectedCount = 6
+	const expectedCount = 8
 	called := 0
 
 	c1 := Config{
@@ -763,6 +905,14 @@ func TestCloneFuncFields(t *testing.T) {
 			called |= 1 << 5
 			return nil
 		},
+		UnwrapSession: func(identity []byte, cs ConnectionState) (*SessionState, error) {
+			called |= 1 << 6
+			return nil, nil
+		},
+		WrapSession: func(cs ConnectionState, ss *SessionState) ([]byte, error) {
+			called |= 1 << 7
+			return nil, nil
+		},
 	}
 
 	c2 := c1.Clone()
@@ -773,6 +923,8 @@ func TestCloneFuncFields(t *testing.T) {
 	c2.GetConfigForClient(nil)
 	c2.VerifyPeerCertificate(nil, nil)
 	c2.VerifyConnection(ConnectionState{})
+	c2.UnwrapSession(nil, ConnectionState{})
+	c2.WrapSession(ConnectionState{}, nil)
 
 	if called != (1<<expectedCount)-1 {
 		t.Fatalf("expected %d calls but saw calls %b", expectedCount, called)
@@ -791,7 +943,7 @@ func TestCloneNonFuncFields(t *testing.T) {
 		switch fn := typ.Field(i).Name; fn {
 		case "Rand":
 			f.Set(reflect.ValueOf(io.Reader(os.Stdin)))
-		case "Time", "GetCertificate", "GetConfigForClient", "VerifyPeerCertificate", "VerifyConnection", "GetClientCertificate":
+		case "Time", "GetCertificate", "GetConfigForClient", "VerifyPeerCertificate", "VerifyConnection", "GetClientCertificate", "WrapSession", "UnwrapSession":
 			// DeepEqual can't compare functions. If you add a
 			// function field to this list, you must also change
 			// TestCloneFuncFields to ensure that the func field is
@@ -830,8 +982,6 @@ func TestCloneNonFuncFields(t *testing.T) {
 			f.Set(reflect.ValueOf(RenegotiateOnceAsClient))
 		case "mutex", "autoSessionTicketKeys", "sessionTicketKeys":
 			continue // these are unexported fields that are handled separately
-		case "ApplicationSettings":
-			f.Set(reflect.ValueOf(map[string][]byte{"a": {1}}))
 		default:
 			t.Errorf("all fields must be accounted for, but saw unknown field %q", fn)
 		}
@@ -1555,6 +1705,15 @@ func TestCipherSuites(t *testing.T) {
 	}
 }
 
+func TestVersionName(t *testing.T) {
+	if got, exp := VersionName(VersionTLS13), "TLS 1.3"; got != exp {
+		t.Errorf("unexpected VersionName: got %q, expected %q", got, exp)
+	}
+	if got, exp := VersionName(0x12a), "0x012A"; got != exp {
+		t.Errorf("unexpected fallback VersionName: got %q, expected %q", got, exp)
+	}
+}
+
 // http2isBadCipher is copied from net/http.
 // TODO: if it ends up exposed somewhere, use that instead.
 func http2isBadCipher(cipher uint16) bool {
@@ -1612,5 +1771,149 @@ func TestPKCS1OnlyCert(t *testing.T) {
 	// be selected, and the handshake should succeed.
 	if _, _, err := testHandshake(t, clientConfig, serverConfig); err != nil {
 		t.Error(err)
+	}
+}
+
+func TestVerifyCertificates(t *testing.T) {
+	// See https://go.dev/issue/31641.
+	t.Run("TLSv12", func(t *testing.T) { testVerifyCertificates(t, VersionTLS12) })
+	t.Run("TLSv13", func(t *testing.T) { testVerifyCertificates(t, VersionTLS13) })
+}
+
+func testVerifyCertificates(t *testing.T, version uint16) {
+	tests := []struct {
+		name string
+
+		InsecureSkipVerify bool
+		ClientAuth         ClientAuthType
+		ClientCertificates bool
+	}{
+		{
+			name: "defaults",
+		},
+		{
+			name:               "InsecureSkipVerify",
+			InsecureSkipVerify: true,
+		},
+		{
+			name:       "RequestClientCert with no certs",
+			ClientAuth: RequestClientCert,
+		},
+		{
+			name:               "RequestClientCert with certs",
+			ClientAuth:         RequestClientCert,
+			ClientCertificates: true,
+		},
+		{
+			name:               "RequireAnyClientCert",
+			ClientAuth:         RequireAnyClientCert,
+			ClientCertificates: true,
+		},
+		{
+			name:       "VerifyClientCertIfGiven with no certs",
+			ClientAuth: VerifyClientCertIfGiven,
+		},
+		{
+			name:               "VerifyClientCertIfGiven with certs",
+			ClientAuth:         VerifyClientCertIfGiven,
+			ClientCertificates: true,
+		},
+		{
+			name:               "RequireAndVerifyClientCert",
+			ClientAuth:         RequireAndVerifyClientCert,
+			ClientCertificates: true,
+		},
+	}
+
+	issuer, err := x509.ParseCertificate(testRSACertificateIssuer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootCAs := x509.NewCertPool()
+	rootCAs.AddCert(issuer)
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			var serverVerifyConnection, clientVerifyConnection bool
+			var serverVerifyPeerCertificates, clientVerifyPeerCertificates bool
+
+			clientConfig := testConfig.Clone()
+			clientConfig.Time = func() time.Time { return time.Unix(1476984729, 0) }
+			clientConfig.MaxVersion = version
+			clientConfig.MinVersion = version
+			clientConfig.RootCAs = rootCAs
+			clientConfig.ServerName = "example.golang"
+			clientConfig.ClientSessionCache = NewLRUClientSessionCache(1)
+			serverConfig := clientConfig.Clone()
+			serverConfig.ClientCAs = rootCAs
+
+			clientConfig.VerifyConnection = func(cs ConnectionState) error {
+				clientVerifyConnection = true
+				return nil
+			}
+			clientConfig.VerifyPeerCertificate = func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+				clientVerifyPeerCertificates = true
+				return nil
+			}
+			serverConfig.VerifyConnection = func(cs ConnectionState) error {
+				serverVerifyConnection = true
+				return nil
+			}
+			serverConfig.VerifyPeerCertificate = func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+				serverVerifyPeerCertificates = true
+				return nil
+			}
+
+			clientConfig.InsecureSkipVerify = test.InsecureSkipVerify
+			serverConfig.ClientAuth = test.ClientAuth
+			if !test.ClientCertificates {
+				clientConfig.Certificates = nil
+			}
+
+			if _, _, err := testHandshake(t, clientConfig, serverConfig); err != nil {
+				t.Fatal(err)
+			}
+
+			want := serverConfig.ClientAuth != NoClientCert
+			if serverVerifyPeerCertificates != want {
+				t.Errorf("VerifyPeerCertificates on the server: got %v, want %v",
+					serverVerifyPeerCertificates, want)
+			}
+			if !clientVerifyPeerCertificates {
+				t.Errorf("VerifyPeerCertificates not called on the client")
+			}
+			if !serverVerifyConnection {
+				t.Error("VerifyConnection did not get called on the server")
+			}
+			if !clientVerifyConnection {
+				t.Error("VerifyConnection did not get called on the client")
+			}
+
+			serverVerifyPeerCertificates, clientVerifyPeerCertificates = false, false
+			serverVerifyConnection, clientVerifyConnection = false, false
+			cs, _, err := testHandshake(t, clientConfig, serverConfig)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !cs.DidResume {
+				t.Error("expected resumption")
+			}
+
+			if serverVerifyPeerCertificates {
+				t.Error("VerifyPeerCertificates got called on the server on resumption")
+			}
+			if clientVerifyPeerCertificates {
+				t.Error("VerifyPeerCertificates got called on the client on resumption")
+			}
+			if !serverVerifyConnection {
+				t.Error("VerifyConnection did not get called on the server on resumption")
+			}
+			if !clientVerifyConnection {
+				t.Error("VerifyConnection did not get called on the client on resumption")
+			}
+		})
 	}
 }
