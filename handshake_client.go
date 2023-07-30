@@ -337,15 +337,15 @@ func (c *Conn) loadSession(hello *clientHelloMsg) (
 	if !c.config.InsecureSkipVerify {
 		if len(session.verifiedChains) == 0 {
 			// The original connection had InsecureSkipVerify, while this doesn't.
-			return cacheKey, nil, nil, nil, nil
+			return nil, nil, nil, nil
 		}
-		serverCert := session.serverCertificates[0]
+		serverCert := session.peerCertificates[0]
 		// [UTLS SECTION START]
 		if !c.config.InsecureSkipTimeVerify {
 			if c.config.time().After(serverCert.NotAfter) {
 				// Expired certificate, delete the entry.
 				c.config.ClientSessionCache.Put(cacheKey, nil)
-				return cacheKey, nil, nil, nil, nil
+				return nil, nil, nil, nil
 			}
 		}
 		var dnsName string
@@ -356,7 +356,7 @@ func (c *Conn) loadSession(hello *clientHelloMsg) (
 		}
 		if len(dnsName) > 0 {
 			if err := serverCert.VerifyHostname(dnsName); err != nil {
-				return cacheKey, nil, nil, nil, nil
+				return nil, nil, nil, nil
 			}
 		}
 		// [UTLS SECTION END]
@@ -1127,6 +1127,7 @@ func (c *Conn) clientSessionCacheKey() string {
 	return ""
 }
 
+// [UTLS SECTION START]
 // hostnameInSNI converts name into an appropriate hostname for SNI.
 // Literal IP addresses and absolute FQDNs are not permitted as SNI values.
 // See RFC 6066, Section 3.

@@ -642,13 +642,13 @@ type serverHelloMsg struct {
 	secureRenegotiation          []byte
 	extendedMasterSecret         bool
 	alpnProtocol                 string
-	ems                          bool
-	scts                         [][]byte
-	supportedVersion             uint16
-	serverShare                  keyShare
-	selectedIdentityPresent      bool
-	selectedIdentity             uint16
-	supportedPoints              []uint8
+	// ems                          bool
+	scts                    [][]byte
+	supportedVersion        uint16
+	serverShare             keyShare
+	selectedIdentityPresent bool
+	selectedIdentity        uint16
+	supportedPoints         []uint8
 
 	// HelloRetryRequest extensions
 	cookie        []byte
@@ -820,12 +820,13 @@ func (m *serverHelloMsg) unmarshal(data []byte) bool {
 			m.ocspStapling = true
 		case extensionSessionTicket:
 			m.ticketSupported = true
-		case utlsExtensionExtendedMasterSecret:
-			// No sanity check for this extension: pretending not to know it.
-			// if length > 0 {
-			// 	return false
-			// }
-			m.ems = true
+		// [UTLS] crypto/tls finally supports EMS! Now we don't do anything special here.
+		// case utlsExtensionExtendedMasterSecret:
+		// 	// No sanity check for this extension: pretending not to know it.
+		// 	// if length > 0 {
+		// 	// 	return false
+		// 	// }
+		// 	m.ems = true
 		case extensionRenegotiationInfo:
 			if !readUint8LengthPrefixed(&extData, &m.secureRenegotiation) {
 				return false

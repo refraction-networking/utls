@@ -440,11 +440,6 @@ func (hs *serverHandshakeState) checkForResumption() error {
 		return nil
 	}
 
-	createdAt := time.Unix(int64(hs.sessionState.createdAt), 0)
-	if c.config.time().Sub(createdAt) > maxSessionTicketLifetime {
-		return false
-	}
-
 	// Never resume a session for a different TLS version.
 	if c.vers != sessionState.version {
 		return nil

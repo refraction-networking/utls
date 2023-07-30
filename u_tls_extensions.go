@@ -802,15 +802,15 @@ type SessionTicketExtension struct {
 
 func (e *SessionTicketExtension) writeToUConn(uc *UConn) error {
 	if e.Session != nil {
-		uc.HandshakeState.Session = e.Session
-		uc.HandshakeState.Hello.SessionTicket = e.Session.sessionTicket
+		uc.HandshakeState.Session = e.Session.session
+		uc.HandshakeState.Hello.SessionTicket = e.Session.ticket
 	}
 	return nil
 }
 
 func (e *SessionTicketExtension) Len() int {
 	if e.Session != nil {
-		return 4 + len(e.Session.sessionTicket)
+		return 4 + len(e.Session.ticket)
 	}
 	return 4
 }
@@ -827,7 +827,7 @@ func (e *SessionTicketExtension) Read(b []byte) (int, error) {
 	b[2] = byte(extBodyLen >> 8)
 	b[3] = byte(extBodyLen)
 	if extBodyLen > 0 {
-		copy(b[4:], e.Session.sessionTicket)
+		copy(b[4:], e.Session.ticket)
 	}
 	return e.Len(), io.EOF
 }
@@ -926,7 +926,7 @@ func (e *UtlsExtendedMasterSecretExtension) Write(_ []byte) (int, error) {
 	return 0, nil
 }
 
-var extendedMasterSecretLabel = []byte("extended master secret")
+// var extendedMasterSecretLabel = []byte("extended master secret")
 
 // extendedMasterFromPreMasterSecret generates the master secret from the pre-master
 // secret and session hash. See https://tools.ietf.org/html/rfc7627#section-4
@@ -1862,7 +1862,7 @@ func (e *FakePreSharedKeyExtension) writeToUConn(uc *UConn) error {
 	if uc.config.ClientSessionCache == nil {
 		return nil // don't write the extension if there is no session cache
 	}
-	if session, ok := uc.config.ClientSessionCache.Get(clientSessionCacheKey(uc.conn.RemoteAddr(), uc.config)); !ok || session == nil {
+	if session, ok := uc.config.ClientSessionCache.Get(uc.clientSessionCacheKey()); !ok || session == nil {
 		return nil // don't write the extension if there is no session cache available for this session
 	}
 	uc.HandshakeState.Hello.PskIdentities = e.PskIdentities

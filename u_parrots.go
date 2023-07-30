@@ -2013,12 +2013,12 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 		return err
 	}
 
-	privateHello, ecdheParams, err := uconn.makeClientHello()
+	privateHello, ecdheKey, err := uconn.makeClientHello()
 	if err != nil {
 		return err
 	}
 	uconn.HandshakeState.Hello = privateHello.getPublicPtr()
-	uconn.HandshakeState.State13.EcdheParams = ecdheParams
+	uconn.HandshakeState.State13.EcdheKey = ecdheKey
 	uconn.HandshakeState.State13.KeySharesEcdheParams = make(KeySharesEcdheParameters, 2)
 	hello := uconn.HandshakeState.Hello
 	session := uconn.HandshakeState.Session
@@ -2088,12 +2088,14 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 			}
 			grease_extensions_seen += 1
 		case *SessionTicketExtension:
+			var cs *ClientSessionState
 			if session == nil && uconn.config.ClientSessionCache != nil {
-				cacheKey := clientSessionCacheKey(uconn.RemoteAddr(), uconn.config)
-				session, _ = uconn.config.ClientSessionCache.Get(cacheKey)
+				cacheKey := uconn.clientSessionCacheKey()
+				cs, _ = uconn.config.ClientSessionCache.Get(cacheKey)
+				session = cs.session
 				// TODO: use uconn.loadSession(hello.getPrivateObj()) to support TLS 1.3 PSK-style resumption
 			}
-			err := uconn.SetSessionState(session)
+			err := uconn.SetSessionState(cs)
 			if err != nil {
 				return err
 			}
@@ -2115,16 +2117,16 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 					continue
 				}
 
-				ecdheParams, err := generateECDHEParameters(uconn.config.rand(), curveID)
+				ecdheKey, err := generateECDHEKey(uconn.config.rand(), curveID)
 				if err != nil {
 					return fmt.Errorf("unsupported Curve in KeyShareExtension: %v."+
 						"To mimic it, fill the Data(key) field manually", curveID)
 				}
-				uconn.HandshakeState.State13.KeySharesEcdheParams.AddEcdheParams(curveID, ecdheParams)
-				ext.KeyShares[i].Data = ecdheParams.PublicKey()
+				uconn.HandshakeState.State13.KeySharesEcdheParams.AddEcdheParams(curveID, ecdheKey)
+				ext.KeyShares[i].Data = ecdheKey.PublicKey().Bytes()
 				if !preferredCurveIsSet {
 					// only do this once for the first non-grease curve
-					uconn.HandshakeState.State13.EcdheParams = ecdheParams
+					uconn.HandshakeState.State13.EcdheKey = ecdheKey
 					preferredCurveIsSet = true
 				}
 			}
@@ -2147,7 +2149,12 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 }
 
 func (uconn *UConn) generateRandomizedSpec() (ClientHelloSpec, error) {
-	return generateRandomizedSpec(&uconn.ClientHelloID, uconn.serverName, uconn.HandshakeState.Session, uconn.config.NextProtos)
+	css := &ClientSessionState{
+		session: uconn.HandshakeState.Session,
+		ticket:  uconn.HandshakeState.Hello.SessionTicket,
+	}
+
+	return generateRandomizedSpec(&uconn.ClientHelloID, uconn.serverName, css, uconn.config.NextProtos)
 }
 
 func generateRandomizedSpec(

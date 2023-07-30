@@ -18,16 +18,16 @@ import (
 )
 
 // [uTLS SECTION START]
-type KeySharesEcdheParameters map[CurveID]ecdheParameters
+type KeySharesEcdheParameters map[CurveID]*ecdh.PrivateKey
 
-func (keymap KeySharesEcdheParameters) AddEcdheParams(curveID CurveID, params ecdheParameters) {
-	keymap[curveID] = params
+func (keymap KeySharesEcdheParameters) AddEcdheParams(curveID CurveID, ecdheKey *ecdh.PrivateKey) {
+	keymap[curveID] = ecdheKey
 }
-func (keymap KeySharesEcdheParameters) GetEcdheParams(curveID CurveID) (params ecdheParameters, ok bool) {
-	params, ok = keymap[curveID]
+func (keymap KeySharesEcdheParameters) GetEcdheParams(curveID CurveID) (ecdheKey *ecdh.PrivateKey, ok bool) {
+	ecdheKey, ok = keymap[curveID]
 	return
 }
-func (keymap KeySharesEcdheParameters) GetPublicEcdheParams(curveID CurveID) (params EcdheParameters, ok bool) {
+func (keymap KeySharesEcdheParameters) GetPublicEcdheParams(curveID CurveID) (params *ecdh.PrivateKey, ok bool) {
 	params, ok = keymap[curveID]
 	return
 }
@@ -78,12 +78,12 @@ func (hs *clientHandshakeStateTLS13) handshake() error {
 
 	// set echdheParams to what we received from server
 	if ecdheParams, ok := hs.keySharesEcdheParams.GetEcdheParams(hs.serverHello.serverShare.group); ok {
-		hs.ecdheParams = ecdheParams
+		hs.ecdheKey = ecdheParams
 	}
 	// [uTLS SECTION END]
 
 	// Consistency check on the presence of a keyShare and its parameters.
-	if hs.ecdheParams == nil || len(hs.hello.keyShares) < 1 { // [uTLS]
+	if hs.ecdheKey == nil || len(hs.hello.keyShares) < 1 { // [uTLS]
 		// keyshares "< 1" instead of "!= 1", as uTLS may send multiple
 		return c.sendAlert(alertInternalError)
 	}

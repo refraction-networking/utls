@@ -645,8 +645,6 @@ func (hs *serverHandshakeStateTLS13) sendServerParameters() error {
 		encryptedExtensions.quicTransportParameters = p
 		encryptedExtensions.earlyData = hs.earlyData
 	}
-	encryptedExtensions.alpnProtocol = selectedProto
-	c.clientProtocol = selectedProto
 
 	if _, err := hs.c.writeHandshakeRecord(encryptedExtensions, hs.transcript); err != nil {
 		return err

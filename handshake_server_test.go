@@ -24,8 +24,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"golang.org/x/crypto/curve25519"
 )
 
 func testClientHello(t *testing.T, serverConfig *Config, m handshakeMessage) {
