@@ -34,11 +34,10 @@ const (
 const (
 	extensionNextProtoNeg uint16 = 13172 // not IANA assigned. Removed by crypto/tls since Nov 2019
 
-	utlsExtensionPadding              uint16 = 21
-	utlsExtensionExtendedMasterSecret uint16 = 23    // https://tools.ietf.org/html/rfc7627
-	utlsExtensionCompressCertificate  uint16 = 27    // https://datatracker.ietf.org/doc/html/rfc8879#section-7.1
-	utlsExtensionApplicationSettings  uint16 = 17513 // not IANA assigned
-	utlsFakeExtensionCustom           uint16 = 1234  // not IANA assigned, for ALPS
+	utlsExtensionPadding             uint16 = 21
+	utlsExtensionCompressCertificate uint16 = 27    // https://datatracker.ietf.org/doc/html/rfc8879#section-7.1
+	utlsExtensionApplicationSettings uint16 = 17513 // not IANA assigned
+	utlsFakeExtensionCustom          uint16 = 1234  // not IANA assigned, for ALPS
 
 	// extensions with 'fake' prefix break connection, if server echoes them back
 	fakeExtensionEncryptThenMAC       uint16 = 22
@@ -71,6 +70,19 @@ const (
 
 	// https://docs.microsoft.com/en-us/dotnet/api/system.net.security.tlsciphersuite?view=netcore-3.1
 	FAKE_TLS_ECDHE_ECDSA_WITH_3DES_EDE_CBC_SHA = uint16(0xc008)
+)
+
+const (
+	CurveSECP256R1 CurveID = 0x0017
+	CurveSECP384R1 CurveID = 0x0018
+	CurveSECP521R1 CurveID = 0x0019
+	CurveX25519    CurveID = 0x001d
+
+	FakeCurveFFDHE2048 CurveID = 0x0100
+	FakeCurveFFDHE3072 CurveID = 0x0101
+	FakeCurveFFDHE4096 CurveID = 0x0102
+	FakeCurveFFDHE6144 CurveID = 0x0103
+	FakeCurveFFDHE8192 CurveID = 0x0104
 )
 
 // Other things
@@ -412,7 +424,7 @@ func (chs *ClientHelloSpec) ImportTLSClientHello(data map[string][]byte) error {
 			case utlsExtensionApplicationSettings:
 				// TODO: tlsfingerprint.io should record/provide application settings data
 				extWriter.(*ApplicationSettingsExtension).SupportedProtocols = []string{"h2"}
-			case fakeExtensionPreSharedKey:
+			case extensionPreSharedKey:
 				log.Printf("[Warning] PSK extension added without data")
 			default:
 				if !isGREASEUint16(extType) {

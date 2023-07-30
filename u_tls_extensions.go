@@ -37,8 +37,8 @@ func ExtensionFromID(id uint16) TLSExtension {
 		return &SCTExtension{}
 	case utlsExtensionPadding:
 		return &UtlsPaddingExtension{}
-	case utlsExtensionExtendedMasterSecret:
-		return &UtlsExtendedMasterSecretExtension{}
+	case extensionExtendedMasterSecret:
+		return &ExtendedMasterSecretExtension{}
 	case fakeExtensionTokenBinding:
 		return &FakeTokenBindingExtension{}
 	case utlsExtensionCompressCertificate:
@@ -47,7 +47,7 @@ func ExtensionFromID(id uint16) TLSExtension {
 		return &FakeDelegatedCredentialsExtension{}
 	case extensionSessionTicket:
 		return &SessionTicketExtension{}
-	case fakeExtensionPreSharedKey:
+	case extensionPreSharedKey:
 		return &FakePreSharedKeyExtension{}
 	// case extensionEarlyData:
 	// 	return &EarlyDataExtension{}
@@ -63,6 +63,8 @@ func ExtensionFromID(id uint16) TLSExtension {
 		return &SignatureAlgorithmsCertExtension{}
 	case extensionKeyShare:
 		return &KeyShareExtension{}
+	case extensionQUICTransportParameters:
+		return &QUICTransportParametersExtension{}
 	case extensionNextProtoNeg:
 		return &NPNExtension{}
 	case utlsExtensionApplicationSettings:
@@ -98,8 +100,11 @@ type TLSExtension interface {
 type TLSExtensionWriter interface {
 	TLSExtension
 
-	// Write writes up to len(b) bytes from b.
+	// Write writes the extension data as a byte slice, up to len(b) bytes from b.
 	// It returns the number of bytes written (0 <= n <= len(b)) and any error encountered.
+	//
+	// The implementation MUST NOT silently drop data if consumed less than len(b) bytes,
+	// instead, it MUST return an error.
 	Write(b []byte) (n int, err error)
 }
 
@@ -891,37 +896,40 @@ func (e *GenericExtension) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// UtlsExtendedMasterSecretExtension implements extended_master_secret (23)
-type UtlsExtendedMasterSecretExtension struct {
+// ExtendedMasterSecretExtension implements extended_master_secret (23)
+//
+// Was named as ExtendedMasterSecretExtension, renamed due to crypto/tls
+// implemented this extension's support.
+type ExtendedMasterSecretExtension struct {
 }
 
 // TODO: update when this extension is implemented in crypto/tls
 // but we probably won't have to enable it in Config
-func (e *UtlsExtendedMasterSecretExtension) writeToUConn(uc *UConn) error {
+func (e *ExtendedMasterSecretExtension) writeToUConn(uc *UConn) error {
 	uc.HandshakeState.Hello.Ems = true
 	return nil
 }
 
-func (e *UtlsExtendedMasterSecretExtension) Len() int {
+func (e *ExtendedMasterSecretExtension) Len() int {
 	return 4
 }
 
-func (e *UtlsExtendedMasterSecretExtension) Read(b []byte) (int, error) {
+func (e *ExtendedMasterSecretExtension) Read(b []byte) (int, error) {
 	if len(b) < e.Len() {
 		return 0, io.ErrShortBuffer
 	}
 	// https://tools.ietf.org/html/rfc7627
-	b[0] = byte(utlsExtensionExtendedMasterSecret >> 8)
-	b[1] = byte(utlsExtensionExtendedMasterSecret)
+	b[0] = byte(extensionExtendedMasterSecret >> 8)
+	b[1] = byte(extensionExtendedMasterSecret)
 	// The length is 0
 	return e.Len(), io.EOF
 }
 
-func (e *UtlsExtendedMasterSecretExtension) UnmarshalJSON(_ []byte) error {
+func (e *ExtendedMasterSecretExtension) UnmarshalJSON(_ []byte) error {
 	return nil // no-op
 }
 
-func (e *UtlsExtendedMasterSecretExtension) Write(_ []byte) (int, error) {
+func (e *ExtendedMasterSecretExtension) Write(_ []byte) (int, error) {
 	// https://tools.ietf.org/html/rfc7627
 	return 0, nil
 }
@@ -1295,6 +1303,37 @@ func (e *KeyShareExtension) UnmarshalJSON(b []byte) error {
 			return fmt.Errorf("unknown group %s", clientShare.Group)
 		}
 	}
+	return nil
+}
+
+// QUICTransportParametersExtension implements quic_transport_parameters (57).
+//
+// Currently, it works as a fake extension and does not support parsing, since
+// the QUICConn provided by this package does not really understand these
+// parameters.
+type QUICTransportParametersExtension struct {
+	TransportParametersExtData []byte
+}
+
+func (e *QUICTransportParametersExtension) Len() int {
+	return 4 + len(e.TransportParametersExtData)
+}
+
+func (e *QUICTransportParametersExtension) Read(b []byte) (int, error) {
+	if len(b) < e.Len() {
+		return 0, io.ErrShortBuffer
+	}
+
+	b[0] = byte(extensionQUICTransportParameters >> 8)
+	b[1] = byte(extensionQUICTransportParameters)
+	b[2] = byte((len(e.TransportParametersExtData)) >> 8)
+	b[3] = byte(len(e.TransportParametersExtData))
+	copy(b[4:], e.TransportParametersExtData)
+
+	return e.Len(), io.EOF
+}
+
+func (e *QUICTransportParametersExtension) writeToUConn(*UConn) error {
 	return nil
 }
 

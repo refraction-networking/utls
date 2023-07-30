@@ -351,6 +351,7 @@ type PubClientHelloMsg struct {
 	PskModes                         []uint8
 	PskIdentities                    []PskIdentity
 	PskBinders                       [][]byte
+	QuicTransportParameters          []byte
 }
 
 func (chm *PubClientHelloMsg) getPrivatePtr() *clientHelloMsg {
@@ -358,34 +359,36 @@ func (chm *PubClientHelloMsg) getPrivatePtr() *clientHelloMsg {
 		return nil
 	} else {
 		return &clientHelloMsg{
-			raw:                          chm.Raw,
-			vers:                         chm.Vers,
-			random:                       chm.Random,
-			sessionId:                    chm.SessionId,
-			cipherSuites:                 chm.CipherSuites,
-			compressionMethods:           chm.CompressionMethods,
-			nextProtoNeg:                 chm.NextProtoNeg,
-			serverName:                   chm.ServerName,
-			ocspStapling:                 chm.OcspStapling,
-			scts:                         chm.Scts,
-			ems:                          chm.Ems,
-			supportedCurves:              chm.SupportedCurves,
-			supportedPoints:              chm.SupportedPoints,
-			ticketSupported:              chm.TicketSupported,
-			sessionTicket:                chm.SessionTicket,
-			supportedSignatureAlgorithms: chm.SupportedSignatureAlgorithms,
-			secureRenegotiation:          chm.SecureRenegotiation,
-			secureRenegotiationSupported: chm.SecureRenegotiationSupported,
-			alpnProtocols:                chm.AlpnProtocols,
-
+			raw:                              chm.Raw,
+			vers:                             chm.Vers,
+			random:                           chm.Random,
+			sessionId:                        chm.SessionId,
+			cipherSuites:                     chm.CipherSuites,
+			compressionMethods:               chm.CompressionMethods,
+			serverName:                       chm.ServerName,
+			ocspStapling:                     chm.OcspStapling,
+			supportedCurves:                  chm.SupportedCurves,
+			supportedPoints:                  chm.SupportedPoints,
+			ticketSupported:                  chm.TicketSupported,
+			sessionTicket:                    chm.SessionTicket,
+			supportedSignatureAlgorithms:     chm.SupportedSignatureAlgorithms,
 			supportedSignatureAlgorithmsCert: chm.SupportedSignatureAlgorithmsCert,
-			supportedVersions:                chm.SupportedVersions,
-			cookie:                           chm.Cookie,
-			keyShares:                        KeyShares(chm.KeyShares).ToPrivate(),
-			earlyData:                        chm.EarlyData,
-			pskModes:                         chm.PskModes,
-			pskIdentities:                    PskIdentities(chm.PskIdentities).ToPrivate(),
-			pskBinders:                       chm.PskBinders,
+			secureRenegotiationSupported:     chm.SecureRenegotiationSupported,
+			secureRenegotiation:              chm.SecureRenegotiation,
+			extendedMasterSecret:             chm.Ems,
+			alpnProtocols:                    chm.AlpnProtocols,
+			scts:                             chm.Scts,
+
+			supportedVersions:       chm.SupportedVersions,
+			cookie:                  chm.Cookie,
+			keyShares:               KeyShares(chm.KeyShares).ToPrivate(),
+			earlyData:               chm.EarlyData,
+			pskModes:                chm.PskModes,
+			pskIdentities:           PskIdentities(chm.PskIdentities).ToPrivate(),
+			pskBinders:              chm.PskBinders,
+			quicTransportParameters: chm.QuicTransportParameters,
+
+			nextProtoNeg: chm.NextProtoNeg,
 		}
 	}
 }
@@ -405,7 +408,7 @@ func (chm *clientHelloMsg) getPublicPtr() *PubClientHelloMsg {
 			ServerName:                   chm.serverName,
 			OcspStapling:                 chm.ocspStapling,
 			Scts:                         chm.scts,
-			Ems:                          chm.ems,
+			Ems:                          chm.extendedMasterSecret,
 			SupportedCurves:              chm.supportedCurves,
 			SupportedPoints:              chm.supportedPoints,
 			TicketSupported:              chm.ticketSupported,
@@ -423,6 +426,7 @@ func (chm *clientHelloMsg) getPublicPtr() *PubClientHelloMsg {
 			PskModes:                         chm.pskModes,
 			PskIdentities:                    pskIdentities(chm.pskIdentities).ToPublic(),
 			PskBinders:                       chm.pskBinders,
+			QuicTransportParameters:          chm.quicTransportParameters,
 		}
 	}
 }

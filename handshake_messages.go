@@ -87,15 +87,15 @@ type clientHelloMsg struct {
 	extendedMasterSecret             bool
 	alpnProtocols                    []string
 	scts                             bool
-	ems                              bool // [uTLS] actually implemented due to its prevalence
-	supportedVersions                []uint16
-	cookie                           []byte
-	keyShares                        []keyShare
-	earlyData                        bool
-	pskModes                         []uint8
-	pskIdentities                    []pskIdentity
-	pskBinders                       [][]byte
-	quicTransportParameters          []byte
+	// ems                              bool // [uTLS] actually implemented due to its prevalence
+	supportedVersions       []uint16
+	cookie                  []byte
+	keyShares               []keyShare
+	earlyData               bool
+	pskModes                []uint8
+	pskIdentities           []pskIdentity
+	pskBinders              [][]byte
+	quicTransportParameters []byte
 
 	// [uTLS]
 	nextProtoNeg bool
