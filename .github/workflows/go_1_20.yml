@@ -11,7 +11,7 @@ on:
 
 jobs:
 
-  go_1.20:
+  go_1_20:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
