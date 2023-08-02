@@ -1312,11 +1312,16 @@ func (e *KeyShareExtension) UnmarshalJSON(b []byte) error {
 // the QUICConn provided by this package does not really understand these
 // parameters.
 type QUICTransportParametersExtension struct {
-	TransportParametersExtData []byte
+	TransportParameters TransportParameters
+
+	marshalResult []byte // TransportParameters will be marshaled into this slice
 }
 
 func (e *QUICTransportParametersExtension) Len() int {
-	return 4 + len(e.TransportParametersExtData)
+	if e.marshalResult == nil {
+		e.marshalResult = e.TransportParameters.Marshal()
+	}
+	return 4 + len(e.marshalResult)
 }
 
 func (e *QUICTransportParametersExtension) Read(b []byte) (int, error) {
@@ -1326,14 +1331,16 @@ func (e *QUICTransportParametersExtension) Read(b []byte) (int, error) {
 
 	b[0] = byte(extensionQUICTransportParameters >> 8)
 	b[1] = byte(extensionQUICTransportParameters)
-	b[2] = byte((len(e.TransportParametersExtData)) >> 8)
-	b[3] = byte(len(e.TransportParametersExtData))
-	copy(b[4:], e.TransportParametersExtData)
+	// e.Len() is called before so that e.marshalResult is set
+	b[2] = byte((len(e.marshalResult)) >> 8)
+	b[3] = byte(len(e.marshalResult))
+	copy(b[4:], e.marshalResult)
 
 	return e.Len(), io.EOF
 }
 
 func (e *QUICTransportParametersExtension) writeToUConn(*UConn) error {
+	// no need to set *UConn.quic.transportParams, since it is unused
 	return nil
 }
 
