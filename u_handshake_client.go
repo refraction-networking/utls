@@ -7,6 +7,7 @@ package tls
 import (
 	"bytes"
 	"compress/zlib"
+	"crypto/ecdh"
 	"errors"
 	"fmt"
 	"io"
@@ -161,4 +162,139 @@ func (hs *clientHandshakeStateTLS13) utlsReadServerParameters(encryptedExtension
 	}
 
 	return nil
+}
+
+func (c *Conn) makeClientHelloForApplyPreset() (*clientHelloMsg, *ecdh.PrivateKey, error) {
+	config := c.config
+
+	// [UTLS SECTION START]
+	if len(config.ServerName) == 0 && !config.InsecureSkipVerify && len(config.InsecureServerNameToVerify) == 0 {
+		return nil, nil, errors.New("tls: at least one of ServerName, InsecureSkipVerify or InsecureServerNameToVerify must be specified in the tls.Config")
+	}
+	// [UTLS SECTION END]
+
+	nextProtosLength := 0
+	for _, proto := range config.NextProtos {
+		if l := len(proto); l == 0 || l > 255 {
+			return nil, nil, errors.New("tls: invalid NextProtos value")
+		} else {
+			nextProtosLength += 1 + l
+		}
+	}
+	if nextProtosLength > 0xffff {
+		return nil, nil, errors.New("tls: NextProtos values too large")
+	}
+
+	supportedVersions := config.supportedVersions(roleClient)
+	if len(supportedVersions) == 0 {
+		return nil, nil, errors.New("tls: no supported versions satisfy MinVersion and MaxVersion")
+	}
+
+	clientHelloVersion := config.maxSupportedVersion(roleClient)
+	// The version at the beginning of the ClientHello was capped at TLS 1.2
+	// for compatibility reasons. The supported_versions extension is used
+	// to negotiate versions now. See RFC 8446, Section 4.2.1.
+	if clientHelloVersion > VersionTLS12 {
+		clientHelloVersion = VersionTLS12
+	}
+
+	hello := &clientHelloMsg{
+		vers:                         clientHelloVersion,
+		compressionMethods:           []uint8{compressionNone},
+		random:                       make([]byte, 32),
+		extendedMasterSecret:         true,
+		ocspStapling:                 true,
+		scts:                         true,
+		serverName:                   hostnameInSNI(config.ServerName),
+		supportedCurves:              config.curvePreferences(),
+		supportedPoints:              []uint8{pointFormatUncompressed},
+		secureRenegotiationSupported: true,
+		alpnProtocols:                config.NextProtos,
+		supportedVersions:            supportedVersions,
+	}
+
+	if c.handshakes > 0 {
+		hello.secureRenegotiation = c.clientFinished[:]
+	}
+
+	preferenceOrder := cipherSuitesPreferenceOrder
+	if !hasAESGCMHardwareSupport {
+		preferenceOrder = cipherSuitesPreferenceOrderNoAES
+	}
+	configCipherSuites := config.cipherSuites()
+	hello.cipherSuites = make([]uint16, 0, len(configCipherSuites))
+
+	for _, suiteId := range preferenceOrder {
+		suite := mutualCipherSuite(configCipherSuites, suiteId)
+		if suite == nil {
+			continue
+		}
+		// Don't advertise TLS 1.2-only cipher suites unless
+		// we're attempting TLS 1.2.
+		if hello.vers < VersionTLS12 && suite.flags&suiteTLS12 != 0 {
+			continue
+		}
+		hello.cipherSuites = append(hello.cipherSuites, suiteId)
+	}
+
+	_, err := io.ReadFull(config.rand(), hello.random)
+	if err != nil {
+		return nil, nil, errors.New("tls: short read from Rand: " + err.Error())
+	}
+
+	// A random session ID is used to detect when the server accepted a ticket
+	// and is resuming a session (see RFC 5077). In TLS 1.3, it's always set as
+	// a compatibility measure (see RFC 8446, Section 4.1.2).
+	//
+	// The session ID is not set for QUIC connections (see RFC 9001, Section 8.4).
+	if c.quic == nil {
+		hello.sessionId = make([]byte, 32)
+		if _, err := io.ReadFull(config.rand(), hello.sessionId); err != nil {
+			return nil, nil, errors.New("tls: short read from Rand: " + err.Error())
+		}
+	}
+
+	if hello.vers >= VersionTLS12 {
+		hello.supportedSignatureAlgorithms = supportedSignatureAlgorithms()
+	}
+	if testingOnlyForceClientHelloSignatureAlgorithms != nil {
+		hello.supportedSignatureAlgorithms = testingOnlyForceClientHelloSignatureAlgorithms
+	}
+
+	var key *ecdh.PrivateKey
+	if hello.supportedVersions[0] == VersionTLS13 {
+		// Reset the list of ciphers when the client only supports TLS 1.3.
+		if len(hello.supportedVersions) == 1 {
+			hello.cipherSuites = nil
+		}
+		if hasAESGCMHardwareSupport {
+			hello.cipherSuites = append(hello.cipherSuites, defaultCipherSuitesTLS13...)
+		} else {
+			hello.cipherSuites = append(hello.cipherSuites, defaultCipherSuitesTLS13NoAES...)
+		}
+
+		curveID := config.curvePreferences()[0]
+		if _, ok := curveForCurveID(curveID); !ok {
+			return nil, nil, errors.New("tls: CurvePreferences includes unsupported curve")
+		}
+		key, err = generateECDHEKey(config.rand(), curveID)
+		if err != nil {
+			return nil, nil, err
+		}
+		hello.keyShares = []keyShare{{group: curveID, data: key.PublicKey().Bytes()}}
+	}
+
+	// [UTLS] We don't need this, since it is not ready yet
+	// if c.quic != nil {
+	// 	p, err := c.quicGetTransportParameters()
+	// 	if err != nil {
+	// 		return nil, nil, err
+	// 	}
+	// 	if p == nil {
+	// 		p = []byte{}
+	// 	}
+	// 	hello.quicTransportParameters = p
+	// }
+
+	return hello, key, nil
 }
