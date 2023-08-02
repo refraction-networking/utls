@@ -301,3 +301,19 @@ func (*GREASEQUICBit) ID() uint64 {
 func (*GREASEQUICBit) Value() []byte {
 	return []byte{}
 }
+
+type FakeQUICTransportParameter struct {
+	Id  uint64
+	Val []byte
+}
+
+func (f *FakeQUICTransportParameter) ID() uint64 {
+	if f.Id == 0 {
+		panic("it is not allowed to use a FakeQUICTransportParameter without setting the ID")
+	}
+	return f.Id
+}
+
+func (f *FakeQUICTransportParameter) Value() []byte {
+	return f.Val
+}
