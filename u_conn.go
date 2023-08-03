@@ -7,10 +7,12 @@ package tls
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/cipher"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"net"
 	"strconv"
@@ -24,7 +26,7 @@ type UConn struct {
 	ClientHelloID ClientHelloID
 
 	ClientHelloBuilt bool
-	HandshakeState   ClientHandshakeState
+	HandshakeState   PubClientHandshakeState
 
 	// sessionID may or may not depend on ticket; nil => random
 	GetSessionID func(ticket []byte) [32]byte
@@ -32,8 +34,11 @@ type UConn struct {
 	greaseSeed [ssl_grease_last_index]uint16
 
 	omitSNIExtension bool
-	extCompressCerts bool
 
+	// certCompressionAlgs represents the set of advertised certificate compression
+	// algorithms, as specified in the ClientHello. This is only relevant client-side, for the
+	// server certificate. All other forms of certificate compression are unsupported.
+	certCompressionAlgs []CertCompressionAlgo
 }
 
 // UClient returns a new uTLS client, with behavior depending on clientHelloID.
@@ -43,20 +48,24 @@ func UClient(conn net.Conn, config *Config, clientHelloID ClientHelloID) *UConn 
 		config = &Config{}
 	}
 	tlsConn := Conn{conn: conn, config: config, isClient: true}
-	handshakeState := ClientHandshakeState{C: &tlsConn, Hello: &ClientHelloMsg{}}
+	handshakeState := PubClientHandshakeState{C: &tlsConn, Hello: &PubClientHelloMsg{}}
 	uconn := UConn{Conn: &tlsConn, ClientHelloID: clientHelloID, HandshakeState: handshakeState}
 	uconn.HandshakeState.uconn = &uconn
+	uconn.handshakeFn = uconn.clientHandshake
 	return &uconn
 }
 
 // BuildHandshakeState behavior varies based on ClientHelloID and
 // whether it was already called before.
 // If HelloGolang:
-//   [only once] make default ClientHello and overwrite existing state
+//
+//	[only once] make default ClientHello and overwrite existing state
+//
 // If any other mimicking ClientHelloID is used:
-//   [only once] make ClientHello based on ID and overwrite existing state
-//   [each call] apply uconn.Extensions config to internal crypto/tls structures
-//   [each call] marshal ClientHello.
+//
+//	[only once] make ClientHello based on ID and overwrite existing state
+//	[each call] apply uconn.Extensions config to internal crypto/tls structures
+//	[each call] marshal ClientHello.
 //
 // BuildHandshakeState is automatically called before uTLS performs handshake,
 // amd should only be called explicitly to inspect/change fields of
@@ -192,6 +201,63 @@ func (uconn *UConn) removeSNIExtension() {
 // Handshake runs the client handshake using given clientHandshakeState
 // Requires hs.hello, and, optionally, hs.session to be set.
 func (c *UConn) Handshake() error {
+	return c.HandshakeContext(context.Background())
+}
+
+// HandshakeContext runs the client or server handshake
+// protocol if it has not yet been run.
+//
+// The provided Context must be non-nil. If the context is canceled before
+// the handshake is complete, the handshake is interrupted and an error is returned.
+// Once the handshake has completed, cancellation of the context will not affect the
+// connection.
+func (c *UConn) HandshakeContext(ctx context.Context) error {
+	// Delegate to unexported method for named return
+	// without confusing documented signature.
+	return c.handshakeContext(ctx)
+}
+
+func (c *UConn) handshakeContext(ctx context.Context) (ret error) {
+	// Fast sync/atomic-based exit if there is no handshake in flight and the
+	// last one succeeded without an error. Avoids the expensive context setup
+	// and mutex for most Read and Write calls.
+	if c.handshakeComplete() {
+		return nil
+	}
+
+	handshakeCtx, cancel := context.WithCancel(ctx)
+	// Note: defer this before starting the "interrupter" goroutine
+	// so that we can tell the difference between the input being canceled and
+	// this cancellation. In the former case, we need to close the connection.
+	defer cancel()
+
+	// Start the "interrupter" goroutine, if this context might be canceled.
+	// (The background context cannot).
+	//
+	// The interrupter goroutine waits for the input context to be done and
+	// closes the connection if this happens before the function returns.
+	if ctx.Done() != nil {
+		done := make(chan struct{})
+		interruptRes := make(chan error, 1)
+		defer func() {
+			close(done)
+			if ctxErr := <-interruptRes; ctxErr != nil {
+				// Return context error to user.
+				ret = ctxErr
+			}
+		}()
+		go func() {
+			select {
+			case <-handshakeCtx.Done():
+				// Close the connection, discarding the error
+				_ = c.conn.Close()
+				interruptRes <- handshakeCtx.Err()
+			case <-done:
+				interruptRes <- nil
+			}
+		}()
+	}
+
 	c.handshakeMutex.Lock()
 	defer c.handshakeMutex.Unlock()
 
@@ -205,18 +271,15 @@ func (c *UConn) Handshake() error {
 	c.in.Lock()
 	defer c.in.Unlock()
 
+	// [uTLS section begins]
 	if c.isClient {
-		// [uTLS section begins]
 		err := c.BuildHandshakeState()
 		if err != nil {
 			return err
 		}
-		// [uTLS section ends]
-
-		c.handshakeErr = c.clientHandshake()
-	} else {
-		c.handshakeErr = c.serverHandshake()
 	}
+	// [uTLS section ends]
+	c.handshakeErr = c.handshakeFn(handshakeCtx)
 	if c.handshakeErr == nil {
 		c.handshakes++
 	} else {
@@ -239,7 +302,7 @@ func (c *UConn) Write(b []byte) (int, error) {
 	for {
 		x := atomic.LoadInt32(&c.activeCall)
 		if x&1 != 0 {
-			return 0, errClosed
+			return 0, net.ErrClosed
 		}
 		if atomic.CompareAndSwapInt32(&c.activeCall, x, x+2) {
 			defer atomic.AddInt32(&c.activeCall, -2)
@@ -292,7 +355,7 @@ func (c *UConn) Write(b []byte) (int, error) {
 
 // clientHandshakeWithOneState checks that exactly one expected state is set (1.2 or 1.3)
 // and performs client TLS handshake with that state
-func (c *UConn) clientHandshake() (err error) {
+func (c *UConn) clientHandshake(ctx context.Context) (err error) {
 	// [uTLS section begins]
 	hello := c.HandshakeState.Hello.getPrivatePtr()
 	defer func() { c.HandshakeState.Hello = hello.getPublicPtr() }()
@@ -314,8 +377,8 @@ func (c *UConn) clientHandshake() (err error) {
 	// [uTLS section begins]
 	// don't make new ClientHello, use hs.hello
 	// preserve the checks from beginning and end of makeClientHello()
-	if len(c.config.ServerName) == 0 && !c.config.InsecureSkipVerify {
-		return errors.New("tls: either ServerName or InsecureSkipVerify must be specified in the tls.Config")
+	if len(c.config.ServerName) == 0 && !c.config.InsecureSkipVerify && len(c.config.InsecureServerNameToVerify) == 0 {
+		return errors.New("tls: at least one of ServerName, InsecureSkipVerify or InsecureServerNameToVerify must be specified in the tls.Config")
 	}
 
 	nextProtosLength := 0
@@ -336,7 +399,10 @@ func (c *UConn) clientHandshake() (err error) {
 	}
 	// [uTLS section ends]
 
-	cacheKey, session, earlySecret, binderKey := c.loadSession(hello)
+	cacheKey, session, earlySecret, binderKey, err := c.loadSession(hello)
+	if err != nil {
+		return err
+	}
 	if cacheKey != "" && session != nil {
 		defer func() {
 			// If we got a handshake failure when resuming a session, throw away
@@ -358,11 +424,11 @@ func (c *UConn) clientHandshake() (err error) {
 		}
 	}
 
-	if _, err := c.writeRecord(recordTypeHandshake, hello.marshal()); err != nil {
+	if _, err := c.writeHandshakeRecord(hello, nil); err != nil {
 		return err
 	}
 
-	msg, err := c.readHandshake()
+	msg, err := c.readHandshake(nil)
 	if err != nil {
 		return err
 	}
@@ -386,6 +452,7 @@ func (c *UConn) clientHandshake() (err error) {
 			hs13.earlySecret = earlySecret
 			hs13.binderKey = binderKey
 		}
+		hs13.ctx = ctx
 		// In TLS 1.3, session tickets are delivered after the handshake.
 		err = hs13.handshake()
 		if handshakeState := hs13.toPublic13(); handshakeState != nil {
@@ -397,6 +464,7 @@ func (c *UConn) clientHandshake() (err error) {
 	hs12 := c.HandshakeState.toPrivate12()
 	hs12.serverHello = serverHello
 	hs12.hello = hello
+	hs12.ctx = ctx
 	err = hs12.handshake()
 	if handshakeState := hs12.toPublic12(); handshakeState != nil {
 		c.HandshakeState = *handshakeState
@@ -513,9 +581,9 @@ func (uconn *UConn) GetOutKeystream(length int) ([]byte, error) {
 
 // SetTLSVers sets min and max TLS version in all appropriate places.
 // Function will use first non-zero version parsed in following order:
-//   1) Provided minTLSVers, maxTLSVers
-//   2) specExtensions may have SupportedVersionsExtension
-//   3) [default] min = TLS 1.0, max = TLS 1.2
+//  1. Provided minTLSVers, maxTLSVers
+//  2. specExtensions may have SupportedVersionsExtension
+//  3. [default] min = TLS 1.0, max = TLS 1.2
 //
 // Error is only returned if things are in clearly undesirable state
 // to help user fix them.
@@ -531,7 +599,7 @@ func (uconn *UConn) SetTLSVers(minTLSVers, maxTLSVers uint16, specExtensions []T
 					minVers := uint16(0)
 					maxVers := uint16(0)
 					for _, vers := range versions {
-						if vers == GREASE_PLACEHOLDER {
+						if isGREASEUint16(vers) {
 							continue
 						}
 						if maxVers < vers || maxVers == 0 {
@@ -563,7 +631,7 @@ func (uconn *UConn) SetTLSVers(minTLSVers, maxTLSVers uint16, specExtensions []T
 		}
 	}
 
-	if minTLSVers < VersionTLS10 || minTLSVers > VersionTLS12 {
+	if minTLSVers < VersionTLS10 || minTLSVers > VersionTLS13 {
 		return fmt.Errorf("uTLS does not support 0x%X as min version", minTLSVers)
 	}
 
@@ -591,50 +659,51 @@ func (uconn *UConn) GetUnderlyingConn() net.Conn {
 func MakeConnWithCompleteHandshake(tcpConn net.Conn, version uint16, cipherSuite uint16, masterSecret []byte, clientRandom []byte, serverRandom []byte, isClient bool) *Conn {
 	tlsConn := &Conn{conn: tcpConn, config: &Config{}, isClient: isClient}
 	cs := cipherSuiteByID(cipherSuite)
-	if cs == nil {
+	if cs != nil {
+		// This is mostly borrowed from establishKeys()
+		clientMAC, serverMAC, clientKey, serverKey, clientIV, serverIV :=
+			keysFromMasterSecret(version, cs, masterSecret, clientRandom, serverRandom,
+				cs.macLen, cs.keyLen, cs.ivLen)
+
+		var clientCipher, serverCipher interface{}
+		var clientHash, serverHash hash.Hash
+		if cs.cipher != nil {
+			clientCipher = cs.cipher(clientKey, clientIV, true /* for reading */)
+			clientHash = cs.mac(clientMAC)
+			serverCipher = cs.cipher(serverKey, serverIV, false /* not for reading */)
+			serverHash = cs.mac(serverMAC)
+		} else {
+			clientCipher = cs.aead(clientKey, clientIV)
+			serverCipher = cs.aead(serverKey, serverIV)
+		}
+
+		if isClient {
+			tlsConn.in.prepareCipherSpec(version, serverCipher, serverHash)
+			tlsConn.out.prepareCipherSpec(version, clientCipher, clientHash)
+		} else {
+			tlsConn.in.prepareCipherSpec(version, clientCipher, clientHash)
+			tlsConn.out.prepareCipherSpec(version, serverCipher, serverHash)
+		}
+
+		// skip the handshake states
+		atomic.StoreUint32(&tlsConn.handshakeStatus, 1)
+		tlsConn.cipherSuite = cipherSuite
+		tlsConn.haveVers = true
+		tlsConn.vers = version
+
+		// Update to the new cipher specs
+		// and consume the finished messages
+		tlsConn.in.changeCipherSpec()
+		tlsConn.out.changeCipherSpec()
+
+		tlsConn.in.incSeq()
+		tlsConn.out.incSeq()
+
+		return tlsConn
+	} else {
+		// TODO: Support TLS 1.3 Cipher Suites
 		return nil
 	}
-
-	// This is mostly borrowed from establishKeys()
-	clientMAC, serverMAC, clientKey, serverKey, clientIV, serverIV :=
-		keysFromMasterSecret(version, cs, masterSecret, clientRandom, serverRandom,
-			cs.macLen, cs.keyLen, cs.ivLen)
-
-	var clientCipher, serverCipher interface{}
-	var clientHash, serverHash macFunction
-	if cs.cipher != nil {
-		clientCipher = cs.cipher(clientKey, clientIV, true /* for reading */)
-		clientHash = cs.mac(version, clientMAC)
-		serverCipher = cs.cipher(serverKey, serverIV, false /* not for reading */)
-		serverHash = cs.mac(version, serverMAC)
-	} else {
-		clientCipher = cs.aead(clientKey, clientIV)
-		serverCipher = cs.aead(serverKey, serverIV)
-	}
-
-	if isClient {
-		tlsConn.in.prepareCipherSpec(version, serverCipher, serverHash)
-		tlsConn.out.prepareCipherSpec(version, clientCipher, clientHash)
-	} else {
-		tlsConn.in.prepareCipherSpec(version, clientCipher, clientHash)
-		tlsConn.out.prepareCipherSpec(version, serverCipher, serverHash)
-	}
-
-	// skip the handshake states
-	tlsConn.handshakeStatus = 1
-	tlsConn.cipherSuite = cipherSuite
-	tlsConn.haveVers = true
-	tlsConn.vers = version
-
-	// Update to the new cipher specs
-	// and consume the finished messages
-	tlsConn.in.changeCipherSpec()
-	tlsConn.out.changeCipherSpec()
-
-	tlsConn.in.incSeq()
-	tlsConn.out.incSeq()
-
-	return tlsConn
 }
 
 func makeSupportedVersions(minVers, maxVers uint16) []uint16 {
@@ -643,4 +712,31 @@ func makeSupportedVersions(minVers, maxVers uint16) []uint16 {
 		a[i] = maxVers - uint16(i)
 	}
 	return a
+}
+
+// Extending (*Conn).readHandshake() to support more customized handshake messages.
+func (c *Conn) utlsHandshakeMessageType(msgType byte) (handshakeMessage, error) {
+	switch msgType {
+	case utlsTypeCompressedCertificate:
+		return new(utlsCompressedCertificateMsg), nil
+	case utlsTypeEncryptedExtensions:
+		if c.isClient {
+			return new(encryptedExtensionsMsg), nil
+		} else {
+			return new(utlsClientEncryptedExtensionsMsg), nil
+		}
+	default:
+		return nil, c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
+	}
+}
+
+// Extending (*Conn).connectionStateLocked()
+func (c *Conn) utlsConnectionStateLocked(state *ConnectionState) {
+	state.PeerApplicationSettings = c.utls.peerApplicationSettings
+}
+
+type utlsConnExtraFields struct {
+	hasApplicationSettings   bool
+	peerApplicationSettings  []byte
+	localApplicationSettings []byte
 }

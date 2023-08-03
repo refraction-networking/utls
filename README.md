@@ -3,11 +3,14 @@
 [![godoc](https://img.shields.io/badge/godoc-reference-blue.svg)](https://godoc.org/github.com/Noooste/utls#UConn)
 ---
 uTLS is a fork of "crypto/tls", which provides ClientHello fingerprinting resistance, low-level access to handshake, fake session tickets and some other features. Handshake is still performed by "crypto/tls", this library merely changes ClientHello part of it and provides low-level access.  
-Golang 1.11+ is required.  
-If you have any questions, bug reports or contributions, you are welcome to publish those on GitHub. If you want to do so in private, you can contact one of developers personally via sergey.frolov@colorado.edu
+Golang 1.19+ is required.  
+
+If you have any questions, bug reports or contributions, you are welcome to publish those on GitHub. If you want to do so in private, you can contact one of developers personally via sergey.frolov@colorado.edu.
 
 Documentation below may not keep up with all the changes and new features at all times,
 so you are encouraged to use [godoc](https://godoc.org/github.com/Noooste/utls#UConn).
+
+*Note: Information provided below in this README.md could be obsolete.*
 
 # Features
 ## Low-level access to handshake
@@ -159,6 +162,72 @@ To reuse tickets, create a shared cache and set it on current and further config
 ```Golang
 // If you want you session tickets to be reused - use same cache on following connections
 func (uconn *UConn) SetSessionCache(cache ClientSessionCache)
+```
+
+## Custom TLS extensions
+If you want to add your own fake (placeholder, without added functionality) extension for mimicry purposes, you can embed `*tls.GenericExtension` into your own struct and override `Len()` and `Read()` methods. For example, [DelegatedCredentials](https://datatracker.ietf.org/doc/draft-ietf-tls-subcerts/) extension can be implemented as follows:
+
+```Golang
+const FakeDelegatedCredentials uint16 = 0x0022
+
+type FakeDelegatedCredentialsExtension struct {
+	*tls.GenericExtension
+	SignatureAlgorithms []tls.SignatureScheme
+}
+
+func (e *FakeDelegatedCredentialsExtension) Len() int {
+	return 6 + 2*len(e.SignatureAlgorithms)
+}
+
+func (e *FakeDelegatedCredentialsExtension) Read(b []byte) (n int, err error) {
+	if len(b) < e.Len() {
+		return 0, io.ErrShortBuffer
+	}
+	offset := 0
+	appendUint16 := func(val uint16) {
+		b[offset] = byte(val >> 8)
+		b[offset+1] = byte(val & 0xff)
+		offset += 2
+	}
+
+	// Extension type
+	appendUint16(FakeDelegatedCredentials)
+
+	algosLength := 2 * len(e.SignatureAlgorithms)
+
+	// Extension data length
+	appendUint16(uint16(algosLength) + 2)
+
+	// Algorithms list length
+	appendUint16(uint16(algosLength))
+
+	// Algorithms list
+	for _, a := range e.SignatureAlgorithms {
+		appendUint16(uint16(a))
+	}
+	return e.Len(), io.EOF
+}
+```
+
+Then it can be used just like normal extension:
+
+```Golang
+&tls.ClientHelloSpec{
+	//...
+	Extensions: []tls.TLSExtension{
+		//...
+		&FakeDelegatedCredentialsExtension{
+			SignatureAlgorithms: []tls.SignatureScheme{
+				tls.ECDSAWithP256AndSHA256,
+				tls.ECDSAWithP384AndSHA384,
+				tls.ECDSAWithP521AndSHA512,
+				tls.ECDSAWithSHA1,
+			},
+		},
+		//...
+	}
+	//...
+}
 ```
 
 # Client Hello IDs

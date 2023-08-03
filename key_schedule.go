@@ -8,12 +8,14 @@ import (
 	"crypto/elliptic"
 	"crypto/hmac"
 	"errors"
-	"golang.org/x/crypto/cryptobyte"
-	"golang.org/x/crypto/curve25519"
-	"golang.org/x/crypto/hkdf"
+	"fmt"
 	"hash"
 	"io"
 	"math/big"
+
+	"golang.org/x/crypto/cryptobyte"
+	"golang.org/x/crypto/curve25519"
+	"golang.org/x/crypto/hkdf"
 )
 
 // This file contains the functions necessary to compute the TLS 1.3 key
@@ -41,8 +43,24 @@ func (c *cipherSuiteTLS13) expandLabel(secret []byte, label string, context []by
 	hkdfLabel.AddUint8LengthPrefixed(func(b *cryptobyte.Builder) {
 		b.AddBytes(context)
 	})
+	hkdfLabelBytes, err := hkdfLabel.Bytes()
+	if err != nil {
+		// Rather than calling BytesOrPanic, we explicitly handle this error, in
+		// order to provide a reasonable error message. It should be basically
+		// impossible for this to panic, and routing errors back through the
+		// tree rooted in this function is quite painful. The labels are fixed
+		// size, and the context is either a fixed-length computed hash, or
+		// parsed from a field which has the same length limitation. As such, an
+		// error here is likely to only be caused during development.
+		//
+		// NOTE: another reasonable approach here might be to return a
+		// randomized slice if we encounter an error, which would break the
+		// connection, but avoid panicking. This would perhaps be safer but
+		// significantly more confusing to users.
+		panic(fmt.Errorf("failed to construct HKDF label: %s", err))
+	}
 	out := make([]byte, length)
-	n, err := hkdf.Expand(c.hash.New, secret, hkdfLabel.BytesOrPanic()).Read(out)
+	n, err := hkdf.Expand(c.hash.New, secret, hkdfLabelBytes).Read(out)
 	if err != nil || n != length {
 		panic("tls: HKDF-Expand-Label invocation failed unexpectedly")
 	}
@@ -110,12 +128,15 @@ type ecdheParameters interface {
 
 func generateECDHEParameters(rand io.Reader, curveID CurveID) (ecdheParameters, error) {
 	if curveID == X25519 {
-		p := &x25519Parameters{}
-		if _, err := io.ReadFull(rand, p.privateKey[:]); err != nil {
+		privateKey := make([]byte, curve25519.ScalarSize)
+		if _, err := io.ReadFull(rand, privateKey); err != nil {
 			return nil, err
 		}
-		curve25519.ScalarBaseMult(&p.publicKey, &p.privateKey)
-		return p, nil
+		publicKey, err := curve25519.X25519(privateKey, curve25519.Basepoint)
+		if err != nil {
+			return nil, err
+		}
+		return &x25519Parameters{privateKey: privateKey, publicKey: publicKey}, nil
 	}
 
 	curve, ok := curveForCurveID(curveID)
@@ -169,16 +190,13 @@ func (p *nistParameters) SharedKey(peerPublicKey []byte) []byte {
 	}
 
 	xShared, _ := curve.ScalarMult(x, y, p.privateKey)
-	sharedKey := make([]byte, (curve.Params().BitSize+7)>>3)
-	xBytes := xShared.Bytes()
-	copy(sharedKey[len(sharedKey)-len(xBytes):], xBytes)
-
-	return sharedKey
+	sharedKey := make([]byte, (curve.Params().BitSize+7)/8)
+	return xShared.FillBytes(sharedKey)
 }
 
 type x25519Parameters struct {
-	privateKey [32]byte
-	publicKey  [32]byte
+	privateKey []byte
+	publicKey  []byte
 }
 
 func (p *x25519Parameters) CurveID() CurveID {
@@ -190,11 +208,9 @@ func (p *x25519Parameters) PublicKey() []byte {
 }
 
 func (p *x25519Parameters) SharedKey(peerPublicKey []byte) []byte {
-	if len(peerPublicKey) != 32 {
+	sharedKey, err := curve25519.X25519(p.privateKey, peerPublicKey)
+	if err != nil {
 		return nil
 	}
-	var theirPublicKey, sharedKey [32]byte
-	copy(theirPublicKey[:], peerPublicKey)
-	curve25519.ScalarMult(&sharedKey, &p.privateKey, &theirPublicKey)
-	return sharedKey[:]
+	return sharedKey
 }

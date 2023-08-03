@@ -10,7 +10,6 @@ import (
 	"time"
 
 	tls "github.com/Noooste/utls"
-	http "github.com/refraction-networking/utls"
 
 	"golang.org/x/net/http2"
 )
@@ -305,8 +304,14 @@ func forgeConn() {
 	clientUtls.SetUnderlyingConn(clientConn)
 
 	hs := clientUtls.HandshakeState
+
+	// TODO: Redesign this part to use TLS 1.3
 	serverTls := tls.MakeConnWithCompleteHandshake(serverConn, hs.ServerHello.Vers, hs.ServerHello.CipherSuite,
 		hs.MasterSecret, hs.Hello.Random, hs.ServerHello.Random, false)
+	if serverTls == nil {
+		fmt.Printf("tls.MakeConnWithCompleteHandshake error, unsupported TLS protocol?")
+		return
+	}
 
 	go func() {
 		clientUtls.Write([]byte("Hello, world!"))
@@ -323,6 +328,7 @@ func forgeConn() {
 
 	buf := make([]byte, 13)
 	read, err := serverTls.Read(buf)
+
 	if err != nil {
 		fmt.Printf("error reading server: %+v\n", err)
 	}
