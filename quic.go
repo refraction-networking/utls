@@ -363,7 +363,6 @@ func (c *Conn) quicGetTransportParameters() ([]byte, error) {
 			return nil, err
 		}
 	}
-
 	return c.quic.transportParams, nil
 }
 

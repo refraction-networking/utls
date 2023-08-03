@@ -252,15 +252,16 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 
 	if c.vers == VersionTLS13 {
 		hs := &clientHandshakeStateTLS13{
-			c:                    c,
-			ctx:                  ctx,
-			serverHello:          serverHello,
-			hello:                hello,
-			ecdheKey:             ecdheKey,
+			c:           c,
+			ctx:         ctx,
+			serverHello: serverHello,
+			hello:       hello,
+			ecdheKey:    ecdheKey,
+			session:     session,
+			earlySecret: earlySecret,
+			binderKey:   binderKey,
+
 			keySharesEcdheParams: make(KeySharesEcdheParameters, 2), // [uTLS]
-			session:              session,
-			earlySecret:          earlySecret,
-			binderKey:            binderKey,
 		}
 
 		// In TLS 1.3, session tickets are delivered after the handshake.
@@ -960,6 +961,10 @@ func (hs *clientHandshakeState) sendFinished(out []byte) error {
 	return nil
 }
 
+// maxRSAKeySize is the maximum RSA key size in bits that we are willing
+// to verify the signatures of during a TLS handshake.
+const maxRSAKeySize = 8192
+
 // verifyServerCertificate parses and verifies the provided chain, setting
 // c.verifiedChains and c.peerCertificates or sending the appropriate alert.
 func (c *Conn) verifyServerCertificate(certificates [][]byte) error {
@@ -970,6 +975,10 @@ func (c *Conn) verifyServerCertificate(certificates [][]byte) error {
 		if err != nil {
 			c.sendAlert(alertBadCertificate)
 			return errors.New("tls: failed to parse certificate from server: " + err.Error())
+		}
+		if cert.cert.PublicKeyAlgorithm == x509.RSA && cert.cert.PublicKey.(*rsa.PublicKey).N.BitLen() > maxRSAKeySize {
+			c.sendAlert(alertBadCertificate)
+			return fmt.Errorf("tls: server sent certificate containing RSA key larger than %d bits", maxRSAKeySize)
 		}
 		activeHandles[i] = cert
 		certs[i] = cert.cert
@@ -1127,7 +1136,6 @@ func (c *Conn) clientSessionCacheKey() string {
 	return ""
 }
 
-// [UTLS SECTION START]
 // hostnameInSNI converts name into an appropriate hostname for SNI.
 // Literal IP addresses and absolute FQDNs are not permitted as SNI values.
 // See RFC 6066, Section 3.

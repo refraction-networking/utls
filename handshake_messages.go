@@ -87,7 +87,7 @@ type clientHelloMsg struct {
 	extendedMasterSecret             bool
 	alpnProtocols                    []string
 	scts                             bool
-	// ems                              bool // [uTLS] actually implemented due to its prevalence
+	// ems                              bool // [uTLS] actually implemented due to its prevalence // removed since crypto/tls implements it
 	supportedVersions       []uint16
 	cookie                  []byte
 	keyShares               []keyShare
@@ -642,13 +642,12 @@ type serverHelloMsg struct {
 	secureRenegotiation          []byte
 	extendedMasterSecret         bool
 	alpnProtocol                 string
-	// ems                          bool
-	scts                    [][]byte
-	supportedVersion        uint16
-	serverShare             keyShare
-	selectedIdentityPresent bool
-	selectedIdentity        uint16
-	supportedPoints         []uint8
+	scts                         [][]byte
+	supportedVersion             uint16
+	serverShare                  keyShare
+	selectedIdentityPresent      bool
+	selectedIdentity             uint16
+	supportedPoints              []uint8
 
 	// HelloRetryRequest extensions
 	cookie        []byte
