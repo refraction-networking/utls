@@ -77,8 +77,8 @@ func (hs *clientHandshakeStateTLS13) handshake() error {
 	// [uTLS SECTION START]
 
 	// set echdheParams to what we received from server
-	if ecdheParams, ok := hs.keySharesEcdheParams.GetEcdheParams(hs.serverHello.serverShare.group); ok {
-		hs.ecdheKey = ecdheParams
+	if ecdheKey, ok := hs.keySharesEcdheParams.GetEcdheParams(hs.serverHello.serverShare.group); ok {
+		hs.ecdheKey = ecdheKey
 	}
 	// [uTLS SECTION END]
 
