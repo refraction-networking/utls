@@ -1,5 +1,6 @@
 # ![uTLS](logo_small.png) uTLS
-[![Build Status](https://github.com/refraction-networking/utls/actions/workflows/go_1_20.yml/badge.svg?branch=master)](https://github.com/refraction-networking/utls/actions)[![Build Status](https://github.com/refraction-networking/utls/actions/workflows/go_1_21.yml/badge.svg?branch=master)](https://github.com/refraction-networking/utls/actions)
+[![Build Status](https://github.com/refraction-networking/utls/actions/workflows/go_1_20.yml/badge.svg?branch=master)](https://github.com/refraction-networking/utls/actions/workflows/go_1_20.yml) 
+[![Build Status](https://github.com/refraction-networking/utls/actions/workflows/go_1_21.yml/badge.svg?branch=master)](https://github.com/refraction-networking/utls/actions/workflows/go_1_21.yml) 
 [![godoc](https://img.shields.io/badge/godoc-reference-blue.svg)](https://godoc.org/github.com/refraction-networking/utls#UConn)
 ---
 uTLS is a fork of "crypto/tls", which provides ClientHello fingerprinting resistance, low-level access to handshake, fake session tickets and some other features. Handshake is still performed by "crypto/tls", this library merely changes ClientHello part of it and provides low-level access.  
