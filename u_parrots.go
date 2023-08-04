@@ -49,7 +49,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&UtlsGREASEExtension{},
 				&RenegotiationInfoExtension{Renegotiation: RenegotiateOnceAsClient},
 				&SNIExtension{},
-				&UtlsExtendedMasterSecretExtension{},
+				&ExtendedMasterSecretExtension{},
 				&SessionTicketExtension{},
 				&SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []SignatureScheme{
 					ECDSAWithP256AndSHA256,
@@ -104,7 +104,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&UtlsGREASEExtension{},
 				&RenegotiationInfoExtension{Renegotiation: RenegotiateOnceAsClient},
 				&SNIExtension{},
-				&UtlsExtendedMasterSecretExtension{},
+				&ExtendedMasterSecretExtension{},
 				&SessionTicketExtension{},
 				&SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []SignatureScheme{
 					ECDSAWithP256AndSHA256,
@@ -173,7 +173,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 			Extensions: []TLSExtension{
 				&UtlsGREASEExtension{},
 				&SNIExtension{},
-				&UtlsExtendedMasterSecretExtension{},
+				&ExtendedMasterSecretExtension{},
 				&RenegotiationInfoExtension{Renegotiation: RenegotiateOnceAsClient},
 				&SupportedCurvesExtension{[]CurveID{
 					CurveID(GREASE_PLACEHOLDER),
@@ -246,7 +246,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 			Extensions: []TLSExtension{
 				&UtlsGREASEExtension{},
 				&SNIExtension{},
-				&UtlsExtendedMasterSecretExtension{},
+				&ExtendedMasterSecretExtension{},
 				&RenegotiationInfoExtension{Renegotiation: RenegotiateOnceAsClient},
 				&SupportedCurvesExtension{[]CurveID{
 					CurveID(GREASE_PLACEHOLDER),
@@ -318,7 +318,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 			Extensions: []TLSExtension{
 				&UtlsGREASEExtension{},
 				&SNIExtension{},
-				&UtlsExtendedMasterSecretExtension{},
+				&ExtendedMasterSecretExtension{},
 				&RenegotiationInfoExtension{Renegotiation: RenegotiateOnceAsClient},
 				&SupportedCurvesExtension{[]CurveID{
 					CurveID(GREASE_PLACEHOLDER),
@@ -390,7 +390,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 			Extensions: []TLSExtension{
 				&UtlsGREASEExtension{},
 				&SNIExtension{},
-				&UtlsExtendedMasterSecretExtension{},
+				&ExtendedMasterSecretExtension{},
 				&RenegotiationInfoExtension{Renegotiation: RenegotiateOnceAsClient},
 				&SupportedCurvesExtension{[]CurveID{
 					CurveID(GREASE_PLACEHOLDER),
@@ -463,7 +463,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 			Extensions: []TLSExtension{
 				&UtlsGREASEExtension{},
 				&SNIExtension{},
-				&UtlsExtendedMasterSecretExtension{},
+				&ExtendedMasterSecretExtension{},
 				&RenegotiationInfoExtension{Renegotiation: RenegotiateOnceAsClient},
 				&SupportedCurvesExtension{[]CurveID{
 					GREASE_PLACEHOLDER,
@@ -534,7 +534,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 			Extensions: []TLSExtension{
 				&UtlsGREASEExtension{},
 				&SNIExtension{},
-				&UtlsExtendedMasterSecretExtension{},
+				&ExtendedMasterSecretExtension{},
 				&RenegotiationInfoExtension{Renegotiation: RenegotiateOnceAsClient},
 				&SupportedCurvesExtension{[]CurveID{
 					GREASE_PLACEHOLDER,
@@ -621,7 +621,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 			CompressionMethods: []byte{compressionNone},
 			Extensions: []TLSExtension{
 				&SNIExtension{},
-				&UtlsExtendedMasterSecretExtension{},
+				&ExtendedMasterSecretExtension{},
 				&RenegotiationInfoExtension{Renegotiation: RenegotiateOnceAsClient},
 				&SupportedCurvesExtension{[]CurveID{X25519, CurveP256, CurveP384, CurveP521}},
 				&SupportedPointsExtension{SupportedPoints: []byte{pointFormatUncompressed}},
@@ -674,7 +674,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 			},
 			Extensions: []TLSExtension{
 				&SNIExtension{},
-				&UtlsExtendedMasterSecretExtension{},
+				&ExtendedMasterSecretExtension{},
 				&RenegotiationInfoExtension{Renegotiation: RenegotiateOnceAsClient},
 				&SupportedCurvesExtension{[]CurveID{
 					X25519,
@@ -744,8 +744,8 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				compressionNone,
 			},
 			Extensions: []TLSExtension{
-				&SNIExtension{},                      //server_name
-				&UtlsExtendedMasterSecretExtension{}, //extended_master_secret
+				&SNIExtension{},                  //server_name
+				&ExtendedMasterSecretExtension{}, //extended_master_secret
 				&RenegotiationInfoExtension{Renegotiation: RenegotiateOnceAsClient}, //extensionRenegotiationInfo
 				&SupportedCurvesExtension{[]CurveID{ //supported_groups
 					X25519,
@@ -825,8 +825,8 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				compressionNone,
 			},
 			Extensions: []TLSExtension{
-				&SNIExtension{},                      //server_name
-				&UtlsExtendedMasterSecretExtension{}, //extended_master_secret
+				&SNIExtension{},                  //server_name
+				&ExtendedMasterSecretExtension{}, //extended_master_secret
 				&RenegotiationInfoExtension{Renegotiation: RenegotiateOnceAsClient}, //extensionRenegotiationInfo
 				&SupportedCurvesExtension{[]CurveID{ //supported_groups
 					X25519,
@@ -905,7 +905,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 			},
 			Extensions: []TLSExtension{
 				&SNIExtension{},
-				&UtlsExtendedMasterSecretExtension{},
+				&ExtendedMasterSecretExtension{},
 				&RenegotiationInfoExtension{
 					Renegotiation: RenegotiateOnceAsClient,
 				},
@@ -1016,7 +1016,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 			Extensions: []TLSExtension{
 				&RenegotiationInfoExtension{Renegotiation: RenegotiateOnceAsClient},
 				&SNIExtension{},
-				&UtlsExtendedMasterSecretExtension{},
+				&ExtendedMasterSecretExtension{},
 				&SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []SignatureScheme{
 					ECDSAWithP256AndSHA256,
 					PSSWithSHA256,
@@ -1076,7 +1076,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 			Extensions: []TLSExtension{
 				&RenegotiationInfoExtension{Renegotiation: RenegotiateOnceAsClient},
 				&SNIExtension{},
-				&UtlsExtendedMasterSecretExtension{},
+				&ExtendedMasterSecretExtension{},
 				&SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []SignatureScheme{
 					ECDSAWithP256AndSHA256,
 					PSSWithSHA256,
@@ -1141,7 +1141,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 			Extensions: []TLSExtension{
 				&RenegotiationInfoExtension{Renegotiation: RenegotiateOnceAsClient},
 				&SNIExtension{},
-				&UtlsExtendedMasterSecretExtension{},
+				&ExtendedMasterSecretExtension{},
 				&SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []SignatureScheme{
 					ECDSAWithP256AndSHA256,
 					PSSWithSHA256,
@@ -1221,7 +1221,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 			Extensions: []TLSExtension{
 				&UtlsGREASEExtension{},
 				&SNIExtension{},
-				&UtlsExtendedMasterSecretExtension{},
+				&ExtendedMasterSecretExtension{},
 				&RenegotiationInfoExtension{Renegotiation: RenegotiateOnceAsClient},
 				&SupportedCurvesExtension{[]CurveID{
 					CurveID(GREASE_PLACEHOLDER),
@@ -1288,7 +1288,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 			},
 			Extensions: []TLSExtension{
 				&SNIExtension{},
-				&UtlsExtendedMasterSecretExtension{},
+				&ExtendedMasterSecretExtension{},
 				&RenegotiationInfoExtension{},
 				// supported_groups
 				&SupportedCurvesExtension{[]CurveID{
@@ -1339,7 +1339,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 			Extensions: []TLSExtension{
 				&UtlsGREASEExtension{},
 				&SNIExtension{},
-				&UtlsExtendedMasterSecretExtension{},
+				&ExtendedMasterSecretExtension{},
 				&RenegotiationInfoExtension{
 					Renegotiation: RenegotiateOnceAsClient,
 				},
@@ -1444,7 +1444,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 			Extensions: []TLSExtension{
 				&UtlsGREASEExtension{},
 				&SNIExtension{},
-				&UtlsExtendedMasterSecretExtension{},
+				&ExtendedMasterSecretExtension{},
 				&RenegotiationInfoExtension{
 					Renegotiation: RenegotiateOnceAsClient,
 				},
@@ -1556,7 +1556,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 			Extensions: []TLSExtension{
 				&UtlsGREASEExtension{},
 				&SNIExtension{},
-				&UtlsExtendedMasterSecretExtension{},
+				&ExtendedMasterSecretExtension{},
 				&RenegotiationInfoExtension{
 					Renegotiation: RenegotiateOnceAsClient,
 				},
@@ -1736,7 +1736,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 			Extensions: []TLSExtension{
 				&UtlsGREASEExtension{},
 				&SNIExtension{},
-				&UtlsExtendedMasterSecretExtension{},
+				&ExtendedMasterSecretExtension{},
 				&RenegotiationInfoExtension{
 					Renegotiation: RenegotiateOnceAsClient,
 				},
@@ -1844,7 +1844,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 			Extensions: []TLSExtension{
 				&UtlsGREASEExtension{},
 				&SNIExtension{},
-				&UtlsExtendedMasterSecretExtension{},
+				&ExtendedMasterSecretExtension{},
 				&RenegotiationInfoExtension{
 					Renegotiation: RenegotiateOnceAsClient,
 				},
@@ -2013,12 +2013,12 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 		return err
 	}
 
-	privateHello, ecdheParams, err := uconn.makeClientHello()
+	privateHello, ecdheKey, err := uconn.makeClientHelloForApplyPreset()
 	if err != nil {
 		return err
 	}
 	uconn.HandshakeState.Hello = privateHello.getPublicPtr()
-	uconn.HandshakeState.State13.EcdheParams = ecdheParams
+	uconn.HandshakeState.State13.EcdheKey = ecdheKey
 	uconn.HandshakeState.State13.KeySharesEcdheParams = make(KeySharesEcdheParameters, 2)
 	hello := uconn.HandshakeState.Hello
 	session := uconn.HandshakeState.Session
@@ -2088,12 +2088,14 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 			}
 			grease_extensions_seen += 1
 		case *SessionTicketExtension:
+			var cs *ClientSessionState
 			if session == nil && uconn.config.ClientSessionCache != nil {
-				cacheKey := clientSessionCacheKey(uconn.RemoteAddr(), uconn.config)
-				session, _ = uconn.config.ClientSessionCache.Get(cacheKey)
+				cacheKey := uconn.clientSessionCacheKey()
+				cs, _ = uconn.config.ClientSessionCache.Get(cacheKey)
+				session = cs.session
 				// TODO: use uconn.loadSession(hello.getPrivateObj()) to support TLS 1.3 PSK-style resumption
 			}
-			err := uconn.SetSessionState(session)
+			err := uconn.SetSessionState(cs)
 			if err != nil {
 				return err
 			}
@@ -2115,16 +2117,16 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 					continue
 				}
 
-				ecdheParams, err := generateECDHEParameters(uconn.config.rand(), curveID)
+				ecdheKey, err := generateECDHEKey(uconn.config.rand(), curveID)
 				if err != nil {
 					return fmt.Errorf("unsupported Curve in KeyShareExtension: %v."+
 						"To mimic it, fill the Data(key) field manually", curveID)
 				}
-				uconn.HandshakeState.State13.KeySharesEcdheParams.AddEcdheParams(curveID, ecdheParams)
-				ext.KeyShares[i].Data = ecdheParams.PublicKey()
+				uconn.HandshakeState.State13.KeySharesEcdheParams.AddEcdheParams(curveID, ecdheKey)
+				ext.KeyShares[i].Data = ecdheKey.PublicKey().Bytes()
 				if !preferredCurveIsSet {
 					// only do this once for the first non-grease curve
-					uconn.HandshakeState.State13.EcdheParams = ecdheParams
+					uconn.HandshakeState.State13.EcdheKey = ecdheKey
 					preferredCurveIsSet = true
 				}
 			}
@@ -2147,7 +2149,12 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 }
 
 func (uconn *UConn) generateRandomizedSpec() (ClientHelloSpec, error) {
-	return generateRandomizedSpec(&uconn.ClientHelloID, uconn.serverName, uconn.HandshakeState.Session, uconn.config.NextProtos)
+	css := &ClientSessionState{
+		session: uconn.HandshakeState.Session,
+		ticket:  uconn.HandshakeState.Hello.SessionTicket,
+	}
+
+	return generateRandomizedSpec(&uconn.ClientHelloID, uconn.serverName, css, uconn.config.NextProtos)
 }
 
 func generateRandomizedSpec(
@@ -2253,7 +2260,7 @@ func generateRandomizedSpec(
 
 	status := StatusRequestExtension{}
 	sct := SCTExtension{}
-	ems := UtlsExtendedMasterSecretExtension{}
+	ems := ExtendedMasterSecretExtension{}
 	points := SupportedPointsExtension{SupportedPoints: []byte{pointFormatUncompressed}}
 
 	curveIDs := []CurveID{}
