@@ -1,7 +1,7 @@
 # This workflow will build a golang project
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
 
-name: "Go 1.20"
+name: "Go"
 
 on:
   push:
@@ -10,18 +10,20 @@ on:
     branches: [ "master" ]
 
 jobs:
-  go_build_test:
-    runs-on: ubuntu-latest
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ "ubuntu-latest", "windows-latest", "macos-latest" ]
+        go: [ "1.20.x", "1.21.0" ]
+    runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v3
-
-    - name: Set up Go
-      uses: actions/setup-go@v4
+    - uses: actions/setup-go@v4
       with:
-        go-version: '1.20.7'
-
+        go-version: ${{ matrix.go }}
+    - run: go version
     - name: Build
       run: go build -v ./...
-
     - name: Test
       run: go test -v ./...
