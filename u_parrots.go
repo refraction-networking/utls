@@ -2092,7 +2092,9 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 			if session == nil && uconn.config.ClientSessionCache != nil {
 				cacheKey := uconn.clientSessionCacheKey()
 				cs, _ = uconn.config.ClientSessionCache.Get(cacheKey)
-				session = cs.session
+				if cs != nil {
+					session = cs.session
+				}
 				// TODO: use uconn.loadSession(hello.getPrivateObj()) to support TLS 1.3 PSK-style resumption
 			}
 			err := uconn.SetSessionState(cs)
