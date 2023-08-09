@@ -32,7 +32,7 @@ var (
 			LegacyID: true,
 		},
 		InitialMaxStreamsUni(16),
-		&GREASE{
+		&GREASETransportParameter{
 			IdOverride: 0xff02de1a,
 			ValueOverride: []byte{
 				0x43, 0xe8,

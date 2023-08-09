@@ -61,7 +61,7 @@ type TransportParameter interface {
 	Value() []byte
 }
 
-type GREASE struct {
+type GREASETransportParameter struct {
 	IdOverride    uint64 // if set to a valid GREASE ID, use this instead of randomly generated one.
 	Length        uint16 // if len(ValueOverride) == 0, will generate random data of this size.
 	ValueOverride []byte // if len(ValueOverride) > 0, use this instead of random bytes.
@@ -73,12 +73,12 @@ const (
 
 // IsGREASEID returns true if id is a valid GREASE ID for
 // transport parameters.
-func (GREASE) IsGREASEID(id uint64) bool {
-	return (id-27)%31 == 0
+func (GREASETransportParameter) IsGREASEID(id uint64) bool {
+	return id >= 27 && (id-27)%31 == 0
 }
 
 // GetGREASEID returns a random valid GREASE ID for transport parameters.
-func (GREASE) GetGREASEID() uint64 {
+func (GREASETransportParameter) GetGREASEID() uint64 {
 	max := big.NewInt(GREASE_MAX_MULTIPLIER)
 
 	randMultiply, err := rand.Int(rand.Reader, max)
@@ -89,14 +89,14 @@ func (GREASE) GetGREASEID() uint64 {
 	return 27 + randMultiply.Uint64()*31
 }
 
-func (g *GREASE) ID() uint64 {
+func (g *GREASETransportParameter) ID() uint64 {
 	if !g.IsGREASEID(g.IdOverride) {
 		g.IdOverride = g.GetGREASEID()
 	}
 	return g.IdOverride
 }
 
-func (g *GREASE) Value() []byte {
+func (g *GREASETransportParameter) Value() []byte {
 	if len(g.ValueOverride) == 0 {
 		g.ValueOverride = make([]byte, g.Length)
 		rand.Read(g.ValueOverride)
@@ -271,13 +271,13 @@ func (*VersionInformation) GetGREASEVersion() uint32 {
 	return uint32(randVal.Uint64()&math.MaxUint32) | 0x0a0a0a0a // all GREASE versions are in 0x?a?a?a?a
 }
 
-type Padding []byte
+type PaddingTransportParameter []byte
 
-func (Padding) ID() uint64 {
+func (PaddingTransportParameter) ID() uint64 {
 	return padding
 }
 
-func (p Padding) Value() []byte {
+func (p PaddingTransportParameter) Value() []byte {
 	return p
 }
 
