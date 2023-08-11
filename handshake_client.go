@@ -941,7 +941,11 @@ func (hs *clientHandshakeState) saveSessionTicket() error {
 	session.secret = hs.masterSecret
 
 	cs := &ClientSessionState{ticket: hs.ticket, session: session}
-	c.config.ClientSessionCache.Put(cacheKey, cs)
+	// [UTLS BEGIN]
+	if c.config.ClientSessionCache != nil { // skip saving session if cache is nil
+		c.config.ClientSessionCache.Put(cacheKey, cs)
+	}
+	// [UTLS END]
 	return nil
 }
 
