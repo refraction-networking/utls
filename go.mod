@@ -2,6 +2,10 @@ module github.com/refraction-networking/utls
 
 go 1.20
 
+retract (
+	v1.4.1 // #218 panic on saveSessionTicket
+)
+
 require (
 	github.com/andybalholm/brotli v1.0.5
 	github.com/gaukas/godicttls v0.0.3
