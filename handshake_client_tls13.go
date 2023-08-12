@@ -15,6 +15,8 @@ import (
 	"fmt"
 	"hash"
 	"time"
+
+	circlKem "github.com/cloudflare/circl/kem"
 )
 
 // [uTLS SECTION START]
@@ -35,17 +37,19 @@ func (keymap KeySharesEcdheParameters) GetPublicEcdheParams(curveID CurveID) (pa
 // [uTLS SECTION END]
 
 type clientHandshakeStateTLS13 struct {
-	c           *Conn
-	ctx         context.Context
-	serverHello *serverHelloMsg
-	hello       *clientHelloMsg
-	ecdheKey    *ecdh.PrivateKey
-
+	c                    *Conn
+	ctx                  context.Context
+	serverHello          *serverHelloMsg
+	hello                *clientHelloMsg
+	ecdheKey             *ecdh.PrivateKey
 	keySharesEcdheParams KeySharesEcdheParameters // [uTLS]
+	kemKey               circlKem.PrivateKey      // [uTLS]
+	// keySharesCirclParams KeySharesCirclParameters // [uTLS] TODO: perhaps implement?
 
-	session     *SessionState
-	earlySecret []byte
-	binderKey   []byte
+	session       *SessionState
+	earlySecret   []byte
+	binderKey     []byte
+	selectedGroup CurveID
 
 	certReq       *certificateRequestMsgTLS13
 	usingPSK      bool
@@ -83,7 +87,7 @@ func (hs *clientHandshakeStateTLS13) handshake() error {
 	// [uTLS SECTION END]
 
 	// Consistency check on the presence of a keyShare and its parameters.
-	if hs.ecdheKey == nil || len(hs.hello.keyShares) < 1 { // [uTLS]
+	if (hs.ecdheKey == nil && hs.kemKey == nil) || len(hs.hello.keyShares) < 1 { // [uTLS]
 		// keyshares "< 1" instead of "!= 1", as uTLS may send multiple
 		return c.sendAlert(alertInternalError)
 	}
@@ -268,21 +272,55 @@ func (hs *clientHandshakeStateTLS13) processHelloRetryRequest() error {
 			c.sendAlert(alertIllegalParameter)
 			return errors.New("tls: server selected unsupported group")
 		}
-		if sentID, _ := curveIDForCurve(hs.ecdheKey.Curve()); sentID == curveID {
-			c.sendAlert(alertIllegalParameter)
-			return errors.New("tls: server sent an unnecessary HelloRetryRequest key_share")
-		}
-		if _, ok := curveForCurveID(curveID); !ok {
+
+		// [UTLS SECTION BEGINS]
+		// ported from cloudflare/go, slightly modified to maintain compatibility with crypto/tls upstream
+		if hs.ecdheKey != nil {
+			if sentID, _ := curveIDForCurve(hs.ecdheKey.Curve()); sentID == curveID {
+				c.sendAlert(alertIllegalParameter)
+				return errors.New("tls: server sent an unnecessary HelloRetryRequest key_share")
+			}
+		} else if hs.kemKey != nil {
+			if clientKeySharePrivateCurveID(hs.kemKey) == curveID {
+				c.sendAlert(alertIllegalParameter)
+				return errors.New("tls: server sent an unnecessary HelloRetryRequest key_share")
+			}
+		} else {
 			c.sendAlert(alertInternalError)
-			return errors.New("tls: CurvePreferences includes unsupported curve")
+			return errors.New("tls: ecdheKey and kemKey are both nil")
 		}
-		key, err := generateECDHEKey(c.config.rand(), curveID)
-		if err != nil {
-			c.sendAlert(alertInternalError)
-			return err
+
+		if scheme := curveIdToCirclScheme(curveID); scheme != nil {
+			pk, sk, err := generateKemKeyPair(scheme, c.config.rand())
+			if err != nil {
+				c.sendAlert(alertInternalError)
+				return fmt.Errorf("HRR generateKemKeyPair %s: %w",
+					scheme.Name(), err)
+			}
+			packedPk, err := pk.MarshalBinary()
+			if err != nil {
+				c.sendAlert(alertInternalError)
+				return fmt.Errorf("HRR pack circl public key %s: %w",
+					scheme.Name(), err)
+			}
+			hs.kemKey = sk
+			hs.ecdheKey = nil // unset ecdheKey if any
+			hs.hello.keyShares = []keyShare{{group: curveID, data: packedPk}}
+		} else {
+			if _, ok := curveForCurveID(curveID); !ok {
+				c.sendAlert(alertInternalError)
+				return errors.New("tls: CurvePreferences includes unsupported curve")
+			}
+			key, err := generateECDHEKey(c.config.rand(), curveID)
+			if err != nil {
+				c.sendAlert(alertInternalError)
+				return err
+			}
+			hs.ecdheKey = key
+			hs.kemKey = nil // unset kemKey if any
+			hs.hello.keyShares = []keyShare{{group: curveID, data: key.PublicKey().Bytes()}}
 		}
-		hs.ecdheKey = key
-		hs.hello.keyShares = []keyShare{{group: curveID, data: key.PublicKey().Bytes()}}
+		// [UTLS SECTION ENDS]
 	}
 
 	hs.hello.raw = nil
@@ -430,9 +468,19 @@ func (hs *clientHandshakeStateTLS13) processServerHello() error {
 		c.sendAlert(alertIllegalParameter)
 		return errors.New("tls: server did not send a key share")
 	}
-	if sentID, _ := curveIDForCurve(hs.ecdheKey.Curve()); hs.serverHello.serverShare.group != sentID {
-		c.sendAlert(alertIllegalParameter)
-		return errors.New("tls: server selected unsupported group")
+	if hs.ecdheKey != nil {
+		if sentID, _ := curveIDForCurve(hs.ecdheKey.Curve()); hs.serverHello.serverShare.group != sentID {
+			c.sendAlert(alertIllegalParameter)
+			return errors.New("tls: server selected unsupported group")
+		}
+	} else if hs.kemKey != nil {
+		if clientKeySharePrivateCurveID(hs.kemKey) != hs.serverHello.serverShare.group {
+			c.sendAlert(alertIllegalParameter)
+			return errors.New("tls: server selected unsupported group")
+		}
+	} else {
+		c.sendAlert(alertInternalError)
+		return errors.New("tls: ecdheKey and kemKey are both nil")
 	}
 
 	if !hs.serverHello.selectedIdentityPresent {
@@ -469,16 +517,33 @@ func (hs *clientHandshakeStateTLS13) processServerHello() error {
 func (hs *clientHandshakeStateTLS13) establishHandshakeKeys() error {
 	c := hs.c
 
-	peerKey, err := hs.ecdheKey.Curve().NewPublicKey(hs.serverHello.serverShare.data)
-	if err != nil {
-		c.sendAlert(alertIllegalParameter)
-		return errors.New("tls: invalid server key share")
+	// [UTLS SECTION BEGINS]
+	// ported from cloudflare/go, slightly modified to maintain compatibility with crypto/tls upstream
+	var sharedKey []byte
+	var err error
+
+	if hs.ecdheKey != nil {
+		peerKey, err := hs.ecdheKey.Curve().NewPublicKey(hs.serverHello.serverShare.data)
+		if err != nil {
+			c.sendAlert(alertIllegalParameter)
+			return errors.New("tls: invalid server key share")
+		}
+		sharedKey, err = hs.ecdheKey.ECDH(peerKey)
+		if err != nil {
+			c.sendAlert(alertIllegalParameter)
+			return errors.New("tls: invalid server key share")
+		}
+	} else if hs.kemKey != nil {
+		sharedKey, err = hs.kemKey.Scheme().Decapsulate(hs.kemKey, hs.serverHello.serverShare.data)
+		if err != nil {
+			c.sendAlert(alertIllegalParameter)
+			return fmt.Errorf("%s decaps: %w", hs.kemKey.Scheme().Name(), err)
+		}
+	} else {
+		c.sendAlert(alertInternalError)
+		return errors.New("tls: ecdheKey and circlKey are both nil")
 	}
-	sharedKey, err := hs.ecdheKey.ECDH(peerKey)
-	if err != nil {
-		c.sendAlert(alertIllegalParameter)
-		return errors.New("tls: invalid server key share")
-	}
+	// [UTLS SECTION ENDS]
 
 	earlySecret := hs.earlySecret
 	if !hs.usingPSK {
