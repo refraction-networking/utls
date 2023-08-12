@@ -6,13 +6,12 @@
 // To enable set CurvePreferences with the desired scheme as the first element:
 //
 //   import (
-//      "github.com/cloudflare/circl/kem/tls"
-//      "github.com/cloudflare/circl/kem/hybrid"
+//      "crypto/tls"
 //
 //          [...]
 //
 //   config.CurvePreferences = []tls.CurveID{
-//      hybrid.X25519Kyber512Draft00().(tls.TLSScheme).TLSCurveID(),
+//      tls.X25519Kyber768Draft00,
 //      tls.X25519,
 //      tls.P256,
 //   }
@@ -29,38 +28,27 @@ import (
 	"github.com/cloudflare/circl/kem/hybrid"
 )
 
-// Either ecdheParameters or kem.PrivateKey
+// Either *ecdh.PrivateKey or *kemPrivateKey
 type clientKeySharePrivate interface{}
 
-var (
-	X25519Kyber512Draft00 = CurveID(0xfe30)
-	X25519Kyber768Draft00 = CurveID(0xfe31)
-	P256Kyber768Draft00   = CurveID(0xfe32)
-	invalidCurveID        = CurveID(0)
-)
-
-func kemSchemeKeyToCurveID(s kem.Scheme) CurveID {
-	switch s.Name() {
-	case "Kyber512-X25519":
-		return X25519Kyber512Draft00
-	case "Kyber768-X25519":
-		return X25519Kyber768Draft00
-	case "P256Kyber768Draft00":
-		return P256Kyber768Draft00
-	default:
-		return invalidCurveID
-	}
+type kemPrivateKey struct {
+	secretKey kem.PrivateKey
+	curveID   CurveID
 }
+
+var (
+	X25519Kyber512Draft00    = CurveID(0xfe30)
+	X25519Kyber768Draft00    = CurveID(0x6399)
+	X25519Kyber768Draft00Old = CurveID(0xfe31)
+	P256Kyber768Draft00      = CurveID(0xfe32)
+	invalidCurveID           = CurveID(0)
+)
 
 // Extract CurveID from clientKeySharePrivate
 func clientKeySharePrivateCurveID(ks clientKeySharePrivate) CurveID {
 	switch v := ks.(type) {
-	case kem.PrivateKey:
-		ret := kemSchemeKeyToCurveID(v.Scheme())
-		if ret == invalidCurveID {
-			panic("cfkem: internal error: don't know CurveID for this KEM")
-		}
-		return ret
+	case *kemPrivateKey:
+		return v.curveID
 	case *ecdh.PrivateKey:
 		ret, ok := curveIDForCurve(v.Curve())
 		if !ok {
@@ -77,7 +65,7 @@ func curveIdToCirclScheme(id CurveID) kem.Scheme {
 	switch id {
 	case X25519Kyber512Draft00:
 		return hybrid.Kyber512X25519()
-	case X25519Kyber768Draft00:
+	case X25519Kyber768Draft00, X25519Kyber768Draft00Old:
 		return hybrid.Kyber768X25519()
 	case P256Kyber768Draft00:
 		return hybrid.P256Kyber768Draft00()
@@ -102,12 +90,12 @@ func encapsulateForKem(scheme kem.Scheme, rnd io.Reader, ppk []byte) (
 }
 
 // Generate a new keypair using randomness from rnd.
-func generateKemKeyPair(scheme kem.Scheme, rnd io.Reader) (
-	kem.PublicKey, kem.PrivateKey, error) {
+func generateKemKeyPair(scheme kem.Scheme, curveID CurveID, rnd io.Reader) (
+	kem.PublicKey, *kemPrivateKey, error) {
 	seed := make([]byte, scheme.SeedSize())
 	if _, err := io.ReadFull(rnd, seed); err != nil {
 		return nil, nil, err
 	}
 	pk, sk := scheme.DeriveKeyPair(seed)
-	return pk, sk, nil
+	return pk, &kemPrivateKey{sk, curveID}, nil
 }

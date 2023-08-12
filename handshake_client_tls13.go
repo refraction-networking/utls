@@ -15,8 +15,6 @@ import (
 	"fmt"
 	"hash"
 	"time"
-
-	circlKem "github.com/cloudflare/circl/kem"
 )
 
 // [uTLS SECTION START]
@@ -43,7 +41,7 @@ type clientHandshakeStateTLS13 struct {
 	hello                *clientHelloMsg
 	ecdheKey             *ecdh.PrivateKey
 	keySharesEcdheParams KeySharesEcdheParameters // [uTLS]
-	kemKey               circlKem.PrivateKey      // [uTLS]
+	kemKey               *kemPrivateKey           // [uTLS]
 	// keySharesCirclParams KeySharesCirclParameters // [uTLS] TODO: perhaps implement?
 
 	session       *SessionState
@@ -291,7 +289,7 @@ func (hs *clientHandshakeStateTLS13) processHelloRetryRequest() error {
 		}
 
 		if scheme := curveIdToCirclScheme(curveID); scheme != nil {
-			pk, sk, err := generateKemKeyPair(scheme, c.config.rand())
+			pk, sk, err := generateKemKeyPair(scheme, curveID, c.config.rand())
 			if err != nil {
 				c.sendAlert(alertInternalError)
 				return fmt.Errorf("HRR generateKemKeyPair %s: %w",
@@ -534,10 +532,11 @@ func (hs *clientHandshakeStateTLS13) establishHandshakeKeys() error {
 			return errors.New("tls: invalid server key share")
 		}
 	} else if hs.kemKey != nil {
-		sharedKey, err = hs.kemKey.Scheme().Decapsulate(hs.kemKey, hs.serverHello.serverShare.data)
+		sk := hs.kemKey.secretKey
+		sharedKey, err = sk.Scheme().Decapsulate(sk, hs.serverHello.serverShare.data)
 		if err != nil {
 			c.sendAlert(alertIllegalParameter)
-			return fmt.Errorf("%s decaps: %w", hs.kemKey.Scheme().Name(), err)
+			return fmt.Errorf("%s decaps: %w", sk.Scheme().Name(), err)
 		}
 	} else {
 		c.sendAlert(alertInternalError)

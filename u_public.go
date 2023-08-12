@@ -11,7 +11,7 @@ import (
 	"hash"
 	"time"
 
-	circlKem "github.com/cloudflare/circl/kem"
+	"github.com/cloudflare/circl/kem"
 )
 
 // ClientHandshakeState includes both TLS 1.3-only and TLS 1.2-only states,
@@ -41,7 +41,7 @@ type TLS13OnlyState struct {
 	Suite                *PubCipherSuiteTLS13
 	EcdheKey             *ecdh.PrivateKey
 	KeySharesEcdheParams KeySharesEcdheParameters
-	KEMKey               circlKem.PrivateKey
+	KEMKey               *KemPrivateKey
 	EarlySecret          []byte
 	BinderKey            []byte
 	CertReq              *CertificateRequestMsgTLS13
@@ -67,7 +67,7 @@ func (chs *PubClientHandshakeState) toPrivate13() *clientHandshakeStateTLS13 {
 			hello:                chs.Hello.getPrivatePtr(),
 			ecdheKey:             chs.State13.EcdheKey,
 			keySharesEcdheParams: chs.State13.KeySharesEcdheParams,
-			kemKey:               chs.State13.KEMKey,
+			kemKey:               chs.State13.KEMKey.ToPrivate(),
 
 			session:     chs.Session,
 			earlySecret: chs.State13.EarlySecret,
@@ -93,7 +93,7 @@ func (chs13 *clientHandshakeStateTLS13) toPublic13() *PubClientHandshakeState {
 		tls13State := TLS13OnlyState{
 			KeySharesEcdheParams: chs13.keySharesEcdheParams,
 			EcdheKey:             chs13.ecdheKey,
-			KEMKey:               chs13.kemKey,
+			KEMKey:               chs13.kemKey.ToPublic(),
 			EarlySecret:          chs13.earlySecret,
 			BinderKey:            chs13.binderKey,
 			CertReq:              chs13.certReq.toPublic(),
@@ -738,4 +738,31 @@ func (TKS TicketKeys) ToPrivate() []ticketKey {
 		tks = append(tks, TK.ToPrivate())
 	}
 	return tks
+}
+
+type KemPrivateKey struct {
+	SecretKey kem.PrivateKey
+	CurveID   CurveID
+}
+
+func (kpk *KemPrivateKey) ToPrivate() *kemPrivateKey {
+	if kpk == nil {
+		return nil
+	} else {
+		return &kemPrivateKey{
+			secretKey: kpk.SecretKey,
+			curveID:   kpk.CurveID,
+		}
+	}
+}
+
+func (kpk *kemPrivateKey) ToPublic() *KemPrivateKey {
+	if kpk == nil {
+		return nil
+	} else {
+		return &KemPrivateKey{
+			SecretKey: kpk.secretKey,
+			CurveID:   kpk.curveID,
+		}
+	}
 }

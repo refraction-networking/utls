@@ -22,7 +22,6 @@ import (
 	"strings"
 	"time"
 
-	circlKem "github.com/cloudflare/circl/kem"
 	circlSign "github.com/cloudflare/circl/sign"
 )
 
@@ -152,8 +151,10 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, clientKeySharePrivate, error)
 		}
 
 		curveID := config.curvePreferences()[0]
+		// [UTLS SECTION BEGINS]
+		// Ported from cloudflare/go with modifications to preserve crypto/tls compatibility
 		if scheme := curveIdToCirclScheme(curveID); scheme != nil {
-			pk, sk, err := generateKemKeyPair(scheme, config.rand())
+			pk, sk, err := generateKemKeyPair(scheme, curveID, config.rand())
 			if err != nil {
 				return nil, nil, fmt.Errorf("generateKemKeyPair %s: %w", scheme.Name(), err)
 			}
@@ -174,6 +175,7 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, clientKeySharePrivate, error)
 			hello.keyShares = []keyShare{{group: curveID, data: key.PublicKey().Bytes()}}
 			secret = key
 		}
+		// [UTLS SECTION ENDS]
 	}
 
 	if c.quic != nil {
@@ -283,7 +285,7 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 
 		if ecdheKey, ok := keySharePrivate.(*ecdh.PrivateKey); ok {
 			hs.ecdheKey = ecdheKey
-		} else if kemKey, ok := keySharePrivate.(circlKem.PrivateKey); ok {
+		} else if kemKey, ok := keySharePrivate.(*kemPrivateKey); ok {
 			hs.kemKey = kemKey
 		} else {
 			return fmt.Errorf("tls: unknown key share type %T", keySharePrivate)

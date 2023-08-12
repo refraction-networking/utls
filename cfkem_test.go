@@ -7,28 +7,16 @@ import (
 	"context"
 	"fmt"
 	"testing"
-
-	"github.com/cloudflare/circl/kem"
-	"github.com/cloudflare/circl/kem/hybrid"
 )
 
-func testHybridKEX(t *testing.T, scheme kem.Scheme, clientPQ, serverPQ,
+func testHybridKEX(t *testing.T, curveID CurveID, clientPQ, serverPQ,
 	clientTLS12, serverTLS12 bool) {
 	// var clientSelectedKEX *CurveID
 	// var retry bool
 
-	rsaCert := Certificate{
-		Certificate: [][]byte{testRSACertificate},
-		PrivateKey:  testRSAPrivateKey,
-	}
-	serverCerts := []Certificate{rsaCert}
-
 	clientConfig := testConfig.Clone()
 	if clientPQ {
-		clientConfig.CurvePreferences = []CurveID{
-			kemSchemeKeyToCurveID(scheme),
-			X25519,
-		}
+		clientConfig.CurvePreferences = []CurveID{curveID, X25519}
 	}
 	// clientCFEventHandler := func(ev CFEvent) {
 	// 	switch e := ev.(type) {
@@ -44,15 +32,13 @@ func testHybridKEX(t *testing.T, scheme kem.Scheme, clientPQ, serverPQ,
 
 	serverConfig := testConfig.Clone()
 	if serverPQ {
-		serverConfig.CurvePreferences = []CurveID{
-			kemSchemeKeyToCurveID(scheme),
-			X25519,
-		}
+		serverConfig.CurvePreferences = []CurveID{curveID, X25519}
+	} else {
+		serverConfig.CurvePreferences = []CurveID{X25519}
 	}
 	if serverTLS12 {
 		serverConfig.MaxVersion = VersionTLS12
 	}
-	serverConfig.Certificates = serverCerts
 
 	c, s := localPipe(t)
 	done := make(chan error)
@@ -78,7 +64,7 @@ func testHybridKEX(t *testing.T, scheme kem.Scheme, clientPQ, serverPQ,
 	// var expectedRetry bool
 
 	// if clientPQ && serverPQ && !clientTLS12 && !serverTLS12 {
-	// 	expectedKEX = kemSchemeKeyToCurveID(scheme)
+	// 	expectedKEX = curveID
 	// } else {
 	// 	expectedKEX = X25519
 	// }
@@ -86,36 +72,36 @@ func testHybridKEX(t *testing.T, scheme kem.Scheme, clientPQ, serverPQ,
 	// 	expectedRetry = true
 	// }
 
-	// if clientSelectedKEX == nil {
-	// 	t.Error("No KEX happened?")
-	// }
-
-	// if *clientSelectedKEX != expectedKEX {
-	// 	t.Errorf("failed to negotiate: expected %d, got %d",
-	// 		expectedKEX, *clientSelectedKEX)
-	// }
 	// if expectedRetry != retry {
 	// 	t.Errorf("Expected retry=%v, got retry=%v", expectedRetry, retry)
+	// }
+
+	// if clientSelectedKEX == nil {
+	// 	t.Error("No KEX happened?")
+	// } else if *clientSelectedKEX != expectedKEX {
+	// 	t.Errorf("failed to negotiate: expected %d, got %d",
+	// 		expectedKEX, *clientSelectedKEX)
 	// }
 }
 
 func TestHybridKEX(t *testing.T) {
-	run := func(scheme kem.Scheme, clientPQ, serverPQ, clientTLS12, serverTLS12 bool) {
-		t.Run(fmt.Sprintf("%s serverPQ:%v clientPQ:%v serverTLS12:%v clientTLS12:%v", scheme.Name(),
+	run := func(curveID CurveID, clientPQ, serverPQ, clientTLS12, serverTLS12 bool) {
+		t.Run(fmt.Sprintf("%#04x serverPQ:%v clientPQ:%v serverTLS12:%v clientTLS12:%v", uint16(curveID),
 			serverPQ, clientPQ, serverTLS12, clientTLS12), func(t *testing.T) {
-			testHybridKEX(t, scheme, clientPQ, serverPQ, clientTLS12, serverTLS12)
+			testHybridKEX(t, curveID, clientPQ, serverPQ, clientTLS12, serverTLS12)
 		})
 	}
-	for _, scheme := range []kem.Scheme{
-		hybrid.Kyber512X25519(),
-		hybrid.Kyber768X25519(),
-		hybrid.P256Kyber768Draft00(),
+	for _, curveID := range []CurveID{
+		X25519Kyber512Draft00,
+		X25519Kyber768Draft00,
+		X25519Kyber768Draft00Old,
+		P256Kyber768Draft00,
 	} {
-		run(scheme, true, true, false, false)
-		run(scheme, true, false, false, false)
-		run(scheme, false, true, false, false)
-		run(scheme, true, true, true, false)
-		run(scheme, true, true, false, true)
-		run(scheme, true, true, true, true)
+		run(curveID, true, true, false, false)
+		run(curveID, true, false, false, false)
+		run(curveID, false, true, false, false)
+		run(curveID, true, true, true, false)
+		run(curveID, true, true, false, true)
+		run(curveID, true, true, true, true)
 	}
 }

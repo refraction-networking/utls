@@ -17,8 +17,6 @@ import (
 	"io"
 	"net"
 	"strconv"
-
-	circlKem "github.com/cloudflare/circl/kem"
 )
 
 type UConn struct {
@@ -87,10 +85,10 @@ func (uconn *UConn) BuildHandshakeState() error {
 		uconn.HandshakeState.Hello = hello.getPublicPtr()
 		if ecdheKey, ok := keySharePrivate.(*ecdh.PrivateKey); ok {
 			uconn.HandshakeState.State13.EcdheKey = ecdheKey
-		} else if kemKey, ok := keySharePrivate.(circlKem.PrivateKey); ok {
-			uconn.HandshakeState.State13.KEMKey = kemKey
+		} else if kemKey, ok := keySharePrivate.(*kemPrivateKey); ok {
+			uconn.HandshakeState.State13.KEMKey = kemKey.ToPublic()
 		} else {
-
+			return fmt.Errorf("uTLS: unknown keySharePrivate type: %T", keySharePrivate)
 		}
 		uconn.HandshakeState.C = uconn.Conn
 	} else {
