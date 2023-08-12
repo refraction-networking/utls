@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/cipher"
+	"crypto/ecdh"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -76,13 +77,19 @@ func (uconn *UConn) BuildHandshakeState() error {
 		}
 
 		// use default Golang ClientHello.
-		hello, ecdheKey, err := uconn.makeClientHello()
+		hello, keySharePrivate, err := uconn.makeClientHello()
 		if err != nil {
 			return err
 		}
 
 		uconn.HandshakeState.Hello = hello.getPublicPtr()
-		uconn.HandshakeState.State13.EcdheKey = ecdheKey
+		if ecdheKey, ok := keySharePrivate.(*ecdh.PrivateKey); ok {
+			uconn.HandshakeState.State13.EcdheKey = ecdheKey
+		} else if kemKey, ok := keySharePrivate.(*kemPrivateKey); ok {
+			uconn.HandshakeState.State13.KEMKey = kemKey.ToPublic()
+		} else {
+			return fmt.Errorf("uTLS: unknown keySharePrivate type: %T", keySharePrivate)
+		}
 		uconn.HandshakeState.C = uconn.Conn
 	} else {
 		if !uconn.ClientHelloBuilt {

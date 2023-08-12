@@ -25,6 +25,8 @@ import (
 	"net"
 	"os"
 	"strings"
+
+	circlSign "github.com/cloudflare/circl/sign"
 )
 
 // Server returns a new TLS server side connection
@@ -326,6 +328,20 @@ func X509KeyPair(certPEMBlock, keyPEMBlock []byte) (Certificate, error) {
 		if !bytes.Equal(priv.Public().(ed25519.PublicKey), pub) {
 			return fail(errors.New("tls: private key does not match public key"))
 		}
+	// [UTLS SECTION BEGINS]
+	// Ported from cloudflare/go
+	case circlSign.PublicKey:
+		priv, ok := cert.PrivateKey.(circlSign.PrivateKey)
+		if !ok {
+			return fail(errors.New("tls: private key type does not match public key type"))
+		}
+		pkBytes, err := priv.Public().(circlSign.PublicKey).MarshalBinary()
+		pkBytes2, err2 := pub.MarshalBinary()
+
+		if err != nil || err2 != nil || !bytes.Equal(pkBytes, pkBytes2) {
+			return fail(errors.New("tls: private key does not match public key"))
+		}
+	// [UTLS SECTION ENDS]
 	default:
 		return fail(errors.New("tls: unknown public key algorithm"))
 	}
@@ -342,7 +358,7 @@ func parsePrivateKey(der []byte) (crypto.PrivateKey, error) {
 	}
 	if key, err := x509.ParsePKCS8PrivateKey(der); err == nil {
 		switch key := key.(type) {
-		case *rsa.PrivateKey, *ecdsa.PrivateKey, ed25519.PrivateKey:
+		case *rsa.PrivateKey, *ecdsa.PrivateKey, ed25519.PrivateKey, circlSign.PrivateKey:
 			return key, nil
 		default:
 			return nil, errors.New("tls: found unknown private key type in PKCS#8 wrapping")

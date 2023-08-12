@@ -7,6 +7,8 @@ package tls
 import (
 	"crypto"
 	"testing"
+
+	circlPki "github.com/cloudflare/circl/pki"
 )
 
 func TestSignatureSelection(t *testing.T) {
@@ -161,7 +163,7 @@ func TestSupportedSignatureAlgorithms(t *testing.T) {
 		if sigType == 0 {
 			t.Errorf("%v: missing signature type", sigAlg)
 		}
-		if hash == 0 && sigAlg != Ed25519 {
+		if hash == 0 && sigAlg != Ed25519 && circlPki.SchemeByTLSID(uint(sigAlg)) == nil { // [UTLS] ported from cloudflare/go
 			t.Errorf("%v: missing hash", sigAlg)
 		}
 	}

@@ -12,6 +12,7 @@ import (
 	"crypto/rsa"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"hash"
 	"io"
 	"time"
@@ -33,6 +34,7 @@ type serverHandshakeStateTLS13 struct {
 	suite           *cipherSuiteTLS13
 	cert            *Certificate
 	sigAlg          SignatureScheme
+	selectedGroup   CurveID
 	earlySecret     []byte
 	sharedKey       []byte
 	handshakeSecret []byte
@@ -211,23 +213,31 @@ GroupSelection:
 		clientKeyShare = &hs.clientHello.keyShares[0]
 	}
 
-	if _, ok := curveForCurveID(selectedGroup); !ok {
+	if _, ok := curveForCurveID(selectedGroup); selectedGroup != X25519 && curveIdToCirclScheme(selectedGroup) == nil && !ok {
 		c.sendAlert(alertInternalError)
 		return errors.New("tls: CurvePreferences includes unsupported curve")
 	}
-	key, err := generateECDHEKey(c.config.rand(), selectedGroup)
-	if err != nil {
-		c.sendAlert(alertInternalError)
-		return err
+	if kem := curveIdToCirclScheme(selectedGroup); kem != nil {
+		ct, ss, alert, err := encapsulateForKem(kem, c.config.rand(), clientKeyShare.data)
+		if err != nil {
+			c.sendAlert(alert)
+			return fmt.Errorf("%s encap: %w", kem.Name(), err)
+		}
+		hs.hello.serverShare = keyShare{group: selectedGroup, data: ct}
+		hs.sharedKey = ss
+	} else {
+		key, err := generateECDHEKey(c.config.rand(), selectedGroup)
+		if err != nil {
+			c.sendAlert(alertInternalError)
+			return err
+		}
+		hs.hello.serverShare = keyShare{group: selectedGroup, data: key.PublicKey().Bytes()}
+		peerKey, err := key.Curve().NewPublicKey(clientKeyShare.data)
+		if err == nil {
+			hs.sharedKey, _ = key.ECDH(peerKey)
+		}
 	}
-	hs.hello.serverShare = keyShare{group: selectedGroup, data: key.PublicKey().Bytes()}
-	peerKey, err := key.Curve().NewPublicKey(clientKeyShare.data)
-	if err != nil {
-		c.sendAlert(alertIllegalParameter)
-		return errors.New("tls: invalid client key share")
-	}
-	hs.sharedKey, err = key.ECDH(peerKey)
-	if err != nil {
+	if hs.sharedKey == nil {
 		c.sendAlert(alertIllegalParameter)
 		return errors.New("tls: invalid client key share")
 	}
@@ -670,7 +680,7 @@ func (hs *serverHandshakeStateTLS13) sendServerCertificate() error {
 		certReq := new(certificateRequestMsgTLS13)
 		certReq.ocspStapling = true
 		certReq.scts = true
-		certReq.supportedSignatureAlgorithms = supportedSignatureAlgorithms()
+		certReq.supportedSignatureAlgorithms = c.config.supportedSignatureAlgorithms() // [UTLS] ported from cloudflare/go
 		if c.config.ClientCAs != nil {
 			certReq.certificateAuthorities = c.config.ClientCAs.Subjects()
 		}
@@ -932,7 +942,7 @@ func (hs *serverHandshakeStateTLS13) readClientCertificate() error {
 		}
 
 		// See RFC 8446, Section 4.4.3.
-		if !isSupportedSignatureAlgorithm(certVerify.signatureAlgorithm, supportedSignatureAlgorithms()) {
+		if !isSupportedSignatureAlgorithm(certVerify.signatureAlgorithm, c.config.supportedSignatureAlgorithms()) { // [UTLS] ported from cloudflare/go
 			c.sendAlert(alertIllegalParameter)
 			return errors.New("tls: client certificate used with invalid signature algorithm")
 		}

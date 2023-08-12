@@ -21,6 +21,8 @@ import (
 	"net"
 	"strings"
 	"time"
+
+	circlSign "github.com/cloudflare/circl/sign"
 )
 
 type clientHandshakeState struct {
@@ -39,7 +41,7 @@ type clientHandshakeState struct {
 
 var testingOnlyForceClientHelloSignatureAlgorithms []SignatureScheme
 
-func (c *Conn) makeClientHello() (*clientHelloMsg, *ecdh.PrivateKey, error) {
+func (c *Conn) makeClientHello() (*clientHelloMsg, clientKeySharePrivate, error) {
 	config := c.config
 
 	// [UTLS SECTION START]
@@ -130,13 +132,13 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, *ecdh.PrivateKey, error) {
 	}
 
 	if hello.vers >= VersionTLS12 {
-		hello.supportedSignatureAlgorithms = supportedSignatureAlgorithms()
+		hello.supportedSignatureAlgorithms = config.supportedSignatureAlgorithms() // [UTLS] ported from cloudflare/go
 	}
 	if testingOnlyForceClientHelloSignatureAlgorithms != nil {
 		hello.supportedSignatureAlgorithms = testingOnlyForceClientHelloSignatureAlgorithms
 	}
 
-	var key *ecdh.PrivateKey
+	var secret clientKeySharePrivate
 	if hello.supportedVersions[0] == VersionTLS13 {
 		// Reset the list of ciphers when the client only supports TLS 1.3.
 		if len(hello.supportedVersions) == 1 {
@@ -149,14 +151,31 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, *ecdh.PrivateKey, error) {
 		}
 
 		curveID := config.curvePreferences()[0]
-		if _, ok := curveForCurveID(curveID); !ok {
-			return nil, nil, errors.New("tls: CurvePreferences includes unsupported curve")
+		// [UTLS SECTION BEGINS]
+		// Ported from cloudflare/go with modifications to preserve crypto/tls compatibility
+		if scheme := curveIdToCirclScheme(curveID); scheme != nil {
+			pk, sk, err := generateKemKeyPair(scheme, curveID, config.rand())
+			if err != nil {
+				return nil, nil, fmt.Errorf("generateKemKeyPair %s: %w", scheme.Name(), err)
+			}
+			packedPk, err := pk.MarshalBinary()
+			if err != nil {
+				return nil, nil, fmt.Errorf("pack circl public key %s: %w", scheme.Name(), err)
+			}
+			hello.keyShares = []keyShare{{group: curveID, data: packedPk}}
+			secret = sk
+		} else {
+			if _, ok := curveForCurveID(curveID); !ok {
+				return nil, nil, errors.New("tls: CurvePreferences includes unsupported curve")
+			}
+			key, err := generateECDHEKey(config.rand(), curveID)
+			if err != nil {
+				return nil, nil, err
+			}
+			hello.keyShares = []keyShare{{group: curveID, data: key.PublicKey().Bytes()}}
+			secret = key
 		}
-		key, err = generateECDHEKey(config.rand(), curveID)
-		if err != nil {
-			return nil, nil, err
-		}
-		hello.keyShares = []keyShare{{group: curveID, data: key.PublicKey().Bytes()}}
+		// [UTLS SECTION ENDS]
 	}
 
 	if c.quic != nil {
@@ -170,7 +189,7 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, *ecdh.PrivateKey, error) {
 		hello.quicTransportParameters = p
 	}
 
-	return hello, key, nil
+	return hello, secret, nil
 }
 
 func (c *Conn) clientHandshake(ctx context.Context) (err error) {
@@ -182,7 +201,7 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 	// need to be reset.
 	c.didResume = false
 
-	hello, ecdheKey, err := c.makeClientHello()
+	hello, keySharePrivate, err := c.makeClientHello()
 	if err != nil {
 		return err
 	}
@@ -256,12 +275,20 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 			ctx:         ctx,
 			serverHello: serverHello,
 			hello:       hello,
-			ecdheKey:    ecdheKey,
+			// ecdheKey:    ecdheKey,
 			session:     session,
 			earlySecret: earlySecret,
 			binderKey:   binderKey,
 
 			keySharesEcdheParams: make(KeySharesEcdheParameters, 2), // [uTLS]
+		}
+
+		if ecdheKey, ok := keySharePrivate.(*ecdh.PrivateKey); ok {
+			hs.ecdheKey = ecdheKey
+		} else if kemKey, ok := keySharePrivate.(*kemPrivateKey); ok {
+			hs.kemKey = kemKey
+		} else {
+			return fmt.Errorf("tls: unknown key share type %T", keySharePrivate)
 		}
 
 		// In TLS 1.3, session tickets are delivered after the handshake.
@@ -1019,7 +1046,7 @@ func (c *Conn) verifyServerCertificate(certificates [][]byte) error {
 	}
 
 	switch certs[0].PublicKey.(type) {
-	case *rsa.PublicKey, *ecdsa.PublicKey, ed25519.PublicKey:
+	case *rsa.PublicKey, *ecdsa.PublicKey, ed25519.PublicKey, circlSign.PublicKey: // [UTLS] ported from cloudflare/go
 		break
 	default:
 		c.sendAlert(alertUnsupportedCertificate)
