@@ -25,6 +25,9 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	circlSign "github.com/cloudflare/circl/sign"
+	circlSchemes "github.com/cloudflare/circl/sign/schemes"
 )
 
 var (
@@ -35,6 +38,7 @@ var (
 	rsaBits    = flag.Int("rsa-bits", 2048, "Size of RSA key to generate. Ignored if --ecdsa-curve is set")
 	ecdsaCurve = flag.String("ecdsa-curve", "", "ECDSA curve to use to generate a key. Valid values are P224, P256 (recommended), P384, P521")
 	ed25519Key = flag.Bool("ed25519", false, "Generate an Ed25519 key")
+	circlKey   = flag.String("circl", "", "Generate a key supported by Circl") // [UTLS] ported from cloudflare/go
 )
 
 func publicKey(priv any) any {
@@ -45,6 +49,11 @@ func publicKey(priv any) any {
 		return &k.PublicKey
 	case ed25519.PrivateKey:
 		return k.Public().(ed25519.PublicKey)
+	// [UTLS SECTION BEGINS]
+	// Ported from cloudflare/go
+	case circlSign.PrivateKey:
+		return k.Public()
+	// [UTLS SECTION ENDS]
 	default:
 		return nil
 	}
@@ -63,6 +72,15 @@ func main() {
 	case "":
 		if *ed25519Key {
 			_, priv, err = ed25519.GenerateKey(rand.Reader)
+			// [UTLS SECTION BEGINS]
+			// Ported from cloudflare/go
+		} else if *circlKey != "" {
+			scheme := circlSchemes.ByName(*circlKey)
+			if scheme == nil {
+				log.Fatalf("No such Circl scheme: %s", *circlKey)
+			}
+			_, priv, err = scheme.GenerateKey()
+			// [UTLS SECTION ENDS]
 		} else {
 			priv, err = rsa.GenerateKey(rand.Reader, *rsaBits)
 		}
