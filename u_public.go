@@ -38,17 +38,17 @@ type PubClientHandshakeState struct {
 
 // TLS 1.3 only
 type TLS13OnlyState struct {
-	Suite                *PubCipherSuiteTLS13
-	EcdheKey             *ecdh.PrivateKey
-	KeySharesEcdheParams KeySharesEcdheParameters
-	KEMKey               *KemPrivateKey
-	EarlySecret          []byte
-	BinderKey            []byte
-	CertReq              *CertificateRequestMsgTLS13
-	UsingPSK             bool
-	SentDummyCCS         bool
-	Transcript           hash.Hash
-	TrafficSecret        []byte // client_application_traffic_secret_0
+	Suite           *PubCipherSuiteTLS13
+	EcdheKey        *ecdh.PrivateKey
+	KeySharesParams *KeySharesParameters
+	KEMKey          *KemPrivateKey
+	EarlySecret     []byte
+	BinderKey       []byte
+	CertReq         *CertificateRequestMsgTLS13
+	UsingPSK        bool
+	SentDummyCCS    bool
+	Transcript      hash.Hash
+	TrafficSecret   []byte // client_application_traffic_secret_0
 }
 
 // TLS 1.2 and before only
@@ -62,12 +62,12 @@ func (chs *PubClientHandshakeState) toPrivate13() *clientHandshakeStateTLS13 {
 		return nil
 	} else {
 		return &clientHandshakeStateTLS13{
-			c:                    chs.C,
-			serverHello:          chs.ServerHello.getPrivatePtr(),
-			hello:                chs.Hello.getPrivatePtr(),
-			ecdheKey:             chs.State13.EcdheKey,
-			keySharesEcdheParams: chs.State13.KeySharesEcdheParams,
-			kemKey:               chs.State13.KEMKey.ToPrivate(),
+			c:               chs.C,
+			serverHello:     chs.ServerHello.getPrivatePtr(),
+			hello:           chs.Hello.getPrivatePtr(),
+			ecdheKey:        chs.State13.EcdheKey,
+			keySharesParams: chs.State13.KeySharesParams,
+			kemKey:          chs.State13.KEMKey.ToPrivate(),
 
 			session:     chs.Session,
 			earlySecret: chs.State13.EarlySecret,
@@ -91,17 +91,17 @@ func (chs13 *clientHandshakeStateTLS13) toPublic13() *PubClientHandshakeState {
 		return nil
 	} else {
 		tls13State := TLS13OnlyState{
-			KeySharesEcdheParams: chs13.keySharesEcdheParams,
-			EcdheKey:             chs13.ecdheKey,
-			KEMKey:               chs13.kemKey.ToPublic(),
-			EarlySecret:          chs13.earlySecret,
-			BinderKey:            chs13.binderKey,
-			CertReq:              chs13.certReq.toPublic(),
-			UsingPSK:             chs13.usingPSK,
-			SentDummyCCS:         chs13.sentDummyCCS,
-			Suite:                chs13.suite.toPublic(),
-			TrafficSecret:        chs13.trafficSecret,
-			Transcript:           chs13.transcript,
+			KeySharesParams: chs13.keySharesParams,
+			EcdheKey:        chs13.ecdheKey,
+			KEMKey:          chs13.kemKey.ToPublic(),
+			EarlySecret:     chs13.earlySecret,
+			BinderKey:       chs13.binderKey,
+			CertReq:         chs13.certReq.toPublic(),
+			UsingPSK:        chs13.usingPSK,
+			SentDummyCCS:    chs13.sentDummyCCS,
+			Suite:           chs13.suite.toPublic(),
+			TrafficSecret:   chs13.trafficSecret,
+			Transcript:      chs13.transcript,
 		}
 		return &PubClientHandshakeState{
 			C:           chs13.c,

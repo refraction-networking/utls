@@ -5,6 +5,7 @@
 package tls
 
 import (
+	"crypto/ecdh"
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
@@ -2013,13 +2014,17 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 		return err
 	}
 
-	privateHello, ecdheKey, err := uconn.makeClientHelloForApplyPreset()
+	privateHello, clientKeySharePrivate, err := uconn.makeClientHelloForApplyPreset()
 	if err != nil {
 		return err
 	}
 	uconn.HandshakeState.Hello = privateHello.getPublicPtr()
-	uconn.HandshakeState.State13.EcdheKey = ecdheKey
-	uconn.HandshakeState.State13.KeySharesEcdheParams = make(KeySharesEcdheParameters, 2)
+	if ecdheKey, ok := clientKeySharePrivate.(*ecdh.PrivateKey); ok {
+		uconn.HandshakeState.State13.EcdheKey = ecdheKey
+	} else if kemKey, ok := clientKeySharePrivate.(*kemPrivateKey); ok {
+		uconn.HandshakeState.State13.KEMKey = kemKey.ToPublic()
+	}
+	uconn.HandshakeState.State13.KeySharesParams = NewKeySharesParameters()
 	hello := uconn.HandshakeState.Hello
 	session := uconn.HandshakeState.Session
 
@@ -2119,17 +2124,37 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 					continue
 				}
 
-				ecdheKey, err := generateECDHEKey(uconn.config.rand(), curveID)
-				if err != nil {
-					return fmt.Errorf("unsupported Curve in KeyShareExtension: %v."+
-						"To mimic it, fill the Data(key) field manually", curveID)
-				}
-				uconn.HandshakeState.State13.KeySharesEcdheParams.AddEcdheParams(curveID, ecdheKey)
-				ext.KeyShares[i].Data = ecdheKey.PublicKey().Bytes()
-				if !preferredCurveIsSet {
-					// only do this once for the first non-grease curve
-					uconn.HandshakeState.State13.EcdheKey = ecdheKey
-					preferredCurveIsSet = true
+				if scheme := curveIdToCirclScheme(curveID); scheme != nil {
+					pk, sk, err := generateKemKeyPair(scheme, curveID, uconn.config.rand())
+					if err != nil {
+						return fmt.Errorf("HRR generateKemKeyPair %s: %w",
+							scheme.Name(), err)
+					}
+					packedPk, err := pk.MarshalBinary()
+					if err != nil {
+						return fmt.Errorf("HRR pack circl public key %s: %w",
+							scheme.Name(), err)
+					}
+					uconn.HandshakeState.State13.KeySharesParams.AddKemKeypair(curveID, sk.secretKey, pk)
+					ext.KeyShares[i].Data = packedPk
+					if !preferredCurveIsSet {
+						// only do this once for the first non-grease curve
+						uconn.HandshakeState.State13.KEMKey = sk.ToPublic()
+						preferredCurveIsSet = true
+					}
+				} else {
+					ecdheKey, err := generateECDHEKey(uconn.config.rand(), curveID)
+					if err != nil {
+						return fmt.Errorf("unsupported Curve in KeyShareExtension: %v."+
+							"To mimic it, fill the Data(key) field manually", curveID)
+					}
+					uconn.HandshakeState.State13.KeySharesParams.AddEcdheKeypair(curveID, ecdheKey, ecdheKey.PublicKey())
+					ext.KeyShares[i].Data = ecdheKey.PublicKey().Bytes()
+					if !preferredCurveIsSet {
+						// only do this once for the first non-grease curve
+						uconn.HandshakeState.State13.EcdheKey = ecdheKey
+						preferredCurveIsSet = true
+					}
 				}
 			}
 		case *SupportedVersionsExtension:
