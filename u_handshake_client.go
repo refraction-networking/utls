@@ -7,7 +7,6 @@ package tls
 import (
 	"bytes"
 	"compress/zlib"
-	"crypto/ecdh"
 	"errors"
 	"fmt"
 	"io"
@@ -164,7 +163,7 @@ func (hs *clientHandshakeStateTLS13) utlsReadServerParameters(encryptedExtension
 	return nil
 }
 
-func (c *Conn) makeClientHelloForApplyPreset() (*clientHelloMsg, *ecdh.PrivateKey, error) {
+func (c *Conn) makeClientHelloForApplyPreset() (*clientHelloMsg, clientKeySharePrivate, error) {
 	config := c.config
 
 	// [UTLS SECTION START]
@@ -261,7 +260,7 @@ func (c *Conn) makeClientHelloForApplyPreset() (*clientHelloMsg, *ecdh.PrivateKe
 		hello.supportedSignatureAlgorithms = testingOnlyForceClientHelloSignatureAlgorithms
 	}
 
-	var key *ecdh.PrivateKey
+	var secret clientKeySharePrivate // [UTLS]
 	if hello.supportedVersions[0] == VersionTLS13 {
 		// Reset the list of ciphers when the client only supports TLS 1.3.
 		if len(hello.supportedVersions) == 1 {
@@ -273,15 +272,32 @@ func (c *Conn) makeClientHelloForApplyPreset() (*clientHelloMsg, *ecdh.PrivateKe
 			hello.cipherSuites = append(hello.cipherSuites, defaultCipherSuitesTLS13NoAES...)
 		}
 
-		curveID := config.curvePreferences()[0]
-		if _, ok := curveForCurveID(curveID); !ok {
-			return nil, nil, errors.New("tls: CurvePreferences includes unsupported curve")
-		}
-		key, err = generateECDHEKey(config.rand(), curveID)
-		if err != nil {
-			return nil, nil, err
-		}
-		hello.keyShares = []keyShare{{group: curveID, data: key.PublicKey().Bytes()}}
+		// curveID := config.curvePreferences()[0]
+		// // [UTLS SECTION BEGINS]
+		// // Ported from cloudflare/go with modifications to preserve crypto/tls compatibility
+		// if scheme := curveIdToCirclScheme(curveID); scheme != nil {
+		// 	pk, sk, err := generateKemKeyPair(scheme, curveID, config.rand())
+		// 	if err != nil {
+		// 		return nil, nil, fmt.Errorf("generateKemKeyPair %s: %w", scheme.Name(), err)
+		// 	}
+		// 	packedPk, err := pk.MarshalBinary()
+		// 	if err != nil {
+		// 		return nil, nil, fmt.Errorf("pack circl public key %s: %w", scheme.Name(), err)
+		// 	}
+		// 	hello.keyShares = []keyShare{{group: curveID, data: packedPk}}
+		// 	secret = sk
+		// } else {
+		// 	if _, ok := curveForCurveID(curveID); !ok {
+		// 		return nil, nil, errors.New("tls: CurvePreferences includes unsupported curve")
+		// 	}
+		// 	key, err := generateECDHEKey(config.rand(), curveID)
+		// 	if err != nil {
+		// 		return nil, nil, err
+		// 	}
+		// 	hello.keyShares = []keyShare{{group: curveID, data: key.PublicKey().Bytes()}}
+		// 	secret = key
+		// }
+		// // [UTLS SECTION ENDS]
 	}
 
 	// [UTLS] We don't need this, since it is not ready yet
@@ -296,5 +312,5 @@ func (c *Conn) makeClientHelloForApplyPreset() (*clientHelloMsg, *ecdh.PrivateKe
 	// 	hello.quicTransportParameters = p
 	// }
 
-	return hello, key, nil
+	return hello, secret, nil
 }

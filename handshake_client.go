@@ -138,7 +138,7 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, clientKeySharePrivate, error)
 		hello.supportedSignatureAlgorithms = testingOnlyForceClientHelloSignatureAlgorithms
 	}
 
-	var secret clientKeySharePrivate
+	var secret clientKeySharePrivate // [UTLS]
 	if hello.supportedVersions[0] == VersionTLS13 {
 		// Reset the list of ciphers when the client only supports TLS 1.3.
 		if len(hello.supportedVersions) == 1 {
@@ -280,7 +280,7 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 			earlySecret: earlySecret,
 			binderKey:   binderKey,
 
-			keySharesEcdheParams: make(KeySharesEcdheParameters, 2), // [uTLS]
+			keySharesParams: NewKeySharesParameters(), // [uTLS]
 		}
 
 		if ecdheKey, ok := keySharePrivate.(*ecdh.PrivateKey); ok {

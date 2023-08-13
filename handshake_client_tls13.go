@@ -15,34 +15,74 @@ import (
 	"fmt"
 	"hash"
 	"time"
+
+	"github.com/cloudflare/circl/kem"
 )
 
 // [uTLS SECTION START]
-type KeySharesEcdheParameters map[CurveID]*ecdh.PrivateKey
+// KeySharesParameters serves as a in-memory storage for generated keypairs by UTLS when generating
+// ClientHello. It is used to store both ecdhe and kem keypairs.
+type KeySharesParameters struct {
+	ecdhePrivKeymap map[CurveID]*ecdh.PrivateKey
+	ecdhePubKeymap  map[CurveID]*ecdh.PublicKey
 
-func (keymap KeySharesEcdheParameters) AddEcdheParams(curveID CurveID, ecdheKey *ecdh.PrivateKey) {
-	keymap[curveID] = ecdheKey
+	// based on cloudflare/go
+	kemPrivKeymap map[CurveID]kem.PrivateKey
+	kemPubKeymap  map[CurveID]kem.PublicKey
 }
-func (keymap KeySharesEcdheParameters) GetEcdheParams(curveID CurveID) (ecdheKey *ecdh.PrivateKey, ok bool) {
-	ecdheKey, ok = keymap[curveID]
+
+func NewKeySharesParameters() *KeySharesParameters {
+	return &KeySharesParameters{
+		ecdhePrivKeymap: make(map[CurveID]*ecdh.PrivateKey),
+		ecdhePubKeymap:  make(map[CurveID]*ecdh.PublicKey),
+
+		kemPrivKeymap: make(map[CurveID]kem.PrivateKey),
+		kemPubKeymap:  make(map[CurveID]kem.PublicKey),
+	}
+}
+
+func (ksp *KeySharesParameters) AddEcdheKeypair(curveID CurveID, ecdheKey *ecdh.PrivateKey, ecdhePubKey *ecdh.PublicKey) {
+	ksp.ecdhePrivKeymap[curveID] = ecdheKey
+	ksp.ecdhePubKeymap[curveID] = ecdhePubKey
+}
+
+func (ksp *KeySharesParameters) GetEcdheKey(curveID CurveID) (ecdheKey *ecdh.PrivateKey, ok bool) {
+	ecdheKey, ok = ksp.ecdhePrivKeymap[curveID]
 	return
 }
-func (keymap KeySharesEcdheParameters) GetPublicEcdheParams(curveID CurveID) (params *ecdh.PrivateKey, ok bool) {
-	params, ok = keymap[curveID]
+
+func (ksp *KeySharesParameters) GetEcdhePubkey(curveID CurveID) (params *ecdh.PublicKey, ok bool) {
+	params, ok = ksp.ecdhePubKeymap[curveID]
+	return
+}
+
+func (ksp *KeySharesParameters) AddKemKeypair(curveID CurveID, kemKey kem.PrivateKey, kemPubKey kem.PublicKey) {
+	if curveIdToCirclScheme(curveID) != nil { // only store for circl schemes
+		ksp.kemPrivKeymap[curveID] = kemKey
+		ksp.kemPubKeymap[curveID] = kemPubKey
+	}
+}
+
+func (ksp *KeySharesParameters) GetKemKey(curveID CurveID) (kemKey kem.PrivateKey, ok bool) {
+	kemKey, ok = ksp.kemPrivKeymap[curveID]
+	return
+}
+
+func (ksp *KeySharesParameters) GetKemPubkey(curveID CurveID) (params kem.PublicKey, ok bool) {
+	params, ok = ksp.kemPubKeymap[curveID]
 	return
 }
 
 // [uTLS SECTION END]
 
 type clientHandshakeStateTLS13 struct {
-	c                    *Conn
-	ctx                  context.Context
-	serverHello          *serverHelloMsg
-	hello                *clientHelloMsg
-	ecdheKey             *ecdh.PrivateKey
-	keySharesEcdheParams KeySharesEcdheParameters // [uTLS]
-	kemKey               *kemPrivateKey           // [uTLS]
-	// keySharesCirclParams KeySharesCirclParameters // [uTLS] TODO: perhaps implement?
+	c               *Conn
+	ctx             context.Context
+	serverHello     *serverHelloMsg
+	hello           *clientHelloMsg
+	ecdheKey        *ecdh.PrivateKey
+	kemKey          *kemPrivateKey       // [uTLS] ported from cloudflare/go
+	keySharesParams *KeySharesParameters // [uTLS] support both ecdhe and kem
 
 	session       *SessionState
 	earlySecret   []byte
@@ -77,10 +117,18 @@ func (hs *clientHandshakeStateTLS13) handshake() error {
 	}
 
 	// [uTLS SECTION START]
-
 	// set echdheParams to what we received from server
-	if ecdheKey, ok := hs.keySharesEcdheParams.GetEcdheParams(hs.serverHello.serverShare.group); ok {
+	if ecdheKey, ok := hs.keySharesParams.GetEcdheKey(hs.serverHello.serverShare.group); ok {
 		hs.ecdheKey = ecdheKey
+		hs.kemKey = nil // unset kemKey if any
+	}
+	// set kemParams to what we received from server
+	if kemKey, ok := hs.keySharesParams.GetKemKey(hs.serverHello.serverShare.group); ok {
+		hs.kemKey = &kemPrivateKey{
+			secretKey: kemKey,
+			curveID:   hs.serverHello.serverShare.group,
+		}
+		hs.ecdheKey = nil // unset ecdheKey if any
 	}
 	// [uTLS SECTION END]
 
@@ -466,20 +514,22 @@ func (hs *clientHandshakeStateTLS13) processServerHello() error {
 		c.sendAlert(alertIllegalParameter)
 		return errors.New("tls: server did not send a key share")
 	}
-	if hs.ecdheKey != nil {
-		if sentID, _ := curveIDForCurve(hs.ecdheKey.Curve()); hs.serverHello.serverShare.group != sentID {
-			c.sendAlert(alertIllegalParameter)
-			return errors.New("tls: server selected unsupported group")
+
+	// [UTLS SECTION BEGINS]
+	var supportedGroupCompatible bool
+	if hs.ecdheKey != nil { // if we did send ECDHE KeyShare
+		if sentID, _ := curveIDForCurve(hs.ecdheKey.Curve()); hs.serverHello.serverShare.group == sentID { // and server selected ECDHE KeyShare
+			supportedGroupCompatible = true
 		}
-	} else if hs.kemKey != nil {
-		if clientKeySharePrivateCurveID(hs.kemKey) != hs.serverHello.serverShare.group {
-			c.sendAlert(alertIllegalParameter)
-			return errors.New("tls: server selected unsupported group")
-		}
-	} else {
-		c.sendAlert(alertInternalError)
-		return errors.New("tls: ecdheKey and kemKey are both nil")
 	}
+	if hs.kemKey != nil && clientKeySharePrivateCurveID(hs.kemKey) == hs.serverHello.serverShare.group { // we did send KEM KeyShare and server selected KEM KeyShare
+		supportedGroupCompatible = true
+	}
+	if !supportedGroupCompatible { // none matched
+		c.sendAlert(alertIllegalParameter)
+		return errors.New("tls: server selected unsupported group")
+	}
+	// [UTLS SECTION ENDS]
 
 	if !hs.serverHello.selectedIdentityPresent {
 		return nil
@@ -521,24 +571,28 @@ func (hs *clientHandshakeStateTLS13) establishHandshakeKeys() error {
 	var err error
 
 	if hs.ecdheKey != nil {
-		peerKey, err := hs.ecdheKey.Curve().NewPublicKey(hs.serverHello.serverShare.data)
-		if err != nil {
-			c.sendAlert(alertIllegalParameter)
-			return errors.New("tls: invalid server key share")
+		if ecdheCurveID, _ := curveIDForCurve(hs.ecdheKey.Curve()); ecdheCurveID == hs.serverHello.serverShare.group {
+			peerKey, err := hs.ecdheKey.Curve().NewPublicKey(hs.serverHello.serverShare.data)
+			if err != nil {
+				c.sendAlert(alertIllegalParameter)
+				return errors.New("tls: invalid server key share")
+			}
+			sharedKey, err = hs.ecdheKey.ECDH(peerKey)
+			if err != nil {
+				c.sendAlert(alertIllegalParameter)
+				return errors.New("tls: invalid server key share")
+			}
 		}
-		sharedKey, err = hs.ecdheKey.ECDH(peerKey)
-		if err != nil {
-			c.sendAlert(alertIllegalParameter)
-			return errors.New("tls: invalid server key share")
-		}
-	} else if hs.kemKey != nil {
+	}
+	if sharedKey == nil && hs.kemKey != nil && clientKeySharePrivateCurveID(hs.kemKey) == hs.serverHello.serverShare.group {
 		sk := hs.kemKey.secretKey
 		sharedKey, err = sk.Scheme().Decapsulate(sk, hs.serverHello.serverShare.data)
 		if err != nil {
 			c.sendAlert(alertIllegalParameter)
 			return fmt.Errorf("%s decaps: %w", sk.Scheme().Name(), err)
 		}
-	} else {
+	}
+	if sharedKey == nil {
 		c.sendAlert(alertInternalError)
 		return errors.New("tls: ecdheKey and circlKey are both nil")
 	}
