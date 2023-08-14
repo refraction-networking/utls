@@ -582,9 +582,17 @@ var (
 	HelloChrome_102         = ClientHelloID{helloChrome, "102", nil, nil}
 	HelloChrome_106_Shuffle = ClientHelloID{helloChrome, "106", nil, nil} // beta: shuffler enabled starting from 106
 
-	// Chrome with PSK: Chrome start sending this ClientHello after doing TLS 1.3 handshake with the same server.
-	HelloChrome_100_PSK      = ClientHelloID{helloChrome, "100_PSK", nil, nil} // beta: PSK extension added. uTLS doesn't fully support PSK. Use at your own risk.
-	HelloChrome_112_PSK_Shuf = ClientHelloID{helloChrome, "112_PSK", nil, nil} // beta: PSK extension added. uTLS doesn't fully support PSK. Use at your own risk.
+	// Chrome w/ PSK: Chrome start sending this ClientHello after doing TLS 1.3 handshake with the same server.
+	// Beta: PSK extension added. However, uTLS doesn't ship with full PSK support.
+	// Use at your own discretion.
+	HelloChrome_100_PSK              = ClientHelloID{helloChrome, "100_PSK", nil, nil}
+	HelloChrome_112_PSK_Shuf         = ClientHelloID{helloChrome, "112_PSK", nil, nil}
+	HelloChrome_114_Padding_PSK_Shuf = ClientHelloID{helloChrome, "114_PSK", nil, nil}
+
+	// Chrome w/ Post-Quantum Key Agreement
+	// Beta: PQ extension added. However, uTLS doesn't ship with full PQ support. Use at your own discretion.
+	HelloChrome_115_PQ     = ClientHelloID{helloChrome, "115_PQ", nil, nil}
+	HelloChrome_115_PQ_PSK = ClientHelloID{helloChrome, "115_PQ_PSK", nil, nil}
 
 	HelloIOS_Auto = HelloIOS_14
 	HelloIOS_11_1 = ClientHelloID{helloIOS, "111", nil, nil} // legacy "111" means 11.1
