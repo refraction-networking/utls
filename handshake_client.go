@@ -324,6 +324,12 @@ func (c *Conn) loadSession(hello *clientHelloMsg) (
 		hello.pskModes = []uint8{pskModeDHE}
 	}
 
+	// [UTLS BEGINS]
+	if c.utls.session != nil {
+		return c.utls.session, c.utls.earlySecret, c.utls.binderKey, nil
+	}
+	// [UTLS ENDS]
+
 	// Session resumption is not allowed if renegotiating because
 	// renegotiation is primarily used to allow a client to send a client
 	// certificate, which would be skipped if session resumption occurred.
@@ -460,6 +466,10 @@ func (c *Conn) loadSession(hello *clientHelloMsg) (
 	if err := hello.updateBinders(pskBinders); err != nil {
 		return nil, nil, nil, err
 	}
+
+	c.utls.session = session         // [uTLS]
+	c.utls.earlySecret = earlySecret // [uTLS]
+	c.utls.binderKey = binderKey     // [uTLS]
 
 	return
 }

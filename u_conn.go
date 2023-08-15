@@ -24,7 +24,7 @@ type UConn struct {
 
 	Extensions    []TLSExtension
 	ClientHelloID ClientHelloID
-	pskExtension  []*FakePreSharedKeyExtension
+	pskExtension  []PreSharedKeyExtension
 
 	ClientHelloBuilt bool
 	HandshakeState   PubClientHandshakeState
@@ -44,7 +44,7 @@ type UConn struct {
 
 // UClient returns a new uTLS client, with behavior depending on clientHelloID.
 // Config CAN be nil, but make sure to eventually specify ServerName.
-func UClient(conn net.Conn, config *Config, clientHelloID ClientHelloID, pskExtension ...*FakePreSharedKeyExtension) *UConn {
+func UClient(conn net.Conn, config *Config, clientHelloID ClientHelloID, pskExtension ...PreSharedKeyExtension) *UConn {
 	if config == nil {
 		config = &Config{}
 	}
@@ -456,19 +456,18 @@ func (c *UConn) clientHandshake(ctx context.Context) (err error) {
 		}()
 	}
 
-	cacheKey := c.clientSessionCacheKey()
-	if c.config.ClientSessionCache != nil {
-		cs, ok := c.config.ClientSessionCache.Get(cacheKey)
-		if !sessionIsAlreadySet && ok { // uTLS: do not overwrite already set session
-			err = c.SetSessionState(cs)
-			if err != nil {
-				return
-			}
-		}
-	}
-
 	if _, err := c.writeHandshakeRecord(hello, nil); err != nil {
 		return err
+	}
+
+	if hello.earlyData {
+		suite := cipherSuiteTLS13ByID(session.cipherSuite)
+		transcript := suite.hash.New()
+		if err := transcriptMsg(hello, transcript); err != nil {
+			return err
+		}
+		earlyTrafficSecret := suite.deriveSecret(earlySecret, clientEarlyTrafficLabel, transcript)
+		c.quicSetWriteSecret(QUICEncryptionLevelEarly, suite.id, earlyTrafficSecret)
 	}
 
 	msg, err := c.readHandshake(nil)
@@ -491,9 +490,11 @@ func (c *UConn) clientHandshake(ctx context.Context) (err error) {
 		hs13 := c.HandshakeState.toPrivate13()
 		hs13.serverHello = serverHello
 		hs13.hello = hello
+		hs13.keySharesParams = NewKeySharesParameters()
 		if !sessionIsAlreadySet {
 			hs13.earlySecret = earlySecret
 			hs13.binderKey = binderKey
+			hs13.session = session
 		}
 		hs13.ctx = ctx
 		// In TLS 1.3, session tickets are delivered after the handshake.
@@ -508,23 +509,13 @@ func (c *UConn) clientHandshake(ctx context.Context) (err error) {
 	hs12.serverHello = serverHello
 	hs12.hello = hello
 	hs12.ctx = ctx
+	hs12.session = session
 	err = hs12.handshake()
 	if handshakeState := hs12.toPublic12(); handshakeState != nil {
 		c.HandshakeState = *handshakeState
 	}
 	if err != nil {
 		return err
-	}
-
-	// If we had a successful handshake and hs.session is different from
-	// the one already cached - cache a new one.
-	if cacheKey != "" && hs12.session != nil && session != hs12.session {
-		hs12cs := &ClientSessionState{
-			ticket:  hs12.ticket,
-			session: hs12.session,
-		}
-
-		c.config.ClientSessionCache.Put(cacheKey, hs12cs)
 	}
 	return nil
 }
@@ -598,7 +589,28 @@ func (uconn *UConn) MarshalClientHello() error {
 	if len(uconn.Extensions) > 0 {
 		binary.Write(bufferedWriter, binary.BigEndian, uint16(extensionsLen))
 		for _, ext := range uconn.Extensions {
-			bufferedWriter.ReadFrom(ext)
+			switch typedExt := ext.(type) {
+			case PreSharedKeyExtension:
+				// PSK extension is handled separately
+				err := bufferedWriter.Flush()
+				if err != nil {
+					return fmt.Errorf("bufferedWriter.Flush(): %w", err)
+				}
+				hello.Raw = helloBuffer.Bytes()
+				// prepare buffer
+				buf := make([]byte, typedExt.Len())
+				n, err := typedExt.ReadWithRawHello(hello.Raw, buf)
+				if err != nil && !errors.Is(err, io.EOF) {
+					return fmt.Errorf("(*PreSharedKeyExtension).ReadWithRawHello(): %w", err)
+				}
+				if n != typedExt.Len() {
+					return errors.New("uconn: PreSharedKeyExtension: read wrong number of bytes")
+				}
+				bufferedWriter.Write(buf)
+				hello.PskBinders = typedExt.Binders()
+			default:
+				bufferedWriter.ReadFrom(ext)
+			}
 		}
 	}
 
@@ -784,7 +796,13 @@ func (c *Conn) utlsConnectionStateLocked(state *ConnectionState) {
 }
 
 type utlsConnExtraFields struct {
+	// Application Settings (ALPS)
 	hasApplicationSettings   bool
 	peerApplicationSettings  []byte
 	localApplicationSettings []byte
+
+	// session resumption (PSK)
+	session     *SessionState
+	earlySecret []byte
+	binderKey   []byte
 }
