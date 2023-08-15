@@ -23,9 +23,9 @@ var ErrPSKExtensionExpected = errors.New("tls: pre_shared_key extension expected
 // UTLSIdToSpec converts a ClientHelloID to a corresponding ClientHelloSpec.
 //
 // Exported internal function utlsIdToSpec per request.
-func UTLSIdToSpec(id ClientHelloID, pskExtension ...*FakePreSharedKeyExtension) (ClientHelloSpec, error) {
+func UTLSIdToSpec(id ClientHelloID, pskExtension ...PreSharedKeyExtension) (ClientHelloSpec, error) {
 	if len(pskExtension) > 1 {
-		return ClientHelloSpec{}, errors.New("tls: at most one FakePreSharedKeyExtensions is allowed")
+		return ClientHelloSpec{}, errors.New("tls: at most one PreSharedKeyExtensions is allowed")
 	}
 
 	chs, err := utlsIdToSpec(id)
@@ -2004,7 +2004,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 	}
 }
 
-func utlsIdToSpecWithPSK(id ClientHelloID, pskExtension ...*FakePreSharedKeyExtension) (ClientHelloSpec, error) {
+func utlsIdToSpecWithPSK(id ClientHelloID, pskExtension ...PreSharedKeyExtension) (ClientHelloSpec, error) {
 	switch id {
 	case HelloChrome_100_PSK, HelloChrome_112_PSK_Shuf, HelloChrome_114_Padding_PSK_Shuf, HelloChrome_115_PQ_PSK:
 		if len(pskExtension) == 0 || pskExtension[0] == nil {
@@ -2315,7 +2315,7 @@ func ShuffleChromeTLSExtensions(exts []TLSExtension) []TLSExtension {
 	// and returns true on success. For these extensions are considered positionally invariant.
 	var skipShuf = func(idx int, exts []TLSExtension) bool {
 		switch exts[idx].(type) {
-		case *UtlsGREASEExtension, *UtlsPaddingExtension, *FakePreSharedKeyExtension:
+		case *UtlsGREASEExtension, *UtlsPaddingExtension, PreSharedKeyExtension:
 			return true
 		default:
 			return false
@@ -2453,7 +2453,7 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 				if cs != nil {
 					session = cs.session
 				}
-				// TODO: use uconn.loadSession(hello.getPrivateObj()) to support TLS 1.3 PSK-style resumption
+				// TLS 1.3 (PSK) resumption is handled by PreSharedKeyExtension in MarshalClientHello()
 			}
 			err := uconn.SetSessionState(cs)
 			if err != nil {

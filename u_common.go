@@ -247,13 +247,15 @@ func (chs *ClientHelloSpec) ReadTLSExtensions(b []byte, allowBluntMimicry bool) 
 
 func (chs *ClientHelloSpec) AlwaysAddPadding() {
 	alreadyHasPadding := false
-	for _, ext := range chs.Extensions {
+	for idx, ext := range chs.Extensions {
 		if _, ok := ext.(*UtlsPaddingExtension); ok {
 			alreadyHasPadding = true
 			break
 		}
-		if _, ok := ext.(*FakePreSharedKeyExtension); ok {
-			alreadyHasPadding = true // PSK must be last, so we don't need to add padding
+		if _, ok := ext.(PreSharedKeyExtension); ok {
+			alreadyHasPadding = true // PSK must be last, so we can't append padding after it
+			// instead we will insert padding before PSK
+			chs.Extensions = append(chs.Extensions[:idx], append([]TLSExtension{&UtlsPaddingExtension{GetPaddingLen: BoringPaddingStyle}}, chs.Extensions[idx:]...)...)
 			break
 		}
 	}
