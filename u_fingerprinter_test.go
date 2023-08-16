@@ -373,7 +373,6 @@ func TestUTLSFingerprintClientHelloAlwaysAddPadding(t *testing.T) {
 }
 
 func TestUTLSFingerprintClientHelloKeepPSK(t *testing.T) {
-	t.Skipf("TestUTLSFingerprintClientHelloKeepPSK needs to be re-designed.")
 	// TLSv1.3 Record Layer: Handshake Protocol: Client Hello
 	//     Content Type: Handshake (22)
 	//     Version: TLS 1.0 (0x0301)
@@ -492,28 +491,28 @@ func TestUTLSFingerprintClientHelloKeepPSK(t *testing.T) {
 	// 				Length: 267
 	// 				Pre-Shared Key extension
 
-	// byteString := []byte("16030102400100023c03035cef5aa9122008e37f0f74d717cd4ae0f745daba4292e6fbca3cd5bf9123498f208c4aa23444084eeb70097efe0b8f6e3a56c717abd67505c950aab314de59bd8f00204a4a130113021303c02bc02fc02cc030cca9cca8c013c014009c009d002f0035010001d33a3a0000000000160014000011656467656170692e736c61636b2e636f6d00170000ff01000100000a000a0008dada001d00170018000b00020100002300000010000e000c02683208687474702f312e31000500050100000000000d0012001004030804040105030805050108060601001200000033002b0029dada000100001d0020e35e636d4e2dcd5f39309170285dab92dbe81fefe4926826cec1ef881321687e002d00020101002b000b0a2a2a0304030303020301001b00030200024a4a0001000029010b00e600e017fab59672c1966ae78fc4dacd7efb42e735de956e3f96d342bb8e63a5233ce21c92d6d75036601d74ccbc3ca0085f3ac2ebbd83da13501ac3c6d612bcb453fb206a39a8112d768bea1976d7c14e6de9aa0ee70ea732554d3c57d1a993f1044a46c1fb371811039ef30582cacf41bd497121d67793b8ee4df7a60d525f7df052fd66cda7f141bb553d9253816752d923ac7c71426179db4f26a7d42f0d65a2dd2dbaafb86fa17b2da23fd57c5064c76551cfda86304051231e4da9e697fedbcb5ae8cb2f6cb92f71164acf2edff5bccc1266cd648a53cc46262eabf40727bcb6958a3d1300212083e99d791672d39919dcb387f2fa7aeee938ec32ecf4b861306f7df4f9a8a746")
+	byteString := []byte("16030102400100023c03035cef5aa9122008e37f0f74d717cd4ae0f745daba4292e6fbca3cd5bf9123498f208c4aa23444084eeb70097efe0b8f6e3a56c717abd67505c950aab314de59bd8f00204a4a130113021303c02bc02fc02cc030cca9cca8c013c014009c009d002f0035010001d33a3a0000000000160014000011656467656170692e736c61636b2e636f6d00170000ff01000100000a000a0008dada001d00170018000b00020100002300000010000e000c02683208687474702f312e31000500050100000000000d0012001004030804040105030805050108060601001200000033002b0029dada000100001d0020e35e636d4e2dcd5f39309170285dab92dbe81fefe4926826cec1ef881321687e002d00020101002b000b0a2a2a0304030303020301001b00030200024a4a0001000029010b00e600e017fab59672c1966ae78fc4dacd7efb42e735de956e3f96d342bb8e63a5233ce21c92d6d75036601d74ccbc3ca0085f3ac2ebbd83da13501ac3c6d612bcb453fb206a39a8112d768bea1976d7c14e6de9aa0ee70ea732554d3c57d1a993f1044a46c1fb371811039ef30582cacf41bd497121d67793b8ee4df7a60d525f7df052fd66cda7f141bb553d9253816752d923ac7c71426179db4f26a7d42f0d65a2dd2dbaafb86fa17b2da23fd57c5064c76551cfda86304051231e4da9e697fedbcb5ae8cb2f6cb92f71164acf2edff5bccc1266cd648a53cc46262eabf40727bcb6958a3d1300212083e99d791672d39919dcb387f2fa7aeee938ec32ecf4b861306f7df4f9a8a746")
 
-	// helloBytes := make([]byte, hex.DecodedLen(len(byteString)))
-	// _, err := hex.Decode(helloBytes, byteString)
-	// if err != nil {
-	// 	t.Errorf("got error: %v; expected to succeed", err)
-	// 	return
-	// }
+	helloBytes := make([]byte, hex.DecodedLen(len(byteString)))
+	_, err := hex.Decode(helloBytes, byteString)
+	if err != nil {
+		t.Errorf("got error: %v; expected to succeed", err)
+		return
+	}
 
-	// f := &Fingerprinter{}
-	// generatedSpec, err := f.FingerprintClientHello(helloBytes)
-	// if err != nil {
-	// 	t.Errorf("got error: %v; expected to succeed", err)
-	// 	return
-	// }
+	f := &Fingerprinter{}
+	generatedSpec, err := f.FingerprintClientHello(helloBytes)
+	if err != nil {
+		t.Errorf("got error: %v; expected to succeed", err)
+		return
+	}
 
-	// for _, ext := range generatedSpec.Extensions {
-	// 	if _, ok := (ext).(*PreSharedKeyExtension); ok {
-	// 		return
-	// 	}
-	// }
-	// t.Errorf("generated ClientHelloSpec with KeepPSK does not include preshared key extension")
+	for _, ext := range generatedSpec.Extensions {
+		if _, ok := (ext).(*FakePreSharedKeyExtension); ok {
+			return
+		}
+	}
+	t.Errorf("generated ClientHelloSpec with KeepPSK does not include preshared key extension")
 }
 
 func TestUTLSHandshakeClientFingerprintedSpecFromChrome_58(t *testing.T) {

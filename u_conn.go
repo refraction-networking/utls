@@ -607,7 +607,7 @@ func (uconn *UConn) MarshalClientHello() error {
 					return errors.New("uconn: PreSharedKeyExtension: read wrong number of bytes")
 				}
 				bufferedWriter.Write(buf)
-				hello.PskBinders = typedExt.Binders()
+				hello.PskBinders = typedExt.GetBinders()
 			default:
 				bufferedWriter.ReadFrom(ext)
 			}

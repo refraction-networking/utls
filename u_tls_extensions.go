@@ -47,8 +47,8 @@ func ExtensionFromID(id uint16) TLSExtension {
 		return &FakeDelegatedCredentialsExtension{}
 	case extensionSessionTicket:
 		return &SessionTicketExtension{}
-	// case extensionPreSharedKey:
-	// 	return &HardcodedPreSharedKeyExtension{} // TODO: redesign how to create proper PSK from ID
+	case extensionPreSharedKey:
+		return (PreSharedKeyExtension)(&FakePreSharedKeyExtension{}) // To use the result, caller needs further inspection to decide between Fake or Utls.
 	// case extensionEarlyData:
 	// 	return &EarlyDataExtension{}
 	case extensionSupportedVersions:

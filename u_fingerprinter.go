@@ -18,6 +18,8 @@ type Fingerprinter struct {
 	// have any padding, but you suspect that other changes you make to the final hello
 	// (including things like different SNI lengths) would cause padding to be necessary
 	AlwaysAddPadding bool
+
+	ClientSessionCache ClientSessionCache // if set, PSK extension will be made into UtlsPreSharedKeyExtension. Otherwise FakePreSharedKeyExtension.
 }
 
 // FingerprintClientHello returns a ClientHelloSpec which is based on the
@@ -43,7 +45,12 @@ func (f *Fingerprinter) FingerprintClientHello(data []byte) (clientHelloSpec *Cl
 // as a more precise name for the function
 func (f *Fingerprinter) RawClientHello(raw []byte) (clientHelloSpec *ClientHelloSpec, err error) {
 	clientHelloSpec = &ClientHelloSpec{}
-	err = clientHelloSpec.FromRaw(raw, f.AllowBluntMimicry)
+
+	if f.ClientSessionCache != nil {
+		err = clientHelloSpec.FromRawWithClientSessionCache(raw, f.ClientSessionCache, f.AllowBluntMimicry)
+	} else {
+		err = clientHelloSpec.FromRaw(raw, f.AllowBluntMimicry)
+	}
 	if err != nil {
 		return nil, err
 	}

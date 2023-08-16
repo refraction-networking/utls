@@ -9,7 +9,18 @@ import (
 )
 
 type PreSharedKeyExtension interface {
+	// TLSExtension must be implemented by all PreSharedKeyExtension implementations.
+	// However, the Read() method should return an error since it MUST NOT be used
+	// for PreSharedKeyExtension.
 	TLSExtension
+
+	// GetBinders returns the binders that were computed during the handshake
+	// to be set in the internal copy of the ClientHello. Only needed if expecting
+	// to resume the session.
+	//
+	// FakePreSharedKeyExtension MUST return nil to make sure utls DOES NOT
+	// try to do any session resumption.
+	GetBinders() [][]byte
 
 	// ReadWithRawHello is used to read the extension from the ClientHello
 	// instead of Read(), where the latter is used to read all other extensions.
@@ -17,12 +28,6 @@ type PreSharedKeyExtension interface {
 	// This is needed because the PSK extension needs to calculate the binder
 	// based on all previous parts of the ClientHello.
 	ReadWithRawHello(raw, b []byte) (int, error)
-
-	// Binders returns the binders that were computed during the handshake.
-	//
-	// FakePreSharedKeyExtension will return nil to make sure utls DOES NOT
-	// actually do any session resumption.
-	Binders() [][]byte
 
 	mustEmbedUnimplementedPreSharedKeyExtension() // this works like a type guard
 }
@@ -43,12 +48,12 @@ func (*UnimplementedPreSharedKeyExtension) Read([]byte) (int, error) {
 	return 0, errors.New("tls: Read is not implemented for the PreSharedKeyExtension")
 }
 
-func (*UnimplementedPreSharedKeyExtension) ReadWithRawHello(raw, b []byte) (int, error) {
-	return 0, errors.New("tls: ReadWithRawHello is not implemented for the PreSharedKeyExtension")
+func (*UnimplementedPreSharedKeyExtension) GetBinders() [][]byte {
+	panic("tls: Binders is not implemented for the PreSharedKeyExtension")
 }
 
-func (*UnimplementedPreSharedKeyExtension) Binders() [][]byte {
-	panic("tls: Binders is not implemented for the PreSharedKeyExtension")
+func (*UnimplementedPreSharedKeyExtension) ReadWithRawHello(raw, b []byte) (int, error) {
+	return 0, errors.New("tls: ReadWithRawHello is not implemented for the PreSharedKeyExtension")
 }
 
 // UtlsPreSharedKeyExtension is an extension used to set the PSK extension in the
@@ -56,7 +61,12 @@ func (*UnimplementedPreSharedKeyExtension) Binders() [][]byte {
 type UtlsPreSharedKeyExtension struct {
 	UnimplementedPreSharedKeyExtension
 
-	SessionCacheOverride ClientSessionCache
+	// ClientSessionCacheOverride is used to specify the ClientSessionCache to be used
+	// for PSK-resumption.
+	//
+	// bug: tls.Config.ClientSessionCache must be nil for PSK-resumption to work, even though
+	// it is supposed to be overridden by ClientSessionCacheOverride.
+	ClientSessionCacheOverride ClientSessionCache
 
 	identities  []pskIdentity
 	binders     [][]byte
@@ -95,6 +105,11 @@ func (e *UtlsPreSharedKeyExtension) Len() int {
 
 func (e *UtlsPreSharedKeyExtension) Read(b []byte) (int, error) {
 	return 0, errors.New("tls: PreSharedKeyExtension shouldn't be read, use ReadWithRawHello() instead")
+}
+
+// Binders must be called after ReadWithRawHello
+func (e *UtlsPreSharedKeyExtension) GetBinders() [][]byte {
+	return e.binders
 }
 
 func (e *UtlsPreSharedKeyExtension) ReadWithRawHello(raw, b []byte) (int, error) {
@@ -159,8 +174,8 @@ func (e *UtlsPreSharedKeyExtension) ReadWithRawHello(raw, b []byte) (int, error)
 func (e *UtlsPreSharedKeyExtension) preloadSession(uc *UConn) error {
 	// var sessionCache ClientSessionCache
 	// must set either e.Session or uc.config.ClientSessionCache
-	if e.SessionCacheOverride != nil {
-		uc.config.ClientSessionCache = e.SessionCacheOverride
+	if e.ClientSessionCacheOverride != nil {
+		uc.config.ClientSessionCache = e.ClientSessionCacheOverride
 	}
 
 	// load Hello
@@ -176,38 +191,56 @@ func (e *UtlsPreSharedKeyExtension) preloadSession(uc *UConn) error {
 		e.binderKey = binderKey
 		e.cipherSuite = cipherSuiteTLS13ByID(session.cipherSuite)
 		e.earlySecret = earlySecret
-		return nil
-	} else {
-		return errors.New("tls: session not compatible with TLS 1.3, PSK not possible")
+	} else if session == nil {
+		return errors.New("tls: session not found.")
+	} else if session.version != VersionTLS13 {
+		return errors.New("tls: session is not for TLS 1.3.")
+	} else if binderKey == nil {
+		return errors.New("tls: binder key not found.")
 	}
+
+	return nil
 }
 
-// Binders must be called after ReadWithRawHello
-func (e *UtlsPreSharedKeyExtension) Binders() [][]byte {
-	return e.binders
+func (e *UtlsPreSharedKeyExtension) Write(b []byte) (int, error) {
+	if e.ClientSessionCacheOverride == nil {
+		return 0, errors.New("tls: ClientSessionCache must be set to use UtlsPreSharedKeyExtension")
+	}
+	return len(b), nil // ignore the data
 }
 
-// FakePreSharedKeyExtension is an extension used to send the PSK extension in the
+func (e *UtlsPreSharedKeyExtension) UnmarshalJSON(_ []byte) error {
+	if e.ClientSessionCacheOverride == nil {
+		return errors.New("tls: ClientSessionCache must be set to use UtlsPreSharedKeyExtension")
+	}
+	return nil // ignore the data
+}
+
+// FakePreSharedKeyExtension is an extension used to set the PSK extension in the
 // ClientHello.
 //
-// However, it DOES NOT do any session resumption AND should not be used with a
-// real/valid PSK Identity.
+// It does not compute binders based on ClientHello, but uses the binders specified instead.
 //
-// TODO: Only one of FakePreSharedKeyExtension and HardcodedPreSharedKeyExtension should
+// TODO: Only one of FakePreSharedKeyExtension and FakePreSharedKeyExtension should
 // be kept, the other one should be just removed. We still need to learn more of the safety
 // of hardcoding both Identities and Binders without recalculating the latter.
 type FakePreSharedKeyExtension struct {
 	UnimplementedPreSharedKeyExtension
 
-	CipherSuite   uint16 `json:"cipher_suite"`   // this is used to compute the binder
-	SessionSecret []byte `json:"session_secret"` // this is used to compute the binder
-
 	Identities []PskIdentity `json:"identities"`
-	binders    [][]byte
+	Binders    [][]byte      `json:"binders"`
 }
 
 func (e *FakePreSharedKeyExtension) writeToUConn(uc *UConn) error {
-	return nil // do nothing for this fake extension
+	if uc.config.ClientSessionCache == nil {
+		return nil // don't write the extension if there is no session cache
+	}
+	if session, ok := uc.config.ClientSessionCache.Get(uc.clientSessionCacheKey()); !ok || session == nil {
+		return nil // don't write the extension if there is no session cache available for this session
+	}
+	uc.HandshakeState.Hello.PskIdentities = e.Identities
+	uc.HandshakeState.Hello.PskBinders = e.Binders
+	return nil
 }
 
 func (e *FakePreSharedKeyExtension) Len() int {
@@ -216,22 +249,19 @@ func (e *FakePreSharedKeyExtension) Len() int {
 	for _, identity := range e.Identities {
 		length += 2 + len(identity.Label) + 4 // identity length + identity + obfuscated ticket age
 	}
-
-	cipherSuite := cipherSuiteTLS13ByID(e.CipherSuite)
-	if cipherSuite == nil {
-		panic("tls: cipher suite not supported by the PreSharedKeyExtension")
-	}
-	singleBinderSize := cipherSuite.hash.Size()
-
-	length += 2              // binders length
-	for range e.Identities { // binders should be as long as the identities
-		length += singleBinderSize + 1
+	length += 2 // binders length
+	for _, binder := range e.Binders {
+		length += len(binder)
 	}
 	return length
 }
 
 func (e *FakePreSharedKeyExtension) Read(b []byte) (int, error) {
 	return 0, errors.New("tls: PreSharedKeyExtension shouldn't be read, use ReadWithRawHello() instead")
+}
+
+func (e *FakePreSharedKeyExtension) GetBinders() [][]byte {
+	return nil
 }
 
 func (e *FakePreSharedKeyExtension) ReadWithRawHello(raw, b []byte) (int, error) {
@@ -267,139 +297,18 @@ func (e *FakePreSharedKeyExtension) ReadWithRawHello(raw, b []byte) (int, error)
 		offset += 4
 	}
 
-	cipherSuite := cipherSuiteTLS13ByID(e.CipherSuite)
-	if cipherSuite == nil {
-		return 0, errors.New("tls: cipher suite not supported")
-	}
-	earlySecret := cipherSuite.extract(e.SessionSecret, nil)
-	binderKey := cipherSuite.deriveSecret(earlySecret, resumptionBinderLabel, nil)
-
-	// concatenate ClientHello and PreSharedKeyExtension
-	rawHelloSoFar := append(raw, b[:offset]...)
-	transcript := cipherSuite.hash.New()
-	transcript.Write(rawHelloSoFar)
-	e.binders = [][]byte{cipherSuite.finishedHash(binderKey, transcript)}
-
 	// binders length
 	bindersLength := 0
-	for _, binder := range e.binders {
-		bindersLength += len(binder) + 1 // binder length + binder
-	}
-	b[offset] = byte(bindersLength >> 8)
-	b[offset+1] = byte(bindersLength)
-	offset += 2
-
-	// binders
-	for _, binder := range e.binders {
-		b[offset] = byte(len(binder))
-		offset++
-		copy(b[offset:], binder)
-		offset += len(binder)
-	}
-
-	return e.Len(), io.EOF
-}
-
-func (e *FakePreSharedKeyExtension) Binders() [][]byte {
-	return nil
-}
-
-func (e *FakePreSharedKeyExtension) UnmarshalJSON(data []byte) error {
-	var pskAccepter struct {
-		CipherSuite   uint16        `json:"cipher_suite"`
-		SessionSecret []byte        `json:"session_secret"`
-		Identities    []PskIdentity `json:"identities"`
-	}
-
-	if err := json.Unmarshal(data, &pskAccepter); err != nil {
-		return err
-	}
-
-	e.CipherSuite = pskAccepter.CipherSuite
-	e.SessionSecret = pskAccepter.SessionSecret
-	e.Identities = pskAccepter.Identities
-	return nil
-}
-
-// HardcodedPreSharedKeyExtension is an extension used to set the PSK extension in the
-// ClientHello.
-//
-// It does not compute binders based on ClientHello, but uses the binders specified instead.
-//
-// TODO: Only one of FakePreSharedKeyExtension and HardcodedPreSharedKeyExtension should
-// be kept, the other one should be just removed. We still need to learn more of the safety
-// of hardcoding both Identities and Binders without recalculating the latter.
-type HardcodedPreSharedKeyExtension struct {
-	Identities []PskIdentity `json:"identities"`
-	Binders    [][]byte      `json:"binders"`
-}
-
-func (e *HardcodedPreSharedKeyExtension) writeToUConn(uc *UConn) error {
-	if uc.config.ClientSessionCache == nil {
-		return nil // don't write the extension if there is no session cache
-	}
-	if session, ok := uc.config.ClientSessionCache.Get(uc.clientSessionCacheKey()); !ok || session == nil {
-		return nil // don't write the extension if there is no session cache available for this session
-	}
-	uc.HandshakeState.Hello.PskIdentities = e.Identities
-	uc.HandshakeState.Hello.PskBinders = e.Binders
-	return nil
-}
-
-func (e *HardcodedPreSharedKeyExtension) Len() int {
-	length := 4 // extension type + extension length
-	length += 2 // identities length
-	for _, identity := range e.Identities {
-		length += 2 + len(identity.Label) + 4 // identity length + identity + obfuscated ticket age
-	}
-	length += 2 // binders length
+LOOP_BINDERS:
 	for _, binder := range e.Binders {
-		length += len(binder)
-	}
-	return length
-}
-
-func (e *HardcodedPreSharedKeyExtension) Read(b []byte) (int, error) {
-	return 0, errors.New("tls: PreSharedKeyExtension shouldn't be read, use ReadWithRawHello() instead")
-}
-
-func (e *HardcodedPreSharedKeyExtension) ReadWithRawHello(raw, b []byte) (int, error) {
-	if len(b) < e.Len() {
-		return 0, io.ErrShortBuffer
-	}
-
-	b[0] = byte(extensionPreSharedKey >> 8)
-	b[1] = byte(extensionPreSharedKey)
-	b[2] = byte((e.Len() - 4) >> 8)
-	b[3] = byte(e.Len() - 4)
-
-	// identities length
-	identitiesLength := 0
-	for _, identity := range e.Identities {
-		identitiesLength += 2 + len(identity.Label) + 4 // identity length + identity + obfuscated ticket age
-	}
-	b[4] = byte(identitiesLength >> 8)
-	b[5] = byte(identitiesLength)
-
-	// identities
-	offset := 6
-	for _, identity := range e.Identities {
-		b[offset] = byte(len(identity.Label) >> 8)
-		b[offset+1] = byte(len(identity.Label))
-		offset += 2
-		copy(b[offset:], identity.Label)
-		offset += len(identity.Label)
-		b[offset] = byte(identity.ObfuscatedTicketAge >> 24)
-		b[offset+1] = byte(identity.ObfuscatedTicketAge >> 16)
-		b[offset+2] = byte(identity.ObfuscatedTicketAge >> 8)
-		b[offset+3] = byte(identity.ObfuscatedTicketAge)
-		offset += 4
-	}
-
-	// binders length
-	bindersLength := 0
-	for _, binder := range e.Binders {
-		bindersLength += len(binder) + 1
+		// check if binder size is valid
+		for _, cipherSuite := range cipherSuitesTLS13 {
+			if len(binder) == cipherSuite.hash.Size() {
+				bindersLength += len(binder) + 1 // binder length + binder
+				continue LOOP_BINDERS
+			}
+		}
+		return 0, errors.New("tls: invalid binder size")
 	}
 	b[offset] = byte(bindersLength >> 8)
 	b[offset+1] = byte(bindersLength)
@@ -416,7 +325,7 @@ func (e *HardcodedPreSharedKeyExtension) ReadWithRawHello(raw, b []byte) (int, e
 	return e.Len(), io.EOF
 }
 
-func (e *HardcodedPreSharedKeyExtension) Write(b []byte) (n int, err error) {
+func (e *FakePreSharedKeyExtension) Write(b []byte) (n int, err error) {
 	fullLen := len(b)
 	s := cryptobyte.String(b)
 
@@ -487,7 +396,7 @@ func (e *HardcodedPreSharedKeyExtension) Write(b []byte) (n int, err error) {
 	return fullLen, nil
 }
 
-func (e *HardcodedPreSharedKeyExtension) UnmarshalJSON(data []byte) error {
+func (e *FakePreSharedKeyExtension) UnmarshalJSON(data []byte) error {
 	var pskAccepter struct {
 		PskIdentities []PskIdentity `json:"identities"`
 		PskBinders    [][]byte      `json:"binders"`
@@ -501,3 +410,14 @@ func (e *HardcodedPreSharedKeyExtension) UnmarshalJSON(data []byte) error {
 	e.Binders = pskAccepter.PskBinders
 	return nil
 }
+
+// type guard
+var (
+	_ PreSharedKeyExtension = (*UtlsPreSharedKeyExtension)(nil)
+	_ TLSExtensionJSON      = (*UtlsPreSharedKeyExtension)(nil)
+	_ PreSharedKeyExtension = (*FakePreSharedKeyExtension)(nil)
+	_ TLSExtensionJSON      = (*FakePreSharedKeyExtension)(nil)
+	_ TLSExtensionWriter    = (*FakePreSharedKeyExtension)(nil)
+)
+
+// type ExternalPreSharedKeyExtension struct{} // TODO: wait for whoever cares about external PSK to implement it
