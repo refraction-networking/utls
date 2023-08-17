@@ -86,11 +86,9 @@ func main() {
 	}
 
 	tlsConnPSK := tls.UClient(tcpConnPSK, &tls.Config{
-		ServerName: strings.Split(serverAddr, ":")[0],
-		// ClientSessionCache: csc, // set this will cause PSK to fail. This is a bug...
-	}, tls.HelloChrome_100_PSK, &tls.UtlsPreSharedKeyExtension{
-		ClientSessionCacheOverride: csc, // ONLY set your own ClientSessionCache here if you want to use PSK
-	})
+		ServerName:         strings.Split(serverAddr, ":")[0],
+		ClientSessionCache: csc,
+	}, tls.HelloChrome_100_PSK, &tls.UtlsPreSharedKeyExtension{})
 
 	// HS
 	err = tlsConnPSK.Handshake()

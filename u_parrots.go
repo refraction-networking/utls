@@ -2453,7 +2453,10 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 				if cs != nil {
 					session = cs.session
 				}
-				// TLS 1.3 (PSK) resumption is handled by PreSharedKeyExtension in MarshalClientHello()
+			}
+			// TLS 1.3 (PSK) resumption is handled by PreSharedKeyExtension in MarshalClientHello()
+			if session != nil && session.version == VersionTLS13 {
+				break
 			}
 			err := uconn.SetSessionState(cs)
 			if err != nil {

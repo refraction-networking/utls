@@ -210,7 +210,7 @@ func (chs *ClientHelloSpec) ReadCompressionMethods(compressionMethods []byte) er
 // a byte slice into []TLSExtension.
 //
 // If keepPSK is not set, the PSK extension will cause an error.
-func (chs *ClientHelloSpec) ReadTLSExtensions(b []byte, allowBluntMimicry bool, clientSessionCache ...ClientSessionCache) error {
+func (chs *ClientHelloSpec) ReadTLSExtensions(b []byte, allowBluntMimicry bool, realPSK bool) error {
 	extensions := cryptobyte.String(b)
 	for !extensions.Empty() {
 		var extension uint16
@@ -228,8 +228,8 @@ func (chs *ClientHelloSpec) ReadTLSExtensions(b []byte, allowBluntMimicry bool, 
 			switch extension {
 			case extensionPreSharedKey:
 				// PSK extension, need to see if we do real or fake PSK
-				if len(clientSessionCache) > 0 && clientSessionCache[0] != nil {
-					extWriter = &UtlsPreSharedKeyExtension{ClientSessionCacheOverride: clientSessionCache[0]}
+				if realPSK {
+					extWriter = &UtlsPreSharedKeyExtension{}
 				} else {
 					extWriter = &FakePreSharedKeyExtension{}
 				}
@@ -464,14 +464,20 @@ func (chs *ClientHelloSpec) ImportTLSClientHelloFromJSON(jsonB []byte) error {
 }
 
 // FromRaw converts a ClientHello message in the form of raw bytes into a ClientHelloSpec.
-func (chs *ClientHelloSpec) FromRaw(raw []byte, allowBluntMimicry ...bool) error {
+//
+// ctrlFlags: []bool{bluntMimicry, realPSK}
+func (chs *ClientHelloSpec) FromRaw(raw []byte, ctrlFlags ...bool) error {
 	if chs == nil {
 		return errors.New("cannot unmarshal into nil ClientHelloSpec")
 	}
 
 	var bluntMimicry = false
-	if len(allowBluntMimicry) == 1 {
-		bluntMimicry = allowBluntMimicry[0]
+	var realPSK = false
+	if len(ctrlFlags) > 0 {
+		bluntMimicry = ctrlFlags[0]
+	}
+	if len(ctrlFlags) > 1 {
+		realPSK = ctrlFlags[1]
 	}
 
 	*chs = ClientHelloSpec{} // reset
@@ -538,89 +544,7 @@ func (chs *ClientHelloSpec) FromRaw(raw []byte, allowBluntMimicry ...bool) error
 		return errors.New("unable to read extensions data")
 	}
 
-	if err := chs.ReadTLSExtensions(extensions, bluntMimicry); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// FromRaw converts a ClientHello message in the form of raw bytes into a ClientHelloSpec.
-func (chs *ClientHelloSpec) FromRawWithClientSessionCache(raw []byte, csc ClientSessionCache, allowBluntMimicry ...bool) error {
-	if chs == nil {
-		return errors.New("cannot unmarshal into nil ClientHelloSpec")
-	}
-
-	var bluntMimicry = false
-	if len(allowBluntMimicry) == 1 {
-		bluntMimicry = allowBluntMimicry[0]
-	}
-
-	*chs = ClientHelloSpec{} // reset
-	s := cryptobyte.String(raw)
-
-	var contentType uint8
-	var recordVersion uint16
-	if !s.ReadUint8(&contentType) || // record type
-		!s.ReadUint16(&recordVersion) || !s.Skip(2) { // record version and length
-		return errors.New("unable to read record type, version, and length")
-	}
-
-	if recordType(contentType) != recordTypeHandshake {
-		return errors.New("record is not a handshake")
-	}
-
-	var handshakeVersion uint16
-	var handshakeType uint8
-
-	if !s.ReadUint8(&handshakeType) || !s.Skip(3) || // message type and 3 byte length
-		!s.ReadUint16(&handshakeVersion) || !s.Skip(32) { // 32 byte random
-		return errors.New("unable to read handshake message type, length, and random")
-	}
-
-	if handshakeType != typeClientHello {
-		return errors.New("handshake message is not a ClientHello")
-	}
-
-	chs.TLSVersMin = recordVersion
-	chs.TLSVersMax = handshakeVersion
-
-	var ignoredSessionID cryptobyte.String
-	if !s.ReadUint8LengthPrefixed(&ignoredSessionID) {
-		return errors.New("unable to read session id")
-	}
-
-	// CipherSuites
-	var cipherSuitesBytes cryptobyte.String
-	if !s.ReadUint16LengthPrefixed(&cipherSuitesBytes) {
-		return errors.New("unable to read ciphersuites")
-	}
-
-	if err := chs.ReadCipherSuites(cipherSuitesBytes); err != nil {
-		return err
-	}
-
-	// CompressionMethods
-	var compressionMethods cryptobyte.String
-	if !s.ReadUint8LengthPrefixed(&compressionMethods) {
-		return errors.New("unable to read compression methods")
-	}
-
-	if err := chs.ReadCompressionMethods(compressionMethods); err != nil {
-		return err
-	}
-
-	if s.Empty() {
-		// Extensions are optional
-		return nil
-	}
-
-	var extensions cryptobyte.String
-	if !s.ReadUint16LengthPrefixed(&extensions) {
-		return errors.New("unable to read extensions data")
-	}
-
-	if err := chs.ReadTLSExtensions(extensions, bluntMimicry, csc); err != nil {
+	if err := chs.ReadTLSExtensions(extensions, bluntMimicry, realPSK); err != nil {
 		return err
 	}
 

@@ -61,13 +61,6 @@ func (*UnimplementedPreSharedKeyExtension) ReadWithRawHello(raw, b []byte) (int,
 type UtlsPreSharedKeyExtension struct {
 	UnimplementedPreSharedKeyExtension
 
-	// ClientSessionCacheOverride is used to specify the ClientSessionCache to be used
-	// for PSK-resumption.
-	//
-	// bug: tls.Config.ClientSessionCache must be nil for PSK-resumption to work, even though
-	// it is supposed to be overridden by ClientSessionCacheOverride.
-	ClientSessionCacheOverride ClientSessionCache
-
 	identities  []pskIdentity
 	binders     [][]byte
 	binderKey   []byte // this will be used to compute the binder when hello message is ready
@@ -172,12 +165,6 @@ func (e *UtlsPreSharedKeyExtension) ReadWithRawHello(raw, b []byte) (int, error)
 }
 
 func (e *UtlsPreSharedKeyExtension) preloadSession(uc *UConn) error {
-	// var sessionCache ClientSessionCache
-	// must set either e.Session or uc.config.ClientSessionCache
-	if e.ClientSessionCacheOverride != nil {
-		uc.config.ClientSessionCache = e.ClientSessionCacheOverride
-	}
-
 	// load Hello
 	hello := uc.HandshakeState.Hello.getPrivatePtr()
 	// try to use loadSession()
@@ -203,16 +190,10 @@ func (e *UtlsPreSharedKeyExtension) preloadSession(uc *UConn) error {
 }
 
 func (e *UtlsPreSharedKeyExtension) Write(b []byte) (int, error) {
-	if e.ClientSessionCacheOverride == nil {
-		return 0, errors.New("tls: ClientSessionCache must be set to use UtlsPreSharedKeyExtension")
-	}
 	return len(b), nil // ignore the data
 }
 
 func (e *UtlsPreSharedKeyExtension) UnmarshalJSON(_ []byte) error {
-	if e.ClientSessionCacheOverride == nil {
-		return errors.New("tls: ClientSessionCache must be set to use UtlsPreSharedKeyExtension")
-	}
 	return nil // ignore the data
 }
 

@@ -85,9 +85,9 @@ func (c *CompressionMethodsJSONUnmarshaler) CompressionMethods() []uint8 {
 }
 
 type TLSExtensionsJSONUnmarshaler struct {
-	AllowUnknownExt    bool               // if set, unknown extensions will be added as GenericExtension, without recovering ext payload
-	ClientSessionCache ClientSessionCache // if set, PSK extension will be Unmarshaled into UtlsPreSharedKeyExtension. Otherwise FakePreSharedKeyExtension.
-	extensions         []TLSExtensionJSON
+	AllowUnknownExt bool // if set, unknown extensions will be added as GenericExtension, without recovering ext payload
+	UseRealPSK      bool // if set, PSK extension will be real PSK extension, otherwise it will be fake PSK extension
+	extensions      []TLSExtensionJSON
 }
 
 func (e *TLSExtensionsJSONUnmarshaler) UnmarshalJSON(jsonStr []byte) error {
@@ -120,8 +120,8 @@ func (e *TLSExtensionsJSONUnmarshaler) UnmarshalJSON(jsonStr []byte) error {
 			switch extID {
 			case extensionPreSharedKey:
 				// PSK extension, need to see if we do real or fake PSK
-				if e.ClientSessionCache != nil {
-					ext = &UtlsPreSharedKeyExtension{ClientSessionCacheOverride: e.ClientSessionCache}
+				if e.UseRealPSK {
+					ext = &UtlsPreSharedKeyExtension{}
 				} else {
 					ext = &FakePreSharedKeyExtension{}
 				}
