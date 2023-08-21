@@ -312,6 +312,12 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 
 func (c *Conn) loadSession(hello *clientHelloMsg) (
 	session *SessionState, earlySecret, binderKey []byte, err error) {
+	// [UTLS SECTION START]
+	if c.utls.sessionController != nil {
+		c.utls.sessionController.onEnterLoadSessionCheck()
+		defer c.utls.sessionController.onLoadSessionReturn()
+	}
+	// [UTLS SECTION END]
 	if c.config.SessionTicketsDisabled || c.config.ClientSessionCache == nil {
 		return nil, nil, nil, nil
 	}
@@ -323,12 +329,6 @@ func (c *Conn) loadSession(hello *clientHelloMsg) (
 		// compromise of the session ticket key. See RFC 8446, Section 4.2.9.
 		hello.pskModes = []uint8{pskModeDHE}
 	}
-
-	// [UTLS BEGINS]
-	if c.utls.session != nil {
-		return c.utls.session, c.utls.earlySecret, c.utls.binderKey, nil
-	}
-	// [UTLS ENDS]
 
 	// Session resumption is not allowed if renegotiating because
 	// renegotiation is primarily used to allow a client to send a client
@@ -456,6 +456,11 @@ func (c *Conn) loadSession(hello *clientHelloMsg) (
 	// Compute the PSK binders. See RFC 8446, Section 4.2.11.2.
 	earlySecret = cipherSuite.extract(session.secret, nil)
 	binderKey = cipherSuite.deriveSecret(earlySecret, resumptionBinderLabel, nil)
+	// [UTLS SECTION START]
+	if c.utls.sessionController != nil && !c.utls.sessionController.shouldWriteBinders() {
+		return
+	}
+	// [UTLS SECTION END]
 	transcript := cipherSuite.hash.New()
 	helloBytes, err := hello.marshalWithoutBinders()
 	if err != nil {
@@ -466,11 +471,6 @@ func (c *Conn) loadSession(hello *clientHelloMsg) (
 	if err := hello.updateBinders(pskBinders); err != nil {
 		return nil, nil, nil, err
 	}
-
-	c.utls.session = session         // [uTLS]
-	c.utls.earlySecret = earlySecret // [uTLS]
-	c.utls.binderKey = binderKey     // [uTLS]
-
 	return
 }
 

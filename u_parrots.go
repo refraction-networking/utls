@@ -17,26 +17,18 @@ import (
 )
 
 var ErrUnknownClientHelloID = errors.New("tls: unknown ClientHelloID")
-var ErrNotPSKClientHelloID = errors.New("tls: ClientHello does not contain pre_shared_key extension")
-var ErrPSKExtensionExpected = errors.New("tls: pre_shared_key extension expected when fetching preset ClientHelloSpec")
 
 // UTLSIdToSpec converts a ClientHelloID to a corresponding ClientHelloSpec.
 //
 // Exported internal function utlsIdToSpec per request.
-func UTLSIdToSpec(id ClientHelloID, pskExtension ...PreSharedKeyExtension) (ClientHelloSpec, error) {
-	if len(pskExtension) > 1 {
-		return ClientHelloSpec{}, errors.New("tls: at most one PreSharedKeyExtensions is allowed")
-	}
-
-	chs, err := utlsIdToSpec(id)
-	if err != nil && errors.Is(err, ErrUnknownClientHelloID) {
-		chs, err = utlsIdToSpecWithPSK(id, pskExtension...)
-	}
-
-	return chs, err
+func UTLSIdToSpec(id ClientHelloID, pskExt PreSharedKeyExtension, sessionTicketExt *SessionTicketExtension) (ClientHelloSpec, error) {
+	return utlsIdToSpec(id, pskExt, sessionTicketExt)
 }
 
-func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
+func utlsIdToSpec(id ClientHelloID, pskExt PreSharedKeyExtension, sessionTicketExt *SessionTicketExtension) (ClientHelloSpec, error) {
+	if pskExt == nil || sessionTicketExt == nil {
+		panic("utlsIdToSpec failed: pskExt and sessionTicketExt must be non-nil pointers")
+	}
 	switch id {
 	case HelloChrome_58, HelloChrome_62:
 		return ClientHelloSpec{
@@ -64,7 +56,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&RenegotiationInfoExtension{Renegotiation: RenegotiateOnceAsClient},
 				&SNIExtension{},
 				&ExtendedMasterSecretExtension{},
-				&SessionTicketExtension{},
+				sessionTicketExt,
 				&SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []SignatureScheme{
 					ECDSAWithP256AndSHA256,
 					PSSWithSHA256,
@@ -119,7 +111,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&RenegotiationInfoExtension{Renegotiation: RenegotiateOnceAsClient},
 				&SNIExtension{},
 				&ExtendedMasterSecretExtension{},
-				&SessionTicketExtension{},
+				sessionTicketExt,
 				&SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []SignatureScheme{
 					ECDSAWithP256AndSHA256,
 					PSSWithSHA256,
@@ -198,7 +190,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&SupportedPointsExtension{SupportedPoints: []byte{
 					0x00, // pointFormatUncompressed
 				}},
-				&SessionTicketExtension{},
+				sessionTicketExt,
 				&ALPNExtension{AlpnProtocols: []string{"h2", "http/1.1"}},
 				&StatusRequestExtension{},
 				&SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []SignatureScheme{
@@ -271,7 +263,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&SupportedPointsExtension{SupportedPoints: []byte{
 					0x00, // pointFormatUncompressed
 				}},
-				&SessionTicketExtension{},
+				sessionTicketExt,
 				&ALPNExtension{AlpnProtocols: []string{"h2", "http/1.1"}},
 				&StatusRequestExtension{},
 				&SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []SignatureScheme{
@@ -343,7 +335,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&SupportedPointsExtension{SupportedPoints: []byte{
 					0x00, // pointFormatUncompressed
 				}},
-				&SessionTicketExtension{},
+				sessionTicketExt,
 				&ALPNExtension{AlpnProtocols: []string{"h2", "http/1.1"}},
 				&StatusRequestExtension{},
 				&SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []SignatureScheme{
@@ -415,7 +407,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&SupportedPointsExtension{SupportedPoints: []byte{
 					0x00, // pointFormatUncompressed
 				}},
-				&SessionTicketExtension{},
+				sessionTicketExt,
 				&ALPNExtension{AlpnProtocols: []string{"h2", "http/1.1"}},
 				&StatusRequestExtension{},
 				&SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []SignatureScheme{
@@ -488,7 +480,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&SupportedPointsExtension{SupportedPoints: []byte{
 					0x00, // pointFormatUncompressed
 				}},
-				&SessionTicketExtension{},
+				sessionTicketExt,
 				&ALPNExtension{AlpnProtocols: []string{"h2", "http/1.1"}},
 				&StatusRequestExtension{},
 				&SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []SignatureScheme{
@@ -559,7 +551,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&SupportedPointsExtension{SupportedPoints: []byte{
 					0x00, // pointFormatUncompressed
 				}},
-				&SessionTicketExtension{},
+				sessionTicketExt,
 				&ALPNExtension{AlpnProtocols: []string{"h2", "http/1.1"}},
 				&StatusRequestExtension{},
 				&SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []SignatureScheme{
@@ -632,7 +624,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&SupportedPointsExtension{SupportedPoints: []byte{
 					0x00, // pointFormatUncompressed
 				}},
-				&SessionTicketExtension{},
+				sessionTicketExt,
 				&ALPNExtension{AlpnProtocols: []string{"h2", "http/1.1"}},
 				&StatusRequestExtension{},
 				&SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []SignatureScheme{
@@ -695,7 +687,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&RenegotiationInfoExtension{Renegotiation: RenegotiateOnceAsClient},
 				&SupportedCurvesExtension{[]CurveID{X25519, CurveP256, CurveP384, CurveP521}},
 				&SupportedPointsExtension{SupportedPoints: []byte{pointFormatUncompressed}},
-				&SessionTicketExtension{},
+				sessionTicketExt,
 				&ALPNExtension{AlpnProtocols: []string{"h2", "http/1.1"}},
 				&StatusRequestExtension{},
 				&SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []SignatureScheme{
@@ -757,7 +749,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&SupportedPointsExtension{SupportedPoints: []byte{
 					pointFormatUncompressed,
 				}},
-				&SessionTicketExtension{},
+				sessionTicketExt,
 				&ALPNExtension{AlpnProtocols: []string{"h2", "http/1.1"}},
 				&StatusRequestExtension{},
 				&KeyShareExtension{[]KeyShare{
@@ -828,7 +820,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&SupportedPointsExtension{SupportedPoints: []byte{ //ec_point_formats
 					pointFormatUncompressed,
 				}},
-				&SessionTicketExtension{},
+				sessionTicketExt,
 				&ALPNExtension{AlpnProtocols: []string{"h2", "http/1.1"}}, //application_layer_protocol_negotiation
 				&StatusRequestExtension{},
 				&FakeDelegatedCredentialsExtension{
@@ -909,7 +901,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&SupportedPointsExtension{SupportedPoints: []byte{ //ec_point_formats
 					pointFormatUncompressed,
 				}},
-				&SessionTicketExtension{},
+				sessionTicketExt,
 				&ALPNExtension{AlpnProtocols: []string{"h2"}}, //application_layer_protocol_negotiation
 				&StatusRequestExtension{},
 				&FakeDelegatedCredentialsExtension{
@@ -994,7 +986,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 						0x0, // uncompressed
 					},
 				},
-				&SessionTicketExtension{},
+				sessionTicketExt,
 				&ALPNExtension{
 					AlpnProtocols: []string{
 						"h2",
@@ -1426,7 +1418,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 						0x0, // pointFormatUncompressed
 					},
 				},
-				&SessionTicketExtension{},
+				sessionTicketExt,
 				&ALPNExtension{
 					AlpnProtocols: []string{
 						"h2",
@@ -1531,7 +1523,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 						0x0, // uncompressed
 					},
 				},
-				&SessionTicketExtension{},
+				sessionTicketExt,
 				&ALPNExtension{
 					AlpnProtocols: []string{
 						"h2",
@@ -1749,7 +1741,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 						0x0, // pointFormatUncompressed
 					},
 				},
-				&SessionTicketExtension{},
+				sessionTicketExt,
 				&NPNExtension{},
 				&ALPNExtension{
 					AlpnProtocols: []string{
@@ -1823,7 +1815,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 						0x0, // uncompressed
 					},
 				},
-				&SessionTicketExtension{},
+				sessionTicketExt,
 				&ALPNExtension{
 					AlpnProtocols: []string{
 						"h2",
@@ -1931,7 +1923,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 						0x0, // uncompressed
 					},
 				},
-				&SessionTicketExtension{},
+				sessionTicketExt,
 				&ALPNExtension{
 					AlpnProtocols: []string{
 						"h2",
@@ -1995,24 +1987,6 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				},
 			},
 		}, nil
-	default:
-		if id.Client == helloRandomized || id.Client == helloRandomizedALPN || id.Client == helloRandomizedNoALPN {
-			// Use empty values as they can be filled later by UConn.ApplyPreset or manually.
-			return generateRandomizedSpec(&id, "", nil, nil)
-		}
-		return ClientHelloSpec{}, fmt.Errorf("%w: %s", ErrUnknownClientHelloID, id.Str())
-	}
-}
-
-func utlsIdToSpecWithPSK(id ClientHelloID, pskExtension ...PreSharedKeyExtension) (ClientHelloSpec, error) {
-	switch id {
-	case HelloChrome_100_PSK, HelloChrome_112_PSK_Shuf, HelloChrome_114_Padding_PSK_Shuf, HelloChrome_115_PQ_PSK:
-		if len(pskExtension) == 0 || pskExtension[0] == nil {
-			return ClientHelloSpec{}, fmt.Errorf("%w: %s", ErrPSKExtensionExpected, id.Str())
-		}
-	}
-
-	switch id {
 	case HelloChrome_100_PSK:
 		return ClientHelloSpec{
 			CipherSuites: []uint16{
@@ -2050,7 +2024,7 @@ func utlsIdToSpecWithPSK(id ClientHelloID, pskExtension ...PreSharedKeyExtension
 				&SupportedPointsExtension{SupportedPoints: []byte{
 					0x00, // pointFormatUncompressed
 				}},
-				&SessionTicketExtension{},
+				sessionTicketExt,
 				&ALPNExtension{AlpnProtocols: []string{"h2", "http/1.1"}},
 				&StatusRequestExtension{},
 				&SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []SignatureScheme{
@@ -2081,7 +2055,7 @@ func utlsIdToSpecWithPSK(id ClientHelloID, pskExtension ...PreSharedKeyExtension
 				}},
 				&ApplicationSettingsExtension{SupportedProtocols: []string{"h2"}},
 				&UtlsGREASEExtension{},
-				pskExtension[0],
+				pskExt,
 			},
 		}, nil
 	case HelloChrome_112_PSK_Shuf:
@@ -2121,7 +2095,7 @@ func utlsIdToSpecWithPSK(id ClientHelloID, pskExtension ...PreSharedKeyExtension
 				&SupportedPointsExtension{SupportedPoints: []byte{
 					0x00, // pointFormatUncompressed
 				}},
-				&SessionTicketExtension{},
+				sessionTicketExt,
 				&ALPNExtension{AlpnProtocols: []string{"h2", "http/1.1"}},
 				&StatusRequestExtension{},
 				&SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []SignatureScheme{
@@ -2152,7 +2126,7 @@ func utlsIdToSpecWithPSK(id ClientHelloID, pskExtension ...PreSharedKeyExtension
 				}},
 				&ApplicationSettingsExtension{SupportedProtocols: []string{"h2"}},
 				&UtlsGREASEExtension{},
-				pskExtension[0],
+				pskExt,
 			}),
 		}, nil
 	case HelloChrome_114_Padding_PSK_Shuf:
@@ -2192,7 +2166,7 @@ func utlsIdToSpecWithPSK(id ClientHelloID, pskExtension ...PreSharedKeyExtension
 				&SupportedPointsExtension{SupportedPoints: []byte{
 					0x00, // pointFormatUncompressed
 				}},
-				&SessionTicketExtension{},
+				sessionTicketExt,
 				&ALPNExtension{AlpnProtocols: []string{"h2", "http/1.1"}},
 				&StatusRequestExtension{},
 				&SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []SignatureScheme{
@@ -2224,7 +2198,7 @@ func utlsIdToSpecWithPSK(id ClientHelloID, pskExtension ...PreSharedKeyExtension
 				&ApplicationSettingsExtension{SupportedProtocols: []string{"h2"}},
 				&UtlsGREASEExtension{},
 				&UtlsPaddingExtension{GetPaddingLen: BoringPaddingStyle},
-				pskExtension[0],
+				pskExt,
 			}),
 		}, nil
 	// Chrome w/ Post-Quantum Key Agreement
@@ -2266,7 +2240,7 @@ func utlsIdToSpecWithPSK(id ClientHelloID, pskExtension ...PreSharedKeyExtension
 				&SupportedPointsExtension{SupportedPoints: []byte{
 					0x00, // pointFormatUncompressed
 				}},
-				&SessionTicketExtension{},
+				sessionTicketExt,
 				&ALPNExtension{AlpnProtocols: []string{"h2", "http/1.1"}},
 				&StatusRequestExtension{},
 				&SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []SignatureScheme{
@@ -2298,12 +2272,17 @@ func utlsIdToSpecWithPSK(id ClientHelloID, pskExtension ...PreSharedKeyExtension
 				}},
 				&ApplicationSettingsExtension{SupportedProtocols: []string{"h2"}},
 				&UtlsGREASEExtension{},
-				pskExtension[0],
+				pskExt,
 			}),
 		}, nil
-	}
+	default:
+		if id.Client == helloRandomized || id.Client == helloRandomizedALPN || id.Client == helloRandomizedNoALPN {
+			// Use empty values as they can be filled later by UConn.ApplyPreset or manually.
+			return generateRandomizedSpec(&id, "", nil)
+		}
 
-	return ClientHelloSpec{}, fmt.Errorf("%w: %s", ErrUnknownClientHelloID, id.Str())
+		return ClientHelloSpec{}, fmt.Errorf("%w: %s", ErrUnknownClientHelloID, id.Str())
+	}
 }
 
 // ShuffleChromeTLSExtensions shuffles the extensions in the ClientHelloSpec to avoid ossification.
@@ -2345,9 +2324,8 @@ func (uconn *UConn) applyPresetByID(id ClientHelloID) (err error) {
 		}
 	case helloCustom:
 		return nil
-
 	default:
-		spec, err = UTLSIdToSpec(id, uconn.pskExtension...)
+		spec, err = UTLSIdToSpec(id, uconn.sessionController.pskExtension, uconn.sessionController.sessionTicketExt)
 		if err != nil {
 			return err
 		}
@@ -2379,7 +2357,6 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 	}
 	uconn.HandshakeState.State13.KeySharesParams = NewKeySharesParameters()
 	hello := uconn.HandshakeState.Hello
-	session := uconn.HandshakeState.Session
 
 	switch len(hello.Random) {
 	case 0:
@@ -2420,7 +2397,12 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 			hello.CipherSuites[i] = GetBoringGREASEValue(uconn.greaseSeed, ssl_grease_cipher)
 		}
 	}
-	uconn.GetSessionID = p.GetSessionID
+	var sessionID [32]byte
+	_, err = io.ReadFull(uconn.config.rand(), sessionID[:])
+	if err != nil {
+		return err
+	}
+	uconn.HandshakeState.Hello.SessionId = sessionID[:]
 	uconn.Extensions = make([]TLSExtension, len(p.Extensions))
 	copy(uconn.Extensions, p.Extensions)
 
@@ -2445,23 +2427,6 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 				return errors.New("at most 2 grease extensions are supported")
 			}
 			grease_extensions_seen += 1
-		case *SessionTicketExtension:
-			var cs *ClientSessionState
-			if session == nil && uconn.config.ClientSessionCache != nil {
-				cacheKey := uconn.clientSessionCacheKey()
-				cs, _ = uconn.config.ClientSessionCache.Get(cacheKey)
-				if cs != nil {
-					session = cs.session
-				}
-			}
-			// TLS 1.3 (PSK) resumption is handled by PreSharedKeyExtension in MarshalClientHello()
-			if session != nil && session.version == VersionTLS13 {
-				break
-			}
-			err := uconn.SetSessionState(cs)
-			if err != nil {
-				return err
-			}
 		case *SupportedCurvesExtension:
 			for i := range ext.Curves {
 				if isGREASEUint16(uint16(ext.Curves[i])) {
@@ -2528,22 +2493,18 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 	// but NextProtos is also used by ALPN and our spec nmay not actually have a NPN extension
 	hello.NextProtoNeg = haveNPN
 
+	uconn.sessionController.checkSessionExt()
+
 	return nil
 }
 
 func (uconn *UConn) generateRandomizedSpec() (ClientHelloSpec, error) {
-	css := &ClientSessionState{
-		session: uconn.HandshakeState.Session,
-		ticket:  uconn.HandshakeState.Hello.SessionTicket,
-	}
-
-	return generateRandomizedSpec(&uconn.ClientHelloID, uconn.serverName, css, uconn.config.NextProtos)
+	return generateRandomizedSpec(&uconn.ClientHelloID, uconn.serverName, uconn.config.NextProtos)
 }
 
 func generateRandomizedSpec(
 	id *ClientHelloID,
 	serverName string,
-	session *ClientSessionState,
 	nextProtos []string,
 ) (ClientHelloSpec, error) {
 	p := ClientHelloSpec{}
@@ -2609,7 +2570,7 @@ func generateRandomizedSpec(
 	p.CipherSuites = removeRandomCiphers(r, shuffledSuites, id.Weights.CipherSuites_Remove_RandomCiphers)
 
 	sni := SNIExtension{serverName}
-	sessionTicket := SessionTicketExtension{Session: session}
+	sessionTicket := SessionTicketExtension{}
 
 	sigAndHashAlgos := []SignatureScheme{
 		ECDSAWithP256AndSHA256,

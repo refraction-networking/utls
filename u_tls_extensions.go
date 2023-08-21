@@ -802,22 +802,19 @@ func (e *SCTExtension) Write(_ []byte) (int, error) {
 
 // SessionTicketExtension implements session_ticket (35)
 type SessionTicketExtension struct {
-	Session *ClientSessionState
+	Session *SessionState
+	Ticket  []byte
 }
 
 func (e *SessionTicketExtension) writeToUConn(uc *UConn) error {
-	if e.Session != nil {
-		uc.HandshakeState.Session = e.Session.session
-		uc.HandshakeState.Hello.SessionTicket = e.Session.ticket
-	}
+	// session states are handled later. At this point tickets aren't
+	// being loaded by utls, so don't write anything to the UConn.
+	uc.HandshakeState.Hello.TicketSupported = true // This doesn't really matter, this field is only used to add session ticket ext in go tls.
 	return nil
 }
 
 func (e *SessionTicketExtension) Len() int {
-	if e.Session != nil {
-		return 4 + len(e.Session.ticket)
-	}
-	return 4
+	return 4 + len(e.Ticket)
 }
 
 func (e *SessionTicketExtension) Read(b []byte) (int, error) {
@@ -832,7 +829,7 @@ func (e *SessionTicketExtension) Read(b []byte) (int, error) {
 	b[2] = byte(extBodyLen >> 8)
 	b[3] = byte(extBodyLen)
 	if extBodyLen > 0 {
-		copy(b[4:], e.Session.ticket)
+		copy(b[4:], e.Ticket)
 	}
 	return e.Len(), io.EOF
 }

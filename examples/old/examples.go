@@ -140,7 +140,7 @@ func HttpGetTicket(hostname string, addr string) (*http.Response, error) {
 		masterSecret,
 		nil, nil)
 
-	err = uTlsConn.SetSessionState(sessionState)
+	err = uTlsConn.SetSessionState12(sessionState)
 	if err != nil {
 		return nil, err
 	}
@@ -174,7 +174,7 @@ func HttpGetTicketHelloID(hostname string, addr string, helloID tls.ClientHelloI
 		masterSecret,
 		nil, nil)
 
-	uTlsConn.SetSessionState(sessionState)
+	uTlsConn.SetSessionState12(sessionState)
 	err = uTlsConn.Handshake()
 	if err != nil {
 		return nil, fmt.Errorf("uTlsConn.Handshake() error: %+v", err)

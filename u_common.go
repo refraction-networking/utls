@@ -726,3 +726,38 @@ func EnableWeakCiphers() {
 			suiteECDHE | suiteTLS12 | suiteSHA384, cipherAES, utlsMacSHA384, nil},
 	}...)
 }
+
+func panicOnNil(failureMsg string, params ...any) {
+	for i, p := range params {
+		if p == nil {
+			panic(fmt.Sprintf("%s: the [%d] parameter is nil", failureMsg, i))
+		}
+	}
+}
+
+func anyTrue[T any](slice []T, predicate func(t *T) bool) bool {
+	for i := 0; i < len(slice); i++ {
+		if predicate(&slice[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+func uAssert(condition bool, msg string) {
+	if !condition {
+		panic(msg)
+	}
+}
+
+func sliceEq(sliceA []any, sliceB []any) bool {
+	if len(sliceA) != len(sliceB) {
+		return false
+	}
+	for i := 0; i < len(sliceA); i++ {
+		if sliceA[i] != sliceB[i] {
+			return false
+		}
+	}
+	return true
+}

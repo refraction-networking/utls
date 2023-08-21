@@ -14,23 +14,26 @@ import (
 	"errors"
 	"fmt"
 	"hash"
-	"io"
 	"net"
 	"strconv"
 )
 
+type ClientHelloBuildStatus int
+
+const NotBuilt ClientHelloBuildStatus = 0
+const BuildByUtls ClientHelloBuildStatus = 1
+const BuildByGoTLS ClientHelloBuildStatus = 2
+
 type UConn struct {
 	*Conn
 
-	Extensions    []TLSExtension
-	ClientHelloID ClientHelloID
-	pskExtension  []PreSharedKeyExtension
+	Extensions        []TLSExtension
+	ClientHelloID     ClientHelloID
+	sessionController *sessionController
 
-	ClientHelloBuilt bool
-	HandshakeState   PubClientHandshakeState
+	clientHelloBuildStatus ClientHelloBuildStatus
 
-	// sessionID may or may not depend on ticket; nil => random
-	GetSessionID func(ticket []byte) [32]byte
+	HandshakeState PubClientHandshakeState
 
 	greaseSeed [ssl_grease_last_index]uint16
 
@@ -44,15 +47,17 @@ type UConn struct {
 
 // UClient returns a new uTLS client, with behavior depending on clientHelloID.
 // Config CAN be nil, but make sure to eventually specify ServerName.
-func UClient(conn net.Conn, config *Config, clientHelloID ClientHelloID, pskExtension ...PreSharedKeyExtension) *UConn {
+func UClient(conn net.Conn, config *Config, clientHelloID ClientHelloID) *UConn {
 	if config == nil {
 		config = &Config{}
 	}
 	tlsConn := Conn{conn: conn, config: config, isClient: true}
 	handshakeState := PubClientHandshakeState{C: &tlsConn, Hello: &PubClientHelloMsg{}}
-	uconn := UConn{Conn: &tlsConn, ClientHelloID: clientHelloID, pskExtension: pskExtension, HandshakeState: handshakeState}
+	uconn := UConn{Conn: &tlsConn, ClientHelloID: clientHelloID, HandshakeState: handshakeState}
 	uconn.HandshakeState.uconn = &uconn
 	uconn.handshakeFn = uconn.clientHandshake
+	uconn.sessionController = newSessionController(&uconn)
+	uconn.utls.sessionController = uconn.sessionController
 	return &uconn
 }
 
@@ -73,9 +78,10 @@ func UClient(conn net.Conn, config *Config, clientHelloID ClientHelloID, pskExte
 // default/mimicked ClientHello.
 func (uconn *UConn) BuildHandshakeState() error {
 	if uconn.ClientHelloID == HelloGolang {
-		if uconn.ClientHelloBuilt {
+		if uconn.clientHelloBuildStatus == BuildByGoTLS {
 			return nil
 		}
+		uAssert(uconn.clientHelloBuildStatus == NotBuilt, "BuildHandshakeState failed: invalid call, client hello has already been built by utls")
 
 		// use default Golang ClientHello.
 		hello, keySharePrivate, err := uconn.makeClientHello()
@@ -92,8 +98,10 @@ func (uconn *UConn) BuildHandshakeState() error {
 			return fmt.Errorf("uTLS: unknown keySharePrivate type: %T", keySharePrivate)
 		}
 		uconn.HandshakeState.C = uconn.Conn
+		uconn.clientHelloBuildStatus = BuildByGoTLS
 	} else {
-		if !uconn.ClientHelloBuilt {
+		uAssert(uconn.clientHelloBuildStatus == BuildByUtls || uconn.clientHelloBuildStatus == NotBuilt, "BuildHandshakeState failed: invalid call, client hello has already been built by go-tls")
+		if uconn.clientHelloBuildStatus == NotBuilt {
 			err := uconn.applyPresetByID(uconn.ClientHelloID)
 			if err != nil {
 				return err
@@ -107,51 +115,93 @@ func (uconn *UConn) BuildHandshakeState() error {
 		if err != nil {
 			return err
 		}
+
+		err = uconn.uLoadSession()
+		if err != nil {
+			return err
+		}
+
 		err = uconn.MarshalClientHello()
 		if err != nil {
 			return err
 		}
+
+		uconn.uApplyPatch()
+
+		uconn.sessionController.finalCheck()
+		uconn.clientHelloBuildStatus = BuildByUtls
 	}
-	uconn.ClientHelloBuilt = true
 	return nil
 }
 
-// SetSessionState sets the session ticket, which may be preshared or fake.
+func (uconn *UConn) uLoadSession() error {
+	if cfg := uconn.config; cfg.SessionTicketsDisabled || cfg.ClientSessionCache == nil {
+		return nil
+	}
+	switch uconn.sessionController.shouldLoadSession() {
+	case shouldReturn:
+	case shouldSetTicket:
+		uconn.sessionController.setSessionTicketToUConn()
+	case shouldSetPsk:
+		uconn.sessionController.setPsk()
+	case shouldLoad:
+		hello := uconn.HandshakeState.Hello.getPrivatePtr()
+		uconn.sessionController.aboutToLoadSession()
+		session, earlySecret, binderKey, err := uconn.loadSession(hello)
+		if session == nil || err != nil {
+			return err
+		}
+		if session.version == VersionTLS12 {
+			// We use the session ticket extension for tls 1.2 session resumption
+			uconn.sessionController.initSessionTicketExt(session, hello.sessionTicket)
+			uconn.sessionController.setSessionTicketToUConn()
+		} else {
+			uconn.sessionController.initPsk(session, earlySecret, binderKey, hello.pskIdentities)
+		}
+	}
+
+	return nil
+}
+
+func (uconn *UConn) uApplyPatch() {
+	if uconn.sessionController.shouldUpdateBinders() {
+		uconn.sessionController.updateBinders()
+		uconn.sessionController.setPsk()
+	}
+}
+
+// SetSessionState12 sets the session ticket, which may be preshared or fake.
 // If session is nil, the body of session ticket extension will be unset,
 // but the extension itself still MAY be present for mimicking purposes.
 // Session tickets to be reused - use same cache on following connections.
-func (uconn *UConn) SetSessionState(session *ClientSessionState) error {
-	var sessionTicket []uint8
-	if session != nil {
-		sessionTicket = session.ticket
-		uconn.HandshakeState.Session = session.session
+func (uconn *UConn) SetSessionState12(session *ClientSessionState) error {
+	if uconn.config.SessionTicketsDisabled || uconn.config.ClientSessionCache == nil {
+		return fmt.Errorf("SetSessionState12 failed: session is disabled")
 	}
-	uconn.HandshakeState.Hello.TicketSupported = true
-	uconn.HandshakeState.Hello.SessionTicket = sessionTicket
-
-	for _, ext := range uconn.Extensions {
-		st, ok := ext.(*SessionTicketExtension)
-		if !ok {
-			continue
-		}
-		st.Session = session
-		if session != nil {
-			if len(session.SessionTicket()) > 0 {
-				if uconn.GetSessionID != nil {
-					sid := uconn.GetSessionID(session.SessionTicket())
-					uconn.HandshakeState.Hello.SessionId = sid[:]
-					return nil
-				}
-			}
-			var sessionID [32]byte
-			_, err := io.ReadFull(uconn.config.rand(), sessionID[:])
-			if err != nil {
-				return err
-			}
-			uconn.HandshakeState.Hello.SessionId = sessionID[:]
-		}
+	if session == nil {
 		return nil
 	}
+	if session.session == nil {
+		return fmt.Errorf("SetSessionState12 failed: session must not be nil")
+	}
+	if session.session.version != VersionTLS12 {
+		return fmt.Errorf("SetSessionState12 failed: SetSessionState12 only works for tls 1.2 session ticket; for tls 1.3 please customize PSK with SetSessionState13()")
+	}
+	uconn.sessionController.initSessionTicketExt(session.session, session.ticket)
+	return nil
+}
+
+// SetSessionState13 sets the psk extension for tls 1.3 resumption
+func (uconn *UConn) SetSessionState13(psk PreSharedKeyExtension) error {
+	if uconn.config.SessionTicketsDisabled || uconn.config.ClientSessionCache == nil {
+		return fmt.Errorf("SetSessionState13 failed: session is disabled")
+	}
+	if psk == nil {
+		return nil
+	}
+
+	uconn.HandshakeState.Hello.TicketSupported = true
+	uconn.sessionController.overridePskExt(psk)
 	return nil
 }
 
@@ -397,7 +447,7 @@ func (c *UConn) clientHandshake(ctx context.Context) (err error) {
 	hello := c.HandshakeState.Hello.getPrivatePtr()
 	defer func() { c.HandshakeState.Hello = hello.getPublicPtr() }()
 
-	sessionIsAlreadySet := c.HandshakeState.Session != nil
+	sessionIsLocked := c.utls.sessionController.isSessionLocked()
 
 	// after this point exactly 1 out of 2 HandshakeState pointers is non-nil,
 	// useTLS13 variable tells which pointer
@@ -434,9 +484,24 @@ func (c *UConn) clientHandshake(ctx context.Context) (err error) {
 	if c.handshakes > 0 {
 		hello.secureRenegotiation = c.clientFinished[:]
 	}
-	// [uTLS section ends]
 
-	session, earlySecret, binderKey, err := c.loadSession(hello)
+	var (
+		session     *SessionState
+		earlySecret []byte
+		binderKey   []byte
+	)
+	if !sessionIsLocked {
+		// [uTLS section ends]
+
+		session, earlySecret, binderKey, err = c.loadSession(hello)
+
+		// [uTLS section start]
+	} else {
+		session = c.HandshakeState.Session
+		earlySecret = c.HandshakeState.State13.EarlySecret
+		binderKey = c.HandshakeState.State13.BinderKey
+	}
+	// [uTLS section ends]
 	if err != nil {
 		return err
 	}
@@ -491,7 +556,7 @@ func (c *UConn) clientHandshake(ctx context.Context) (err error) {
 		hs13.serverHello = serverHello
 		hs13.hello = hello
 		hs13.keySharesParams = NewKeySharesParameters()
-		if !sessionIsAlreadySet {
+		if !sessionIsLocked {
 			hs13.earlySecret = earlySecret
 			hs13.binderKey = binderKey
 			hs13.session = session
@@ -547,7 +612,7 @@ func (uconn *UConn) MarshalClientHello() error {
 			if paddingExt == nil {
 				paddingExt = pe
 			} else {
-				return errors.New("multiple padding extensions!")
+				return errors.New("multiple padding extensions")
 			}
 		}
 	}
@@ -589,27 +654,8 @@ func (uconn *UConn) MarshalClientHello() error {
 	if len(uconn.Extensions) > 0 {
 		binary.Write(bufferedWriter, binary.BigEndian, uint16(extensionsLen))
 		for _, ext := range uconn.Extensions {
-			switch typedExt := ext.(type) {
-			case PreSharedKeyExtension:
-				// PSK extension is handled separately
-				err := bufferedWriter.Flush()
-				if err != nil {
-					return fmt.Errorf("bufferedWriter.Flush(): %w", err)
-				}
-				hello.Raw = helloBuffer.Bytes()
-				// prepare buffer
-				buf := make([]byte, typedExt.Len())
-				n, err := typedExt.ReadWithRawHello(hello.Raw, buf)
-				if err != nil && !errors.Is(err, io.EOF) {
-					return fmt.Errorf("(*PreSharedKeyExtension).ReadWithRawHello(): %w", err)
-				}
-				if n != typedExt.Len() {
-					return errors.New("uconn: PreSharedKeyExtension: read wrong number of bytes")
-				}
-				bufferedWriter.Write(buf)
-				hello.PskBinders = typedExt.GetBinders()
-			default:
-				bufferedWriter.ReadFrom(ext)
+			if _, err := bufferedWriter.ReadFrom(ext); err != nil {
+				return err
 			}
 		}
 	}
@@ -801,8 +847,5 @@ type utlsConnExtraFields struct {
 	peerApplicationSettings  []byte
 	localApplicationSettings []byte
 
-	// session resumption (PSK)
-	session     *SessionState
-	earlySecret []byte
-	binderKey   []byte
+	sessionController *sessionController
 }

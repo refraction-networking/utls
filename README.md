@@ -157,7 +157,7 @@ Currently, there is a simple function to set session ticket to any desired state
 
 ```Golang
 // If you want you session tickets to be reused - use same cache on following connections
-func (uconn *UConn) SetSessionState(session *ClientSessionState)
+func (uconn *UConn) SetSessionState12(session *ClientSessionState)
 ```
 
 Note that session tickets (fake ones or otherwise) are not reused.  
@@ -294,7 +294,7 @@ Some customizations(such as setting session ticket/clientHello) have easy-to-use
         tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
         masterSecret,
         nil, nil)
-    tlsConn.SetSessionState(sessionState)
+    tlsConn.SetSessionState12(sessionState)
 ```
 
 For other customizations there are following functions

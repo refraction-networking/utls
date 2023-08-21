@@ -38,7 +38,7 @@ func (csc *ClientSessionCache) Put(sessionKey string, cs *tls.ClientSessionState
 	}
 }
 
-func main() {
+func runPskCheck(helloID tls.ClientHelloID) {
 	const serverAddr string = "refraction.network:443"
 	csc := NewClientSessionCache()
 	tcpConn, err := net.Dial("tcp", serverAddr)
@@ -53,7 +53,7 @@ func main() {
 		ServerName: strings.Split(serverAddr, ":")[0],
 		// NextProtos:         []string{"h2", "http/1.1"},
 		ClientSessionCache: csc, // set this so session tickets will be saved
-	}, tls.HelloChrome_100)
+	}, helloID)
 
 	// HS
 	err = tlsConn.Handshake()
@@ -88,10 +88,12 @@ func main() {
 	tlsConnPSK := tls.UClient(tcpConnPSK, &tls.Config{
 		ServerName:         strings.Split(serverAddr, ":")[0],
 		ClientSessionCache: csc,
-	}, tls.HelloChrome_100_PSK, &tls.UtlsPreSharedKeyExtension{})
+	}, helloID)
 
 	// HS
 	err = tlsConnPSK.Handshake()
+	fmt.Println(tlsConnPSK.HandshakeState.Hello.Raw)
+	fmt.Println(tlsConnPSK.HandshakeState.Hello.PskIdentities)
 	if err != nil {
 		panic(err)
 	}
@@ -110,4 +112,9 @@ func main() {
 			panic("PSK not used for a resumption session!")
 		}
 	}
+}
+
+func main() {
+	runPskCheck(tls.HelloChrome_100_PSK)
+	runPskCheck(tls.HelloGolang)
 }
