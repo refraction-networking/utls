@@ -143,10 +143,10 @@ func (uconn *UConn) uLoadSession() error {
 	case shouldSetTicket:
 		uconn.sessionController.setSessionTicketToUConn()
 	case shouldSetPsk:
-		uconn.sessionController.setPsk()
+		uconn.sessionController.setPskToHandshake()
 	case shouldLoad:
 		hello := uconn.HandshakeState.Hello.getPrivatePtr()
-		uconn.sessionController.aboutToLoadSession()
+		uconn.sessionController.utlsAboutToLoadSession()
 		session, earlySecret, binderKey, err := uconn.loadSession(hello)
 		if session == nil || err != nil {
 			return err
@@ -164,10 +164,16 @@ func (uconn *UConn) uLoadSession() error {
 }
 
 func (uconn *UConn) uApplyPatch() {
+	helloLen := len(uconn.HandshakeState.Hello.Raw)
 	if uconn.sessionController.shouldUpdateBinders() {
 		uconn.sessionController.updateBinders()
-		uconn.sessionController.setPsk()
+		uconn.sessionController.setPskToHandshake()
 	}
+	uAssert(helloLen == len(uconn.HandshakeState.Hello.Raw), "tls: uApplyPatch Failed: the patch should never change the length of the marshaled clientHello")
+}
+
+func (uconn *UConn) DidTls12Resume() bool {
+	return uconn.didResume
 }
 
 // SetSessionState12 sets the session ticket, which may be preshared or fake.

@@ -2,39 +2,52 @@ package tls
 
 import "fmt"
 
+// Tracking the state of calling conn.loadSession
 type LoadSessionTrackerState int
 
 const NeverCalled LoadSessionTrackerState = 0
-const UtlsAboutToCall LoadSessionTrackerState = 3
-const CalledByULoadSession LoadSessionTrackerState = 1
-const CalledByGoTLS LoadSessionTrackerState = 2
+const UtlsAboutToCall LoadSessionTrackerState = 1
+const CalledByULoadSession LoadSessionTrackerState = 2
+const CalledByGoTLS LoadSessionTrackerState = 3
 
+// The state of the session controller
 type sessionState int
 
 const NoSession sessionState = 0
 const TicketInitialized sessionState = 1
-const TicketAllSet sessionState = 4
-const PskExtInitialized sessionState = 2
-const PskAllSet sessionState = 3
+const TicketAllSet sessionState = 2
+const PskExtInitialized sessionState = 3
+const PskAllSet sessionState = 4
 
-// sessionController is responsible for all session related
+// sessionController is responsible for managing and controlling all session related states. It manages the lifecycle of the session ticket extension and the psk extension, including initialization, removal if the client hello spec doesn't contain any of them, and setting the prepared state to the client hello.
+//
+// Users should never directly modify the underlying state. Violations will result in undefined behaviors.
+//
+// Users should never construct sessionController by themselves, use the function `newSessionController` instead.
 type sessionController struct {
-	sessionTicketExt   *SessionTicketExtension
-	pskExtension       PreSharedKeyExtension
-	uconnRef           *UConn
-	state              sessionState
+	// sessionTicketExt logically owns the session ticket extension
+	sessionTicketExt *SessionTicketExtension
+
+	// pskExtension logically owns the psk extension
+	pskExtension PreSharedKeyExtension
+
+	// uconnRef is a reference to the uconn
+	uconnRef *UConn
+
+	// state represents the internal state of the sessionController. Users are advised to modify the state only through designated methods and avoid direct manipulation, as doing so may result in undefined behavior.
+	state sessionState
+
+	// loadSessionTracker keeps track of how the conn.loadSession method is being utilized.
 	loadSessionTracker LoadSessionTrackerState
+
+	// callingLoadSession is a boolean flag that indicates whether the `conn.loadSession` function is currently being invoked.
 	callingLoadSession bool
-	locked             bool
+
+	// locked is a boolean flag that becomes true once all states are appropriately set. Once `locked` is true, further modifications are disallowed, except for the binders.
+	locked bool
 }
 
-type shouldLoadSessionResult int
-
-const shouldReturn shouldLoadSessionResult = 0
-const shouldSetTicket shouldLoadSessionResult = 1
-const shouldSetPsk shouldLoadSessionResult = 2
-const shouldLoad shouldLoadSessionResult = 3
-
+// newSessionController constructs a new SessionController
 func newSessionController(uconn *UConn) *sessionController {
 	return &sessionController{
 		uconnRef:           uconn,
@@ -51,10 +64,22 @@ func (s *sessionController) isSessionLocked() bool {
 	return s.locked
 }
 
+type shouldLoadSessionResult int
+
+const shouldReturn shouldLoadSessionResult = 0
+const shouldSetTicket shouldLoadSessionResult = 1
+const shouldSetPsk shouldLoadSessionResult = 2
+const shouldLoad shouldLoadSessionResult = 3
+
+// shouldLoadSession determines the appropriate action to take when it is time to load the session for the clientHello.
+// There are several possible scenarios:
+//   - If a session ticket is already initialized, typically via the `initSessionTicketExt()` function, the ticket should be set in the client hello.
+//   - If a pre-shared key (PSK) is already initialized, typically via the `overridePskExt()` function, the PSK should be set in the client hello.
+//   - If both the `sessionTicketExt` and `pskExtension` are nil, which might occur if the client hello spec does not include them, we should skip the loadSession().
+//   - In all other cases, the function proceeds to load the session.
 func (s *sessionController) shouldLoadSession() shouldLoadSessionResult {
 	if s.sessionTicketExt == nil && s.pskExtension == nil || s.uconnRef.clientHelloBuildStatus != NotBuilt {
-		fmt.Println("uLoadSession s.sessionTicketExt == nil && s.pskExtension == nil")
-		// There's no need to load session since we don't have the related extensions.
+		// No need to load session since we don't have the related extensions.
 		return shouldReturn
 	}
 	if s.state == TicketInitialized {
@@ -66,11 +91,15 @@ func (s *sessionController) shouldLoadSession() shouldLoadSessionResult {
 	return shouldLoad
 }
 
-func (s *sessionController) aboutToLoadSession() {
+// utlsAboutToLoadSession updates the loadSessionTracker to `UtlsAboutToCall` to signal the initiation of a session loading operation,
+// provided that the preconditions are met. If the preconditions are not met (due to incorrect utls implementation), this function triggers a panic.
+func (s *sessionController) utlsAboutToLoadSession() {
 	uAssert(s.state == NoSession && !s.locked, "tls: aboutToLoadSession failed: must only load session when the session of the client hello is not locked and when there's currently no session")
 	s.loadSessionTracker = UtlsAboutToCall
 }
 
+// commonCheck performs various common precondition checks, including validating the `clientHelloBuildStatus`,
+// checking the internal state, and verifying the provided parameters.
 func (s *sessionController) commonCheck(failureMsg string, params ...any) {
 	if s.uconnRef.clientHelloBuildStatus != NotBuilt {
 		panic(failureMsg + ": we can't modify the session after the clientHello is built")
@@ -81,11 +110,16 @@ func (s *sessionController) commonCheck(failureMsg string, params ...any) {
 	panicOnNil(failureMsg, params...)
 }
 
+// finalCheck performs a comprehensive check on the updated state to ensure the correctness of the changes.
+// If the checks pass successfully, the sessionController's state will be locked.
+// Any failure in passing the tests indicates incorrect implementations in the utls, which will result in triggering a panic.
+// Refer to the documentation for the `locked` field for more detailed information.
 func (s *sessionController) finalCheck() {
 	uAssert(s.state == PskAllSet || s.state == TicketAllSet || s.state == NoSession, "tls: SessionController.finalCheck failed: the session is half set")
 	s.locked = true
 }
 
+// initSessionTicketExt initializes the ticket and sets the state to `TicketInitialized`.
 func (s *sessionController) initSessionTicketExt(session *SessionState, ticket []byte) {
 	s.commonCheck("tls: initSessionTicket failed", s.sessionTicketExt, session, ticket)
 	s.sessionTicketExt.Session = session
@@ -93,6 +127,7 @@ func (s *sessionController) initSessionTicketExt(session *SessionState, ticket [
 	s.state = TicketInitialized
 }
 
+// setSessionTicketToUConn write the ticket states from the session ticket extension to the client hello and handshake state.
 func (s *sessionController) setSessionTicketToUConn() {
 	uAssert(s.sessionTicketExt != nil && s.state == TicketInitialized, "tls: setSessionTicketExt failed: invalid state")
 	s.uconnRef.HandshakeState.Session = s.sessionTicketExt.Session
@@ -100,14 +135,9 @@ func (s *sessionController) setSessionTicketToUConn() {
 	s.state = TicketAllSet
 }
 
-func mapSlice[T any, U any](slice []T, transform func(T) U) []U {
-	newSlice := make([]U, 0, len(slice))
-	for _, t := range slice {
-		newSlice = append(newSlice, transform(t))
-	}
-	return newSlice
-}
-
+// initPSK initializes the PSK extension using a valid session. The PSK extension
+// should not be initialized previously, and the parameters must not be nil;
+// otherwise, this function will trigger a panic.
 func (s *sessionController) initPsk(session *SessionState, earlySecret []byte, binderKey []byte, pskIdentities []pskIdentity) {
 	s.commonCheck("tls: initPsk failed", s.pskExtension, session, earlySecret, pskIdentities)
 	uAssert(!s.pskExtension.IsInitialized(), "tls: initPsk failed: the psk extension is already initialized")
@@ -128,8 +158,9 @@ func (s *sessionController) initPsk(session *SessionState, earlySecret []byte, b
 	s.state = PskExtInitialized
 }
 
-func (s *sessionController) setPsk() {
-	uAssert(s.pskExtension != nil && (s.state == PskExtInitialized || s.state == PskAllSet), "tls: setPsk failed: invalid state")
+// setPskToHandshake sets the psk to the handshake state and client hello.
+func (s *sessionController) setPskToHandshake() {
+	uAssert(s.pskExtension != nil && (s.state == PskExtInitialized || s.state == PskAllSet), "tls: setPskToHandshake failed: invalid state")
 	pskCommon := s.pskExtension.GetPreSharedKeyCommon()
 	if s.state == PskExtInitialized {
 		s.uconnRef.HandshakeState.State13.EarlySecret = pskCommon.EarlySecret
@@ -137,22 +168,19 @@ func (s *sessionController) setPsk() {
 		s.uconnRef.HandshakeState.Hello.PskIdentities = pskCommon.Identities
 		s.uconnRef.HandshakeState.Hello.PskBinders = pskCommon.Binders
 	} else if s.state == PskAllSet {
-		uAssert(sliceEq([]any{
-			s.uconnRef.HandshakeState.State13.EarlySecret,
-			s.uconnRef.HandshakeState.Session,
-			s.uconnRef.HandshakeState.Hello.PskIdentities,
-			s.uconnRef.HandshakeState.Hello.PskBinders,
-		}, []any{
-			pskCommon.EarlySecret,
-			pskCommon.Session,
-			pskCommon.Identities,
-			pskCommon.Binders,
-		}), "setPsk failed: only binders are allowed to change on state `PskAllSet`")
+		uAssert(s.uconnRef.HandshakeState.Session == pskCommon.Session && sliceEq(s.uconnRef.HandshakeState.State13.EarlySecret, pskCommon.EarlySecret) &&
+			allTrue(s.uconnRef.HandshakeState.Hello.PskIdentities, func(i int, psk *PskIdentity) bool {
+				return pskCommon.Identities[i].ObfuscatedTicketAge == psk.ObfuscatedTicketAge && sliceEq(pskCommon.Identities[i].Label, psk.Label)
+			}), "tls: setPskToHandshake failed: only binders are allowed to change on state `PskAllSet`")
 	}
 	s.uconnRef.HandshakeState.State13.BinderKey = pskCommon.BinderKey
 	s.state = PskAllSet
 }
 
+// shouldUpdateBinders determines whether binders should be updated based on the presence of an initialized psk extension.
+// This function returns true if an initialized psk extension exists. Binders are allowed to be updated when the state is `PskAllSet`,
+// as the `BuildHandshakeState` function can be called multiple times in this case. However, it's important to note that
+// the session state, apart from binders, should not be altered more than once.
 func (s *sessionController) shouldUpdateBinders() bool {
 	if s.pskExtension == nil {
 		return false
@@ -165,6 +193,7 @@ func (s *sessionController) updateBinders() {
 	s.pskExtension.PatchBuiltHello(s.uconnRef.HandshakeState.Hello)
 }
 
+// overridePskExt allows the user of utls to customize the psk extension.
 func (s *sessionController) overridePskExt(psk PreSharedKeyExtension) error {
 	if s.state != NoSession {
 		return fmt.Errorf("SetSessionState13 failed: there's already a session")
@@ -183,6 +212,11 @@ var customizedHellos = []ClientHelloID{
 	HelloRandomizedNoALPN,
 }
 
+// CheckSessionExt is designed to be called after applying client hello specs. It performs the following checks and fixups:
+//   - If the session ticket extension or PSK extension is missing from the extension list, owned extensions are dropped and states are reset.
+//   - Ensures that the session ticket extension or PSK extension matches the owned one.
+//   - Ensures that there is only one session ticket extension or PSK extension.
+//   - Ensures that the PSK extension is the last extension in the extension list.
 func (s *sessionController) checkSessionExt() {
 	uAssert(s.uconnRef.clientHelloBuildStatus == NotBuilt, "tls: checkSessionExt failed: we can't modify the session after the clientHello is built")
 	numSessionExt := 0
@@ -191,7 +225,7 @@ func (s *sessionController) checkSessionExt() {
 		switch ext := e.(type) {
 		case *SessionTicketExtension:
 			if ext != s.uconnRef.sessionController.sessionTicketExt {
-				if anyTrue(customizedHellos, func(h *ClientHelloID) bool {
+				if anyTrue(customizedHellos, func(_ int, h *ClientHelloID) bool {
 					return s.uconnRef.ClientHelloID.Client == h.Client
 				}) {
 					s.uconnRef.Extensions[i] = s.uconnRef.sessionController.sessionTicketExt
@@ -203,7 +237,7 @@ func (s *sessionController) checkSessionExt() {
 		case PreSharedKeyExtension:
 			uAssert(i == len(s.uconnRef.Extensions)-1, "tls: checkSessionExt failed: PreSharedKeyExtension must be the last extension")
 			if ext != s.uconnRef.sessionController.pskExtension {
-				if anyTrue(customizedHellos, func(h *ClientHelloID) bool {
+				if anyTrue(customizedHellos, func(_ int, h *ClientHelloID) bool {
 					return s.uconnRef.ClientHelloID.Client == h.Client
 				}) {
 					s.uconnRef.Extensions[i] = s.uconnRef.sessionController.pskExtension
@@ -233,6 +267,8 @@ func (s *sessionController) checkSessionExt() {
 	}
 }
 
+// onEnterLoadSessionCheck is intended to be invoked upon entering the `conn.loadSession` function.
+// It is designed to ensure the correctness of the utls implementation. If the utls implementation is found to be incorrect, this function will trigger a panic.
 func (s *sessionController) onEnterLoadSessionCheck() {
 	uAssert(!s.locked, "tls: LoadSessionCoordinator.onEnterLoadSessionCheck failed: session is set and locked, no call to loadSession is allowed")
 	switch s.loadSessionTracker {
@@ -245,6 +281,9 @@ func (s *sessionController) onEnterLoadSessionCheck() {
 	}
 }
 
+// onLoadSessionReturn is intended to be invoked upon returning from the `conn.loadSession` function.
+// It serves as a validation step for the correctness of the underlying utls implementation.
+// If the utls implementation is incorrect, this function will trigger a panic.
 func (s *sessionController) onLoadSessionReturn() {
 	uAssert(s.callingLoadSession, "tls: LoadSessionCoordinator.onLoadSessionReturn failed: it's not loading sessions, perhaps this function is not being called by loadSession.")
 	switch s.loadSessionTracker {
@@ -258,7 +297,9 @@ func (s *sessionController) onLoadSessionReturn() {
 	s.callingLoadSession = false
 }
 
-func (s *sessionController) shouldWriteBinders() bool {
+// shouldLoadSessionWriteBinders checks if `conn.loadSession` should proceed to write binders and marshal the client hello. If the utls implementation
+// is incorrect, this function will trigger a panic.
+func (s *sessionController) shouldLoadSessionWriteBinders() bool {
 	uAssert(s.callingLoadSession, "tls: shouldWriteBinders failed: LoadSessionCoordinator isn't loading sessions, perhaps this function is not being called by loadSession.")
 
 	switch s.loadSessionTracker {

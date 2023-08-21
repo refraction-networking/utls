@@ -16,29 +16,73 @@ type PreSharedKeyCommon struct {
 	Session     *SessionState
 }
 
+// The lifecycle of a PreSharedKeyExtension:
+//
+// Creation Phase:
+//   - The extension is created.
+//
+// Write Phase:
+//
+//   - [writeToUConn() called]:
+//
+//     > - During this phase, it is important to note that implementations should not write any session data to the UConn (Underlying Connection) as the session is not yet loaded. The session context is not active at this point.
+//
+// Initialization Phase:
+//
+//   - [IsInitialized() called]:
+//
+//     If IsInitialized() returns true
+//
+//     > - GetPreSharedKeyCommon() will be called subsequently and the PSK states in handshake/clientHello will be fully initialized.
+//
+//     If IsInitialized() returns false:
+//
+//     > - [conn.loadSession() called]:
+//
+//     >> - Once the session is available:
+//
+//     >>> - [InitializeByUtls() called]:
+//
+//     >>>> - The InitializeByUtls() method is invoked to initialize the extension based on the loaded session data.
+//
+//     >>>> - This step prepares the extension for further processing.
+//
+// Marshal Phase:
+//
+//   - [Len() called], [Read() called]:
+//
+//     > - Implementations should marshal the extension into bytes, using placeholder binders to maintain the correct length.
+//
+// Binders Preparation Phase:
+//
+//   - [PatchBuiltHello(hello) called]:
+//
+//     > - The client hello is already marshaled in the "hello.Raw" format.
+//
+//     > - Implementations are expected to update the binders within the marshaled client hello.
+//
+//   - [GetPreSharedKeyCommon() called]:
+//
+//     > - Implementations should gather and provide the final pre-shared key (PSK) related data.
+//
+//     > - This data will be incorporated into both the clientHello and HandshakeState, ensuring that the PSK-related information is properly set and ready for the handshake process.
 type PreSharedKeyExtension interface {
 	// TLSExtension must be implemented by all PreSharedKeyExtension implementations.
-	// However, the Read() method should return an error since it MUST NOT be used
-	// for PreSharedKeyExtension.
 	TLSExtension
 
+	// IsInitialized returns a boolean indicating whether the extension has been initialized.
+	// If false is returned, utls will invoke `InitializeByUtls()` for the necessary initialization.
 	IsInitialized() bool
 
+	// InitializeByUtls is invoked when IsInitialized() returns false.
+	// It initializes the extension using a real and valid TLS 1.3 session.
 	InitializeByUtls(session *SessionState, earlySecret []byte, binderKey []byte, identities []PskIdentity)
 
-	// GetBinders returns the binders that were computed during the handshake
-	// to be set in the internal copy of the ClientHello. Only needed if expecting
-	// to resume the session.
-	//
-	// FakePreSharedKeyExtension MUST return nil to make sure utls DOES NOT
-	// try to do any session resumption.
+	// GetPreSharedKeyCommon retrieves the final PreSharedKey-related states as defined in PreSharedKeyCommon.
 	GetPreSharedKeyCommon() PreSharedKeyCommon
 
-	// ReadWithRawHello is used to read the extension from the ClientHello
-	// instead of Read(), where the latter is used to read all other extensions.
-	//
-	// This is needed because the PSK extension needs to calculate the binder
-	// based on all previous parts of the ClientHello.
+	// PatchBuiltHello is called once the hello message is fully applied and marshaled.
+	// Its purpose is to update the binders of PSK (Pre-Shared Key) identities.
 	PatchBuiltHello(hello *PubClientHelloMsg) error
 
 	mustEmbedUnimplementedPreSharedKeyExtension() // this works like a type guard
@@ -112,6 +156,7 @@ func (e *UtlsPreSharedKeyExtension) GetPreSharedKeyCommon() PreSharedKeyCommon {
 
 func pskExtLen(identities []PskIdentity, binders [][]byte) int {
 	if len(identities) == 0 || len(binders) == 0 {
+		// If there isn't psk identities, we don't write this ticket to the client hello, and therefore the length should be 0.
 		return 0
 	}
 	length := 4 // extension type + extension length
@@ -243,9 +288,7 @@ func (e *UtlsPreSharedKeyExtension) UnmarshalJSON(_ []byte) error {
 // ClientHello.
 //
 // It does not compute binders based on ClientHello, but uses the binders specified instead.
-//
-// TODO: Only one of FakePreSharedKeyExtension and FakePreSharedKeyExtension should
-// be kept, the other one should be just removed. We still need to learn more of the safety
+// We still need to learn more of the safety
 // of hardcoding both Identities and Binders without recalculating the latter.
 type FakePreSharedKeyExtension struct {
 	UnimplementedPreSharedKeyExtension
@@ -280,7 +323,7 @@ func (e *FakePreSharedKeyExtension) Len() int {
 
 func (e *FakePreSharedKeyExtension) Read(b []byte) (int, error) {
 	for _, b := range e.Binders {
-		if !(anyTrue(validHashLen, func(valid *int) bool {
+		if !(anyTrue(validHashLen, func(_ int, valid *int) bool {
 			return len(b) == *valid
 		})) {
 			return 0, errors.New("tls: FakePreSharedKeyExtension.Read failed: invalid binder size")

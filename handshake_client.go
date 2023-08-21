@@ -457,7 +457,7 @@ func (c *Conn) loadSession(hello *clientHelloMsg) (
 	earlySecret = cipherSuite.extract(session.secret, nil)
 	binderKey = cipherSuite.deriveSecret(earlySecret, resumptionBinderLabel, nil)
 	// [UTLS SECTION START]
-	if c.utls.sessionController != nil && !c.utls.sessionController.shouldWriteBinders() {
+	if c.utls.sessionController != nil && !c.utls.sessionController.shouldLoadSessionWriteBinders() {
 		return
 	}
 	// [UTLS SECTION END]

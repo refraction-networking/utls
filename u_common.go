@@ -727,6 +727,14 @@ func EnableWeakCiphers() {
 	}...)
 }
 
+func mapSlice[T any, U any](slice []T, transform func(T) U) []U {
+	newSlice := make([]U, 0, len(slice))
+	for _, t := range slice {
+		newSlice = append(newSlice, transform(t))
+	}
+	return newSlice
+}
+
 func panicOnNil(failureMsg string, params ...any) {
 	for i, p := range params {
 		if p == nil {
@@ -735,13 +743,22 @@ func panicOnNil(failureMsg string, params ...any) {
 	}
 }
 
-func anyTrue[T any](slice []T, predicate func(t *T) bool) bool {
+func anyTrue[T any](slice []T, predicate func(i int, t *T) bool) bool {
 	for i := 0; i < len(slice); i++ {
-		if predicate(&slice[i]) {
+		if predicate(i, &slice[i]) {
 			return true
 		}
 	}
 	return false
+}
+
+func allTrue[T any](slice []T, predicate func(i int, t *T) bool) bool {
+	for i := 0; i < len(slice); i++ {
+		if !predicate(i, &slice[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 func uAssert(condition bool, msg string) {
@@ -750,7 +767,7 @@ func uAssert(condition bool, msg string) {
 	}
 }
 
-func sliceEq(sliceA []any, sliceB []any) bool {
+func sliceEq[T comparable](sliceA []T, sliceB []T) bool {
 	if len(sliceA) != len(sliceB) {
 		return false
 	}
