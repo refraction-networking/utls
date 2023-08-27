@@ -29,7 +29,7 @@ func testClientHelloSpecJSONUnmarshaler(
 		t.Fatal(err)
 	}
 
-	truthSpec, _ := utlsIdToSpec(truthClientHelloID, &UtlsPreSharedKeyExtension{}, &SessionTicketExtension{})
+	truthSpec, _ := utlsIdToSpec(truthClientHelloID)
 	jsonSpec := chsju.ClientHelloSpec()
 
 	// Compare CipherSuites
@@ -85,7 +85,7 @@ func testClientHelloSpecUnmarshalJSON(
 		t.Fatal(err)
 	}
 
-	truthSpec, _ := utlsIdToSpec(truthClientHelloID, &UtlsPreSharedKeyExtension{}, &SessionTicketExtension{})
+	truthSpec, _ := utlsIdToSpec(truthClientHelloID)
 
 	// Compare CipherSuites
 	if !reflect.DeepEqual(jsonSpec.CipherSuites, truthSpec.CipherSuites) {

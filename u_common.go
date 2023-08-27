@@ -735,10 +735,10 @@ func mapSlice[T any, U any](slice []T, transform func(T) U) []U {
 	return newSlice
 }
 
-func panicOnNil(failureMsg string, params ...any) {
+func panicOnNil(caller string, params ...any) {
 	for i, p := range params {
 		if p == nil {
-			panic(fmt.Sprintf("%s: the [%d] parameter is nil", failureMsg, i))
+			panic(fmt.Sprintf("tls: %s failed: the [%d] parameter is nil", caller, i))
 		}
 	}
 }
@@ -777,4 +777,10 @@ func sliceEq[T comparable](sliceA []T, sliceB []T) bool {
 		}
 	}
 	return true
+}
+
+type Initializable interface {
+	// IsInitialized returns a boolean indicating whether the extension has been initialized.
+	// If false is returned, utls will initialize the extension.
+	IsInitialized() bool
 }

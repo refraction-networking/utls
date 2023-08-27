@@ -252,7 +252,7 @@ func TestUTLSFingerprintClientHelloBluntMimicry(t *testing.T) {
 	var extensionId uint16 = 0xfeed
 	extensionData := []byte("random data")
 
-	specWithGeneric, err := utlsIdToSpec(HelloChrome_Auto, &UtlsPreSharedKeyExtension{}, &SessionTicketExtension{})
+	specWithGeneric, err := utlsIdToSpec(HelloChrome_Auto)
 	if err != nil {
 		t.Errorf("got error: %v; expected to succeed", err)
 	}
@@ -293,11 +293,11 @@ func TestUTLSFingerprintClientHelloBluntMimicry(t *testing.T) {
 func TestUTLSFingerprintClientHelloAlwaysAddPadding(t *testing.T) {
 	serverName := "foobar"
 
-	specWithoutPadding, err := utlsIdToSpec(HelloIOS_12_1, &UtlsPreSharedKeyExtension{}, &SessionTicketExtension{})
+	specWithoutPadding, err := utlsIdToSpec(HelloIOS_12_1)
 	if err != nil {
 		t.Errorf("got error: %v; expected to succeed", err)
 	}
-	specWithPadding, err := utlsIdToSpec(HelloChrome_83, &UtlsPreSharedKeyExtension{}, &SessionTicketExtension{})
+	specWithPadding, err := utlsIdToSpec(HelloChrome_83)
 	if err != nil {
 		t.Errorf("got error: %v; expected to succeed", err)
 	}

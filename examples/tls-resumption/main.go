@@ -52,6 +52,7 @@ func runResumptionCheck(helloID tls.ClientHelloID, serverAddr string, retry int,
 		ServerName: strings.Split(serverAddr, ":")[0],
 		// NextProtos:         []string{"h2", "http/1.1"},
 		ClientSessionCache: csc, // set this so session tickets will be saved
+		OmitEmptyPsk:       true,
 	}, helloID)
 
 	// HS
@@ -104,6 +105,7 @@ func runResumptionCheck(helloID tls.ClientHelloID, serverAddr string, retry int,
 		tlsConnPSK := tls.UClient(tcpConnPSK, &tls.Config{
 			ServerName:         strings.Split(serverAddr, ":")[0],
 			ClientSessionCache: csc,
+			OmitEmptyPsk:       true,
 		}, helloID)
 
 		// HS

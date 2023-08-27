@@ -8,6 +8,8 @@ import (
 	"golang.org/x/crypto/cryptobyte"
 )
 
+var ErrEmptyPsk = errors.New("tls: empty psk detected; remove the psk extension for this connection or set OmitEmptyPsk to true to conceal it in utls")
+
 type PreSharedKeyCommon struct {
 	Identities  []PskIdentity
 	Binders     [][]byte
@@ -70,9 +72,10 @@ type PreSharedKeyExtension interface {
 	// TLSExtension must be implemented by all PreSharedKeyExtension implementations.
 	TLSExtension
 
-	// IsInitialized returns a boolean indicating whether the extension has been initialized.
 	// If false is returned, utls will invoke `InitializeByUtls()` for the necessary initialization.
-	IsInitialized() bool
+	Initializable
+
+	SetOmitEmptyPsk(val bool)
 
 	// InitializeByUtls is invoked when IsInitialized() returns false.
 	// It initializes the extension using a real and valid TLS 1.3 session.
@@ -120,6 +123,10 @@ func (*UnimplementedPreSharedKeyExtension) PatchBuiltHello(hello *PubClientHello
 	panic("tls: ReadWithRawHello is not implemented for the PreSharedKeyExtension")
 }
 
+func (*UnimplementedPreSharedKeyExtension) SetOmitEmptyPsk(val bool) {
+	panic("tls: SetOmitEmptyPsk is not implemented for the PreSharedKeyExtension")
+}
+
 // UtlsPreSharedKeyExtension is an extension used to set the PSK extension in the
 // ClientHello.
 type UtlsPreSharedKeyExtension struct {
@@ -127,6 +134,7 @@ type UtlsPreSharedKeyExtension struct {
 	PreSharedKeyCommon
 	cipherSuite  *cipherSuiteTLS13
 	cachedLength *int
+	OmitEmptyPsk bool
 }
 
 func (e *UtlsPreSharedKeyExtension) IsInitialized() bool {
@@ -241,7 +249,14 @@ func readPskIntoBytes(b []byte, identities []PskIdentity, binders [][]byte) (int
 	return extLen, io.EOF
 }
 
+func (e *UtlsPreSharedKeyExtension) SetOmitEmptyPsk(val bool) {
+	e.OmitEmptyPsk = val
+}
+
 func (e *UtlsPreSharedKeyExtension) Read(b []byte) (int, error) {
+	if !e.OmitEmptyPsk && e.Len() == 0 {
+		return 0, ErrEmptyPsk
+	}
 	return readPskIntoBytes(b, e.Identities, e.Binders)
 }
 
@@ -293,8 +308,9 @@ func (e *UtlsPreSharedKeyExtension) UnmarshalJSON(_ []byte) error {
 type FakePreSharedKeyExtension struct {
 	UnimplementedPreSharedKeyExtension
 
-	Identities []PskIdentity `json:"identities"`
-	Binders    [][]byte      `json:"binders"`
+	Identities   []PskIdentity `json:"identities"`
+	Binders      [][]byte      `json:"binders"`
+	OmitEmptyPsk bool
 }
 
 func (e *FakePreSharedKeyExtension) IsInitialized() bool {
@@ -321,7 +337,14 @@ func (e *FakePreSharedKeyExtension) Len() int {
 	return pskExtLen(e.Identities, e.Binders)
 }
 
+func (e *FakePreSharedKeyExtension) SetOmitEmptyPsk(val bool) {
+	e.OmitEmptyPsk = val
+}
+
 func (e *FakePreSharedKeyExtension) Read(b []byte) (int, error) {
+	if !e.OmitEmptyPsk && e.Len() == 0 {
+		return 0, ErrEmptyPsk
+	}
 	for _, b := range e.Binders {
 		if !(anyTrue(validHashLen, func(_ int, valid *int) bool {
 			return len(b) == *valid
@@ -329,6 +352,7 @@ func (e *FakePreSharedKeyExtension) Read(b []byte) (int, error) {
 			return 0, errors.New("tls: FakePreSharedKeyExtension.Read failed: invalid binder size")
 		}
 	}
+
 	return readPskIntoBytes(b, e.Identities, e.Binders)
 }
 

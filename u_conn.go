@@ -143,7 +143,7 @@ func (uconn *UConn) uLoadSession() error {
 	case shouldSetTicket:
 		uconn.sessionController.setSessionTicketToUConn()
 	case shouldSetPsk:
-		uconn.sessionController.setPskToHandshake()
+		uconn.sessionController.setPskToUConn()
 	case shouldLoad:
 		hello := uconn.HandshakeState.Hello.getPrivatePtr()
 		uconn.sessionController.utlsAboutToLoadSession()
@@ -156,7 +156,7 @@ func (uconn *UConn) uLoadSession() error {
 			uconn.sessionController.initSessionTicketExt(session, hello.sessionTicket)
 			uconn.sessionController.setSessionTicketToUConn()
 		} else {
-			uconn.sessionController.initPsk(session, earlySecret, binderKey, hello.pskIdentities)
+			uconn.sessionController.initPskExt(session, earlySecret, binderKey, hello.pskIdentities)
 		}
 	}
 
@@ -167,7 +167,7 @@ func (uconn *UConn) uApplyPatch() {
 	helloLen := len(uconn.HandshakeState.Hello.Raw)
 	if uconn.sessionController.shouldUpdateBinders() {
 		uconn.sessionController.updateBinders()
-		uconn.sessionController.setPskToHandshake()
+		uconn.sessionController.setPskToUConn()
 	}
 	uAssert(helloLen == len(uconn.HandshakeState.Hello.Raw), "tls: uApplyPatch Failed: the patch should never change the length of the marshaled clientHello")
 }
@@ -176,39 +176,45 @@ func (uconn *UConn) DidTls12Resume() bool {
 	return uconn.didResume
 }
 
-// SetSessionState12 sets the session ticket, which may be preshared or fake.
+// SetSessionState sets the session ticket, which may be preshared or fake.
 // If session is nil, the body of session ticket extension will be unset,
 // but the extension itself still MAY be present for mimicking purposes.
 // Session tickets to be reused - use same cache on following connections.
-func (uconn *UConn) SetSessionState12(session *ClientSessionState) error {
-	if uconn.config.SessionTicketsDisabled || uconn.config.ClientSessionCache == nil {
-		return fmt.Errorf("SetSessionState12 failed: session is disabled")
+//
+// Deprecated: This method is deprecated in favor of SetSessionTicketExtension,
+// as it only handles session override of TLS 1.2
+func (uconn *UConn) SetSessionState(session *ClientSessionState) error {
+	sessionTicketExt := &SessionTicketExtension{Initialized: true}
+	if session != nil {
+		sessionTicketExt.Ticket = session.ticket
+		sessionTicketExt.Session = session.session
 	}
-	if session == nil {
-		return nil
-	}
-	if session.session == nil {
-		return fmt.Errorf("SetSessionState12 failed: session must not be nil")
-	}
-	if session.session.version != VersionTLS12 {
-		return fmt.Errorf("SetSessionState12 failed: SetSessionState12 only works for tls 1.2 session ticket; for tls 1.3 please customize PSK with SetSessionState13()")
-	}
-	uconn.sessionController.initSessionTicketExt(session.session, session.ticket)
-	return nil
+	return uconn.SetSessionTicketExtension(sessionTicketExt)
 }
 
-// SetSessionState13 sets the psk extension for tls 1.3 resumption
-func (uconn *UConn) SetSessionState13(psk PreSharedKeyExtension) error {
+// SetSessionTicket sets the session ticket extension.
+// If extension is nil, this will be a no-op.
+func (uconn *UConn) SetSessionTicketExtension(sessionTicketExt ISessionTicketExtension) error {
 	if uconn.config.SessionTicketsDisabled || uconn.config.ClientSessionCache == nil {
-		return fmt.Errorf("SetSessionState13 failed: session is disabled")
+		return fmt.Errorf("tls: SetSessionTicketExtension failed: session is disabled")
 	}
-	if psk == nil {
+	if sessionTicketExt == nil {
+		return nil
+	}
+	return uconn.sessionController.overrideSessionTicketExt(sessionTicketExt)
+}
+
+// SetPskExtension sets the psk extension for tls 1.3 resumption. This is a no-op if the psk is nil.
+func (uconn *UConn) SetPskExtension(pskExt PreSharedKeyExtension) error {
+	if uconn.config.SessionTicketsDisabled || uconn.config.ClientSessionCache == nil {
+		return fmt.Errorf("tls: SetPskExtension failed: session is disabled")
+	}
+	if pskExt == nil {
 		return nil
 	}
 
 	uconn.HandshakeState.Hello.TicketSupported = true
-	uconn.sessionController.overridePskExt(psk)
-	return nil
+	return uconn.sessionController.overridePskExt(pskExt)
 }
 
 // If you want session tickets to be reused - use same cache on following connections
