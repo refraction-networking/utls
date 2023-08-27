@@ -800,52 +800,6 @@ func (e *SCTExtension) Write(_ []byte) (int, error) {
 	return 0, nil
 }
 
-// SessionTicketExtension implements session_ticket (35)
-type SessionTicketExtension struct {
-	Session *ClientSessionState
-}
-
-func (e *SessionTicketExtension) writeToUConn(uc *UConn) error {
-	if e.Session != nil {
-		uc.HandshakeState.Session = e.Session.session
-		uc.HandshakeState.Hello.SessionTicket = e.Session.ticket
-	}
-	return nil
-}
-
-func (e *SessionTicketExtension) Len() int {
-	if e.Session != nil {
-		return 4 + len(e.Session.ticket)
-	}
-	return 4
-}
-
-func (e *SessionTicketExtension) Read(b []byte) (int, error) {
-	if len(b) < e.Len() {
-		return 0, io.ErrShortBuffer
-	}
-
-	extBodyLen := e.Len() - 4
-
-	b[0] = byte(extensionSessionTicket >> 8)
-	b[1] = byte(extensionSessionTicket)
-	b[2] = byte(extBodyLen >> 8)
-	b[3] = byte(extBodyLen)
-	if extBodyLen > 0 {
-		copy(b[4:], e.Session.ticket)
-	}
-	return e.Len(), io.EOF
-}
-
-func (e *SessionTicketExtension) UnmarshalJSON(_ []byte) error {
-	return nil // no-op
-}
-
-func (e *SessionTicketExtension) Write(_ []byte) (int, error) {
-	// RFC 5077, Section 3.2
-	return 0, nil
-}
-
 // GenericExtension allows to include in ClientHello arbitrary unsupported extensions.
 // It is not defined in TLS RFCs nor by IANA.
 // If a server echoes this extension back, the handshake will likely fail due to no further support.

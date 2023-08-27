@@ -726,3 +726,61 @@ func EnableWeakCiphers() {
 			suiteECDHE | suiteTLS12 | suiteSHA384, cipherAES, utlsMacSHA384, nil},
 	}...)
 }
+
+func mapSlice[T any, U any](slice []T, transform func(T) U) []U {
+	newSlice := make([]U, 0, len(slice))
+	for _, t := range slice {
+		newSlice = append(newSlice, transform(t))
+	}
+	return newSlice
+}
+
+func panicOnNil(caller string, params ...any) {
+	for i, p := range params {
+		if p == nil {
+			panic(fmt.Sprintf("tls: %s failed: the [%d] parameter is nil", caller, i))
+		}
+	}
+}
+
+func anyTrue[T any](slice []T, predicate func(i int, t *T) bool) bool {
+	for i := 0; i < len(slice); i++ {
+		if predicate(i, &slice[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+func allTrue[T any](slice []T, predicate func(i int, t *T) bool) bool {
+	for i := 0; i < len(slice); i++ {
+		if !predicate(i, &slice[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func uAssert(condition bool, msg string) {
+	if !condition {
+		panic(msg)
+	}
+}
+
+func sliceEq[T comparable](sliceA []T, sliceB []T) bool {
+	if len(sliceA) != len(sliceB) {
+		return false
+	}
+	for i := 0; i < len(sliceA); i++ {
+		if sliceA[i] != sliceB[i] {
+			return false
+		}
+	}
+	return true
+}
+
+type Initializable interface {
+	// IsInitialized returns a boolean indicating whether the extension has been initialized.
+	// If false is returned, utls will initialize the extension.
+	IsInitialized() bool
+}

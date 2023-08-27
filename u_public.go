@@ -45,7 +45,7 @@ type TLS13OnlyState struct {
 	EarlySecret     []byte
 	BinderKey       []byte
 	CertReq         *CertificateRequestMsgTLS13
-	UsingPSK        bool
+	UsingPSK        bool // don't set this field when building client hello
 	SentDummyCCS    bool
 	Transcript      hash.Hash
 	TrafficSecret   []byte // client_application_traffic_secret_0
@@ -251,7 +251,7 @@ type PubServerHelloMsg struct {
 	OcspStapling                 bool
 	Scts                         [][]byte
 	ExtendedMasterSecret         bool
-	TicketSupported              bool
+	TicketSupported              bool // used by go tls to determine whether to add the session ticket ext
 	SecureRenegotiation          []byte
 	SecureRenegotiationSupported bool
 	AlpnProtocol                 string
@@ -357,13 +357,15 @@ type PubClientHelloMsg struct {
 	PskIdentities                    []PskIdentity
 	PskBinders                       [][]byte
 	QuicTransportParameters          []byte
+
+	cachedPrivateHello *clientHelloMsg // todo: further optimize to reduce clientHelloMsg construction
 }
 
 func (chm *PubClientHelloMsg) getPrivatePtr() *clientHelloMsg {
 	if chm == nil {
 		return nil
 	} else {
-		return &clientHelloMsg{
+		private := &clientHelloMsg{
 			raw:                              chm.Raw,
 			vers:                             chm.Vers,
 			random:                           chm.Random,
@@ -395,6 +397,16 @@ func (chm *PubClientHelloMsg) getPrivatePtr() *clientHelloMsg {
 
 			nextProtoNeg: chm.NextProtoNeg,
 		}
+		chm.cachedPrivateHello = private
+		return private
+	}
+}
+
+func (chm *PubClientHelloMsg) getCachedPrivatePtr() *clientHelloMsg {
+	if chm == nil {
+		return nil
+	} else {
+		return chm.cachedPrivateHello
 	}
 }
 
@@ -432,6 +444,7 @@ func (chm *clientHelloMsg) getPublicPtr() *PubClientHelloMsg {
 			PskIdentities:                    pskIdentities(chm.pskIdentities).ToPublic(),
 			PskBinders:                       chm.pskBinders,
 			QuicTransportParameters:          chm.quicTransportParameters,
+			cachedPrivateHello:               chm,
 		}
 	}
 }
