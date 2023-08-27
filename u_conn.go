@@ -47,7 +47,7 @@ type UConn struct {
 
 // UClient returns a new uTLS client, with behavior depending on clientHelloID.
 // Config CAN be nil, but make sure to eventually specify ServerName.
-func UClient(conn net.Conn, config *Config, clientHelloID ClientHelloID, pskExtension ...*FakePreSharedKeyExtension) *UConn {
+func UClient(conn net.Conn, config *Config, clientHelloID ClientHelloID) *UConn {
 	if config == nil {
 		config = &Config{}
 	}
