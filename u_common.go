@@ -210,7 +210,7 @@ func (chs *ClientHelloSpec) ReadCompressionMethods(compressionMethods []byte) er
 // a byte slice into []TLSExtension.
 //
 // If keepPSK is not set, the PSK extension will cause an error.
-func (chs *ClientHelloSpec) ReadTLSExtensions(b []byte, allowBluntMimicry bool) error {
+func (chs *ClientHelloSpec) ReadTLSExtensions(b []byte, allowBluntMimicry bool, realPSK bool) error {
 	extensions := cryptobyte.String(b)
 	for !extensions.Empty() {
 		var extension uint16
@@ -225,6 +225,16 @@ func (chs *ClientHelloSpec) ReadTLSExtensions(b []byte, allowBluntMimicry bool) 
 		ext := ExtensionFromID(extension)
 		extWriter, ok := ext.(TLSExtensionWriter)
 		if ext != nil && ok { // known extension and implements TLSExtensionWriter properly
+			switch extension {
+			case extensionPreSharedKey:
+				// PSK extension, need to see if we do real or fake PSK
+				if realPSK {
+					extWriter = &UtlsPreSharedKeyExtension{}
+				} else {
+					extWriter = &FakePreSharedKeyExtension{}
+				}
+			}
+
 			if extension == extensionSupportedVersions {
 				chs.TLSVersMin = 0
 				chs.TLSVersMax = 0
@@ -247,13 +257,15 @@ func (chs *ClientHelloSpec) ReadTLSExtensions(b []byte, allowBluntMimicry bool) 
 
 func (chs *ClientHelloSpec) AlwaysAddPadding() {
 	alreadyHasPadding := false
-	for _, ext := range chs.Extensions {
+	for idx, ext := range chs.Extensions {
 		if _, ok := ext.(*UtlsPaddingExtension); ok {
 			alreadyHasPadding = true
 			break
 		}
-		if _, ok := ext.(*FakePreSharedKeyExtension); ok {
-			alreadyHasPadding = true // PSK must be last, so we don't need to add padding
+		if _, ok := ext.(PreSharedKeyExtension); ok {
+			alreadyHasPadding = true // PSK must be last, so we can't append padding after it
+			// instead we will insert padding before PSK
+			chs.Extensions = append(chs.Extensions[:idx], append([]TLSExtension{&UtlsPaddingExtension{GetPaddingLen: BoringPaddingStyle}}, chs.Extensions[idx:]...)...)
 			break
 		}
 	}
@@ -452,14 +464,20 @@ func (chs *ClientHelloSpec) ImportTLSClientHelloFromJSON(jsonB []byte) error {
 }
 
 // FromRaw converts a ClientHello message in the form of raw bytes into a ClientHelloSpec.
-func (chs *ClientHelloSpec) FromRaw(raw []byte, allowBluntMimicry ...bool) error {
+//
+// ctrlFlags: []bool{bluntMimicry, realPSK}
+func (chs *ClientHelloSpec) FromRaw(raw []byte, ctrlFlags ...bool) error {
 	if chs == nil {
 		return errors.New("cannot unmarshal into nil ClientHelloSpec")
 	}
 
 	var bluntMimicry = false
-	if len(allowBluntMimicry) == 1 {
-		bluntMimicry = allowBluntMimicry[0]
+	var realPSK = false
+	if len(ctrlFlags) > 0 {
+		bluntMimicry = ctrlFlags[0]
+	}
+	if len(ctrlFlags) > 1 {
+		realPSK = ctrlFlags[1]
 	}
 
 	*chs = ClientHelloSpec{} // reset
@@ -526,7 +544,7 @@ func (chs *ClientHelloSpec) FromRaw(raw []byte, allowBluntMimicry ...bool) error
 		return errors.New("unable to read extensions data")
 	}
 
-	if err := chs.ReadTLSExtensions(extensions, bluntMimicry); err != nil {
+	if err := chs.ReadTLSExtensions(extensions, bluntMimicry, realPSK); err != nil {
 		return err
 	}
 
@@ -707,4 +725,62 @@ func EnableWeakCiphers() {
 		{DISABLED_TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384, 32, 48, 16, ecdheRSAKA,
 			suiteECDHE | suiteTLS12 | suiteSHA384, cipherAES, utlsMacSHA384, nil},
 	}...)
+}
+
+func mapSlice[T any, U any](slice []T, transform func(T) U) []U {
+	newSlice := make([]U, 0, len(slice))
+	for _, t := range slice {
+		newSlice = append(newSlice, transform(t))
+	}
+	return newSlice
+}
+
+func panicOnNil(caller string, params ...any) {
+	for i, p := range params {
+		if p == nil {
+			panic(fmt.Sprintf("tls: %s failed: the [%d] parameter is nil", caller, i))
+		}
+	}
+}
+
+func anyTrue[T any](slice []T, predicate func(i int, t *T) bool) bool {
+	for i := 0; i < len(slice); i++ {
+		if predicate(i, &slice[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+func allTrue[T any](slice []T, predicate func(i int, t *T) bool) bool {
+	for i := 0; i < len(slice); i++ {
+		if !predicate(i, &slice[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func uAssert(condition bool, msg string) {
+	if !condition {
+		panic(msg)
+	}
+}
+
+func sliceEq[T comparable](sliceA []T, sliceB []T) bool {
+	if len(sliceA) != len(sliceB) {
+		return false
+	}
+	for i := 0; i < len(sliceA); i++ {
+		if sliceA[i] != sliceB[i] {
+			return false
+		}
+	}
+	return true
+}
+
+type Initializable interface {
+	// IsInitialized returns a boolean indicating whether the extension has been initialized.
+	// If false is returned, utls will initialize the extension.
+	IsInitialized() bool
 }

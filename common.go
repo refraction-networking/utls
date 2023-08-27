@@ -684,6 +684,14 @@ type Config struct {
 	// This field is ignored when InsecureSkipVerify is true.
 	InsecureSkipTimeVerify bool // [uTLS]
 
+	// OmitEmptyPsk determines whether utls will automatically conceal
+	// the psk extension when it is empty. When the psk extension is empty, the
+	// browser omits it from the client hello. Utls can mimic this behavior,
+	// but it deviates from the provided client hello specification, rendering
+	// it unsuitable as the default behavior. Users have the option to enable
+	// this behavior at their own discretion.
+	OmitEmptyPsk bool // [uTLS]
+
 	// InsecureServerNameToVerify is used to verify the hostname on the returned
 	// certificates. It is intended to use with spoofed ServerName.
 	// If InsecureServerNameToVerify is "*", crypto/tls will do normal
@@ -881,6 +889,7 @@ func (c *Config) Clone() *Config {
 		InsecureSkipVerify:          c.InsecureSkipVerify,
 		InsecureSkipTimeVerify:      c.InsecureSkipTimeVerify,
 		InsecureServerNameToVerify:  c.InsecureServerNameToVerify,
+		OmitEmptyPsk:                c.OmitEmptyPsk,
 		CipherSuites:                c.CipherSuites,
 		PreferServerCipherSuites:    c.PreferServerCipherSuites,
 		SessionTicketsDisabled:      c.SessionTicketsDisabled,

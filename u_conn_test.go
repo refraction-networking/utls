@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"runtime/debug"
 	"strings"
 	"testing"
 	"time"
@@ -522,6 +523,9 @@ func (test *clientTest) runUTLS(t *testing.T, write bool, hello helloStrategy, o
 	doneChan := make(chan bool)
 	go func() {
 		defer func() {
+			if err := recover(); err != nil {
+				fmt.Printf("panic occurred: %v\n %s\n", err, string(debug.Stack()))
+			}
 			// Give time to the send buffer to drain, to avoid the kernel
 			// sending a RST and cutting off the flow. See Issue 18701.
 			time.Sleep(10 * time.Millisecond)
