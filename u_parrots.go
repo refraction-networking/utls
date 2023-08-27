@@ -21,17 +21,8 @@ var ErrUnknownClientHelloID = errors.New("tls: unknown ClientHelloID")
 // UTLSIdToSpec converts a ClientHelloID to a corresponding ClientHelloSpec.
 //
 // Exported internal function utlsIdToSpec per request.
-func UTLSIdToSpec(id ClientHelloID, pskExtension ...*FakePreSharedKeyExtension) (ClientHelloSpec, error) {
-	if len(pskExtension) > 1 {
-		return ClientHelloSpec{}, errors.New("tls: at most one FakePreSharedKeyExtensions is allowed")
-	}
-
-	chs, err := utlsIdToSpec(id)
-	if err != nil && errors.Is(err, ErrUnknownClientHelloID) {
-		chs, err = utlsIdToSpecWithPSK(id, pskExtension...)
-	}
-
-	return chs, err
+func UTLSIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
+	return utlsIdToSpec(id)
 }
 
 func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
