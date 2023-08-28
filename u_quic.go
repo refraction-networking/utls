@@ -129,7 +129,7 @@ func (q *UQUICConn) HandleData(level QUICEncryptionLevel, data []byte) error {
 // SendSessionTicket sends a session ticket to the client.
 // It produces connection events, which may be read with NextEvent.
 // Currently, it can only be called once.
-func (q *UQUICConn) SendSessionTicket(earlyData bool) error {
+func (q *UQUICConn) SendSessionTicket(opts QUICSessionTicketOptions) error {
 	c := q.conn
 	if !c.isHandshakeComplete.Load() {
 		return quicError(errors.New("tls: SendSessionTicket called before handshake completed"))
@@ -141,7 +141,7 @@ func (q *UQUICConn) SendSessionTicket(earlyData bool) error {
 		return quicError(errors.New("tls: SendSessionTicket called multiple times"))
 	}
 	q.sessionTicketSent = true
-	return quicError(c.sendSessionTicket(earlyData))
+	return quicError(c.sendSessionTicket(opts.EarlyData))
 }
 
 // ConnectionState returns basic TLS details about the connection.
