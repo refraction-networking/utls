@@ -29,7 +29,7 @@ func (csc *ClientSessionCache) Get(sessionKey string) (session *tls.ClientSessio
 }
 
 func (csc *ClientSessionCache) Put(sessionKey string, cs *tls.ClientSessionState) {
-	if csc.sessionKeyMap == nil {
+	if cs == nil {
 		fmt.Printf("Deleting session for %s\n", sessionKey)
 		delete(csc.sessionKeyMap, sessionKey)
 	} else {
