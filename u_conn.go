@@ -567,7 +567,9 @@ func (c *UConn) clientHandshake(ctx context.Context) (err error) {
 		hs13 := c.HandshakeState.toPrivate13()
 		hs13.serverHello = serverHello
 		hs13.hello = hello
-		hs13.keySharesParams = NewKeySharesParameters()
+		if hs13.keySharesParams == nil {
+			hs13.keySharesParams = NewKeySharesParameters()
+		}
 		if !sessionIsLocked {
 			hs13.earlySecret = earlySecret
 			hs13.binderKey = binderKey
