@@ -90,7 +90,7 @@ It LGTM, but please open up Wireshark and check. If you see something — [say s
 
 > Aren't there side channels? Everybody knows that the ~~bird is a word~~[parrot is dead](https://people.cs.umass.edu/~amir/papers/parrot.pdf)
 
-There sure are. If you found one that approaches practicality at line speed — [please tell us](issues).
+There sure are. If you found one that approaches practicality at line speed — [please tell us](https://github.com/refraction-networking/utls/issues).
 
 However, there is a difference between this sort of parroting and techniques like SkypeMorth.
 Namely, TLS is highly standardized protocol, therefore simply not that many subtle things in TLS protocol
