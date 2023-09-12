@@ -86,7 +86,7 @@ This is not a problem, if you fully control the server and turn unsupported thin
 #### Parrots FAQ
 > Does it really look like, say, Google Chrome with all the [GREASE](https://tools.ietf.org/html/draft-davidben-tls-grease-01) and stuff?
 
-It LGTM, but please open up Wireshark and check. If you see something — [say something](issues).
+It LGTM, but please open up Wireshark and check. If you see something — [say something](https://github.com/refraction-networking/utls/issues).
 
 > Aren't there side channels? Everybody knows that the ~~bird is a word~~[parrot is dead](https://people.cs.umass.edu/~amir/papers/parrot.pdf)
 
