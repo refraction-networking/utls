@@ -504,11 +504,7 @@ func (e *StatusRequestV2Extension) Write(b []byte) (int, error) {
 	// RFC 4366, Section 3.6
 	var statusType uint8
 	var ignored cryptobyte.String
-	if !extData.ReadUint16LengthPrefixed(&ignored) ||
-		!extData.ReadUint8(&statusType) ||
-		!extData.ReadUint16LengthPrefixed(&ignored) ||
-		!extData.ReadUint16LengthPrefixed(&ignored) ||
-		!extData.ReadUint16LengthPrefixed(&ignored) {
+	if !extData.ReadUint16LengthPrefixed(&ignored) || !ignored.ReadUint8(&statusType) {
 		return fullLen, errors.New("unable to read status request v2 extension data")
 	}
 
