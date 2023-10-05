@@ -39,6 +39,11 @@ type UConn struct {
 
 	omitSNIExtension bool
 
+	// skipResumptionOnNilExtension is copied from `Config.PreferSkipResumptionOnNilExtension`.
+	//
+	// By default, if ClientHelloSpec is predefined or utls-generated (as opposed to HelloCustom), this flag will be updated to true.
+	skipResumptionOnNilExtension bool
+
 	// certCompressionAlgs represents the set of advertised certificate compression
 	// algorithms, as specified in the ClientHello. This is only relevant client-side, for the
 	// server certificate. All other forms of certificate compression are unsupported.
@@ -58,6 +63,7 @@ func UClient(conn net.Conn, config *Config, clientHelloID ClientHelloID) *UConn 
 	uconn.handshakeFn = uconn.clientHandshake
 	uconn.sessionController = newSessionController(&uconn)
 	uconn.utls.sessionController = uconn.sessionController
+	uconn.skipResumptionOnNilExtension = config.PreferSkipResumptionOnNilExtension || clientHelloID.Client != helloCustom
 	return &uconn
 }
 

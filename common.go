@@ -700,6 +700,19 @@ type Config struct {
 	// This field is ignored when InsecureSkipVerify is true.
 	InsecureServerNameToVerify string // [uTLS]
 
+	// PreferSkipResumptionOnNilExtension controls the behavior when session resumption is enabled but the corresponding session extensions are nil.
+	//
+	// To successfully use session resumption, ensure that the following requirements are met:
+	//  - SessionTicketsDisabled is set to false
+	//  - ClientSessionCache is non-nil
+	//  - For TLS 1.2, SessionTicketExtension is non-nil
+	//  - For TLS 1.3, PreSharedKeyExtension is non-nil
+	//
+	// There may be cases where users enable session resumption (SessionTicketsDisabled: false && ClientSessionCache: non-nil), but they do not provide SessionTicketExtension or PreSharedKeyExtension in the ClientHelloSpec. This could be intentional or accidental.
+	//
+	// By default, utls throws an exception in such scenarios. Set this to true to skip the resumption and suppress the exception.
+	PreferSkipResumptionOnNilExtension bool // [uTLS]
+
 	// CipherSuites is a list of enabled TLS 1.0–1.2 cipher suites. The order of
 	// the list is ignored. Note that TLS 1.3 ciphersuites are not configurable.
 	//
@@ -906,6 +919,8 @@ func (c *Config) Clone() *Config {
 		KeyLogWriter:                c.KeyLogWriter,
 		sessionTicketKeys:           c.sessionTicketKeys,
 		autoSessionTicketKeys:       c.autoSessionTicketKeys,
+
+		PreferSkipResumptionOnNilExtension: c.PreferSkipResumptionOnNilExtension, // [UTLS]
 	}
 }
 
