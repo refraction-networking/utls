@@ -54,8 +54,8 @@ type sessionController struct {
 func newSessionController(uconn *UConn) *sessionController {
 	return &sessionController{
 		uconnRef:           uconn,
-		sessionTicketExt:   &SessionTicketExtension{},
-		pskExtension:       &UtlsPreSharedKeyExtension{},
+		sessionTicketExt:   nil,
+		pskExtension:       nil,
 		state:              NoSession,
 		locked:             false,
 		callingLoadSession: false,
