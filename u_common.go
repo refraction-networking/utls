@@ -208,8 +208,6 @@ func (chs *ClientHelloSpec) ReadCompressionMethods(compressionMethods []byte) er
 
 // ReadTLSExtensions is a helper function to construct a list of TLS extensions from
 // a byte slice into []TLSExtension.
-//
-// If keepPSK is not set, the PSK extension will cause an error.
 func (chs *ClientHelloSpec) ReadTLSExtensions(b []byte, allowBluntMimicry bool, realPSK bool) error {
 	extensions := cryptobyte.String(b)
 	for !extensions.Empty() {
@@ -233,12 +231,11 @@ func (chs *ClientHelloSpec) ReadTLSExtensions(b []byte, allowBluntMimicry bool, 
 				} else {
 					extWriter = &FakePreSharedKeyExtension{}
 				}
-			}
-
-			if extension == extensionSupportedVersions {
+			case extensionSupportedVersions:
 				chs.TLSVersMin = 0
 				chs.TLSVersMax = 0
 			}
+
 			if _, err := extWriter.Write(extData); err != nil {
 				return err
 			}
