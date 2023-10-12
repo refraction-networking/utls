@@ -13,9 +13,9 @@ require (
 	github.com/gaukas/godicttls v0.0.4
 	github.com/klauspost/compress v1.16.7
 	github.com/quic-go/quic-go v0.37.4
-	golang.org/x/crypto v0.12.0
-	golang.org/x/net v0.14.0
-	golang.org/x/sys v0.11.0
+	golang.org/x/crypto v0.14.0
+	golang.org/x/net v0.17.0
+	golang.org/x/sys v0.13.0
 )
 
-require golang.org/x/text v0.12.0 // indirect
+require golang.org/x/text v0.13.0 // indirect
