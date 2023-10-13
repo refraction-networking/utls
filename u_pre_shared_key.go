@@ -134,6 +134,7 @@ type UtlsPreSharedKeyExtension struct {
 	PreSharedKeyCommon
 	cipherSuite  *cipherSuiteTLS13
 	cachedLength *int
+	// Deprecated: Set OmitEmptyPsk in Config instead.
 	OmitEmptyPsk bool
 }
 
@@ -308,8 +309,9 @@ func (e *UtlsPreSharedKeyExtension) UnmarshalJSON(_ []byte) error {
 type FakePreSharedKeyExtension struct {
 	UnimplementedPreSharedKeyExtension
 
-	Identities   []PskIdentity `json:"identities"`
-	Binders      [][]byte      `json:"binders"`
+	Identities []PskIdentity `json:"identities"`
+	Binders    [][]byte      `json:"binders"`
+	// Deprecated: Set OmitEmptyPsk in Config instead.
 	OmitEmptyPsk bool
 }
 
