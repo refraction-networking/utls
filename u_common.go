@@ -545,6 +545,15 @@ func (chs *ClientHelloSpec) FromRaw(raw []byte, ctrlFlags ...bool) error {
 		return err
 	}
 
+	// if extension list includes padding, we update the padding-to-len according to
+	// the raw ClientHello length
+	for _, ext := range chs.Extensions {
+		if _, ok := ext.(*UtlsPaddingExtension); ok {
+			ext.(*UtlsPaddingExtension).GetPaddingLen = AlwaysPadToLen(len(raw) - 5)
+			break
+		}
+	}
+
 	return nil
 }
 

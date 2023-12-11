@@ -1062,6 +1062,23 @@ func BoringPaddingStyle(unpaddedLen int) (int, bool) {
 	return 0, false
 }
 
+// AlwaysPadToLen could be used for parsed ClientHello, since some fingerprints
+// might not use BoringSSL padding style and we want to pad to a the same length.
+func AlwaysPadToLen(padToLen int) func(int) (int, bool) {
+	return func(unpaddedLen int) (int, bool) {
+		if unpaddedLen < padToLen {
+			paddingLen := padToLen - unpaddedLen
+			if paddingLen >= 4+1 {
+				paddingLen -= 4
+			} else {
+				paddingLen = 1
+			}
+			return paddingLen, true
+		}
+		return 0, false
+	}
+}
+
 // UtlsCompressCertExtension implements compress_certificate (27) and is only implemented client-side
 // for server certificates. Alternate certificate message formats
 // (https://datatracker.ietf.org/doc/html/rfc7250) are not supported.
