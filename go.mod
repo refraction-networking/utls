@@ -10,7 +10,6 @@ retract (
 require (
 	github.com/andybalholm/brotli v1.0.5
 	github.com/cloudflare/circl v1.3.3
-	github.com/gaukas/godicttls v0.0.4
 	github.com/klauspost/compress v1.16.7
 	github.com/quic-go/quic-go v0.37.4
 	golang.org/x/crypto v0.14.0

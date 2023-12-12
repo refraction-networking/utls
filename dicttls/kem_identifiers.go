@@ -1,0 +1,35 @@
+package dicttls
+
+// source: https://www.rfc-editor.org/rfc/rfc9180
+// last updated: December 2023
+
+const (
+	DHKEM_P256_HKDF_SHA256 uint16 = 0x0010 // RFC 5869
+	DHKEM_P384_HKDF_SHA384 uint16 = 0x0011 // RFC 5869
+	DHKEM_P521_HKDF_SHA512 uint16 = 0x0012 // RFC 5869
+
+	DHKEM_X25519_HKDF_SHA256 uint16 = 0x0020 // RFC 7748
+	DHKEM_X448_HKDF_SHA512   uint16 = 0x0021 // RFC 7748
+)
+
+var DictKEMIdentifierValueIndexed = map[uint16]string{
+	0x0000: "Reserved", // RFC 9180
+
+	0x0010: "DHKEM_P256_HKDF_SHA256",
+	0x0011: "DHKEM_P384_HKDF_SHA384",
+	0x0012: "DHKEM_P521_HKDF_SHA512",
+
+	0x0020: "DHKEM_X25519_HKDF_SHA256",
+	0x0021: "DHKEM_X448_HKDF_SHA512",
+}
+
+var DictKEMIdentifierNameIndexed = map[string]uint16{
+	"Reserved": 0x0000, // RFC 9180
+
+	"DHKEM_P256_HKDF_SHA256": 0x0010,
+	"DHKEM_P384_HKDF_SHA384": 0x0011,
+	"DHKEM_P521_HKDF_SHA512": 0x0012,
+
+	"DHKEM_X25519_HKDF_SHA256": 0x0020,
+	"DHKEM_X448_HKDF_SHA512":   0x0021,
+}

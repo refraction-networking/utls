@@ -11,7 +11,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/gaukas/godicttls"
+	"github.com/refraction-networking/utls/dicttls"
 	"golang.org/x/crypto/cryptobyte"
 )
 
@@ -294,7 +294,7 @@ func (e *SupportedCurvesExtension) UnmarshalJSON(data []byte) error {
 			continue
 		}
 
-		if group, ok := godicttls.DictSupportedGroupsNameIndexed[namedGroup]; ok {
+		if group, ok := dicttls.DictSupportedGroupsNameIndexed[namedGroup]; ok {
 			e.Curves = append(e.Curves, CurveID(group))
 		} else {
 			return fmt.Errorf("unknown named group: %s", namedGroup)
@@ -363,7 +363,7 @@ func (e *SupportedPointsExtension) UnmarshalJSON(data []byte) error {
 	}
 
 	for _, pointFormat := range pointFormatList.ECPointFormatList {
-		if format, ok := godicttls.DictECPointFormatNameIndexed[pointFormat]; ok {
+		if format, ok := dicttls.DictECPointFormatNameIndexed[pointFormat]; ok {
 			e.SupportedPoints = append(e.SupportedPoints, format)
 		} else {
 			return fmt.Errorf("unknown point format: %s", pointFormat)
@@ -431,7 +431,7 @@ func (e *SignatureAlgorithmsExtension) UnmarshalJSON(data []byte) error {
 			continue
 		}
 
-		if scheme, ok := godicttls.DictSignatureSchemeNameIndexed[sigScheme]; ok {
+		if scheme, ok := dicttls.DictSignatureSchemeNameIndexed[sigScheme]; ok {
 			e.SupportedSignatureAlgorithms = append(e.SupportedSignatureAlgorithms, SignatureScheme(scheme))
 		} else {
 			return fmt.Errorf("unknown signature scheme: %s", sigScheme)
@@ -561,7 +561,7 @@ func (e *SignatureAlgorithmsCertExtension) UnmarshalJSON(data []byte) error {
 			continue
 		}
 
-		if scheme, ok := godicttls.DictSignatureSchemeNameIndexed[sigScheme]; ok {
+		if scheme, ok := dicttls.DictSignatureSchemeNameIndexed[sigScheme]; ok {
 			e.SupportedSignatureAlgorithms = append(e.SupportedSignatureAlgorithms, SignatureScheme(scheme))
 		} else {
 			return fmt.Errorf("unknown cert signature scheme: %s", sigScheme)
@@ -837,7 +837,7 @@ func (e *GenericExtension) UnmarshalJSON(b []byte) error {
 	}
 
 	// lookup extension ID by name
-	if id, ok := godicttls.DictExtTypeNameIndexed[genericExtension.Name]; ok {
+	if id, ok := dicttls.DictExtTypeNameIndexed[genericExtension.Name]; ok {
 		e.Id = id
 	} else {
 		return fmt.Errorf("unknown extension name %s", genericExtension.Name)
@@ -1154,7 +1154,7 @@ func (e *UtlsCompressCertExtension) UnmarshalJSON(b []byte) error {
 	}
 
 	for _, algorithm := range certificateCompressionAlgorithms.Algorithms {
-		if alg, ok := godicttls.DictCertificateCompressionAlgorithmNameIndexed[algorithm]; ok {
+		if alg, ok := dicttls.DictCertificateCompressionAlgorithmNameIndexed[algorithm]; ok {
 			e.Algorithms = append(e.Algorithms, CertCompressionAlgo(alg))
 		} else {
 			return fmt.Errorf("unknown certificate compression algorithm %s", algorithm)
@@ -1260,7 +1260,7 @@ func (e *KeyShareExtension) UnmarshalJSON(b []byte) error {
 			continue
 		}
 
-		if groupID, ok := godicttls.DictSupportedGroupsNameIndexed[clientShare.Group]; ok {
+		if groupID, ok := dicttls.DictSupportedGroupsNameIndexed[clientShare.Group]; ok {
 			ks := KeyShare{
 				Group: CurveID(groupID),
 				Data:  clientShare.KeyExchange,
@@ -1374,7 +1374,7 @@ func (e *PSKKeyExchangeModesExtension) UnmarshalJSON(b []byte) error {
 	}
 
 	for _, mode := range pskKeyExchangeModes.Modes {
-		if modeID, ok := godicttls.DictPSKKeyExchangeModeNameIndexed[mode]; ok {
+		if modeID, ok := dicttls.DictPSKKeyExchangeModeNameIndexed[mode]; ok {
 			e.Modes = append(e.Modes, modeID)
 		} else {
 			return fmt.Errorf("unknown PSK Key Exchange Mode %s", mode)
@@ -1852,7 +1852,7 @@ func (e *FakeDelegatedCredentialsExtension) UnmarshalJSON(data []byte) error {
 			continue
 		}
 
-		if scheme, ok := godicttls.DictSignatureSchemeNameIndexed[sigScheme]; ok {
+		if scheme, ok := dicttls.DictSignatureSchemeNameIndexed[sigScheme]; ok {
 			e.SupportedSignatureAlgorithms = append(e.SupportedSignatureAlgorithms, SignatureScheme(scheme))
 		} else {
 			return fmt.Errorf("unknown delegated credentials signature scheme: %s", sigScheme)
