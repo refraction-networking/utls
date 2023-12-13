@@ -595,6 +595,7 @@ var (
 	HelloFirefox_99   = ClientHelloID{helloFirefox, "99", nil, nil}
 	HelloFirefox_102  = ClientHelloID{helloFirefox, "102", nil, nil}
 	HelloFirefox_105  = ClientHelloID{helloFirefox, "105", nil, nil}
+	HelloFirefox_120  = ClientHelloID{helloFirefox, "120", nil, nil}
 
 	HelloChrome_Auto        = HelloChrome_106_Shuffle
 	HelloChrome_58          = ClientHelloID{helloChrome, "58", nil, nil}
@@ -619,6 +620,9 @@ var (
 	// Beta: PQ extension added. However, uTLS doesn't ship with full PQ support. Use at your own discretion.
 	HelloChrome_115_PQ     = ClientHelloID{helloChrome, "115_PQ", nil, nil}
 	HelloChrome_115_PQ_PSK = ClientHelloID{helloChrome, "115_PQ_PSK", nil, nil}
+
+	// Chrome w/ Post-Quantum Key Agreement and Encrypted ClientHello
+	HelloChrome_120 = ClientHelloID{helloChrome, "120", nil, nil}
 
 	HelloIOS_Auto = HelloIOS_14
 	HelloIOS_11_1 = ClientHelloID{helloIOS, "111", nil, nil} // legacy "111" means 11.1
