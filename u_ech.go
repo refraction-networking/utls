@@ -42,13 +42,13 @@ var (
 )
 
 type GREASEEncryptedClientHelloExtension struct {
-	CandidateCipherSuites []HPKESymmetricCipherSuite // if empty, will populate with one random value and proceed
-	cipherSuite           HPKESymmetricCipherSuite   // randomly picked from CandidateCipherSuites or generated if empty
-	CandidateConfigIds    []uint8                    // if empty, will populate with one random value and proceed
-	configId              uint8                      // randomly picked from CandidateConfigIds or generated if empty
-	EncapsulatedKey       []byte                     // if empty, will generate random bytes
-	PayloadLen            uint16                     // if 0, will generate random value. Chrome 120: 128(+16=144), Firefox 120: 223(+16=239)
-	payload               []byte                     // payload should be calculated ONCE and stored here, HRR will reuse this
+	CandidateCipherSuites []HPKESymmetricCipherSuite
+	cipherSuite           HPKESymmetricCipherSuite // randomly picked from CandidateCipherSuites or generated if empty
+	CandidateConfigIds    []uint8
+	configId              uint8    // randomly picked from CandidateConfigIds or generated if empty
+	EncapsulatedKey       []byte   // if empty, will generate random bytes
+	CandidatePayloadLens  []uint16 // Pre-encryption. If 0, will pick 128(+16=144)
+	payload               []byte   // payload should be calculated ONCE and stored here, HRR will reuse this
 
 	initOnce sync.Once
 
@@ -130,11 +130,18 @@ func (g *GREASEEncryptedClientHelloExtension) init() error {
 		}
 
 		if len(g.payload) == 0 {
-			if g.PayloadLen == 0 {
-				g.PayloadLen = 100
+			if len(g.CandidatePayloadLens) == 0 {
+				g.CandidatePayloadLens = []uint16{128}
 			}
 
-			initErr = g.randomizePayload(g.PayloadLen)
+			// randomly pick one from the list
+			rndIndex, err := rand.Int(rand.Reader, big.NewInt(int64(len(g.CandidatePayloadLens))))
+			if err != nil {
+				initErr = fmt.Errorf("error generating random index for payload length: %w", err)
+				return
+			}
+
+			initErr = g.randomizePayload(g.CandidatePayloadLens[rndIndex.Int64()])
 		}
 	})
 
