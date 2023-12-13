@@ -98,6 +98,7 @@ ConfigsLoop:
 			!t.ReadUint16LengthPrefixed(&contents) {
 			return nil, errors.New("error parsing config")
 		}
+		config.Length = uint16(len(contents))
 		n := l - len(t)
 		config.raw = raw[:n]
 		raw = raw[n:]
