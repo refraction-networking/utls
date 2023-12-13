@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"sync"
 
@@ -167,7 +168,7 @@ func (g *GREASEEncryptedClientHelloExtension) Len() int {
 
 func (g *GREASEEncryptedClientHelloExtension) Read(b []byte) (int, error) {
 	if len(b) < g.Len() {
-		return 0, errors.New("tls: grease ech: Read() buffer is too small")
+		return 0, io.ErrShortBuffer
 	}
 
 	b[0] = byte(utlsExtensionECH >> 8)
@@ -187,7 +188,7 @@ func (g *GREASEEncryptedClientHelloExtension) Read(b []byte) (int, error) {
 	b[12+len(g.EncapsulatedKey)+1] = byte(len(g.payload) & 0xFF)
 	copy(b[12+len(g.EncapsulatedKey)+2:], g.payload)
 
-	return 0, nil
+	return g.Len(), io.EOF
 }
 
 func (g *GREASEEncryptedClientHelloExtension) MarshalClientHello(uconn *UConn) error {
