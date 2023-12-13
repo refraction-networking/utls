@@ -306,6 +306,11 @@ type ConnectionState struct {
 
 	// ekm is a closure exposed via ExportKeyingMaterial.
 	ekm func(label string, context []byte, length int) ([]byte, error)
+
+	// ECHRetryConfigs contains the ECH retry configurations sent by the server in
+	// EncryptedExtensions message. It is only populated if the server sent the
+	// ech extension in EncryptedExtensions message.
+	ECHRetryConfigs []ECHConfig // [uTLS]
 }
 
 // ExportKeyingMaterial returns length bytes of exported key material in a new
