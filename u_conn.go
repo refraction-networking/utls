@@ -48,6 +48,9 @@ type UConn struct {
 	// algorithms, as specified in the ClientHello. This is only relevant client-side, for the
 	// server certificate. All other forms of certificate compression are unsupported.
 	certCompressionAlgs []CertCompressionAlgo
+
+	// ech extension is a shortcut to the ECH extension in the Extensions slice if there is one.
+	ech ECHExtension
 }
 
 // UClient returns a new uTLS client, with behavior depending on clientHelloID.
@@ -616,13 +619,19 @@ func (uconn *UConn) ApplyConfig() error {
 }
 
 func (uconn *UConn) MarshalClientHello() error {
+	if uconn.ech != nil {
+		if err := uconn.ech.Configure(uconn.config.ECHConfigs); err != nil {
+			return err
+		}
+		return uconn.ech.MarshalClientHello(uconn)
+	}
 	hello := uconn.HandshakeState.Hello
 	headerLength := 2 + 32 + 1 + len(hello.SessionId) +
 		2 + len(hello.CipherSuites)*2 +
 		1 + len(hello.CompressionMethods)
 
 	extensionsLen := 0
-	var paddingExt *UtlsPaddingExtension
+	var paddingExt *UtlsPaddingExtension // reference to padding extension, if present
 	for _, ext := range uconn.Extensions {
 		if pe, ok := ext.(*UtlsPaddingExtension); !ok {
 			// If not padding - just add length of extension to total length
@@ -859,6 +868,7 @@ func (c *Conn) utlsHandshakeMessageType(msgType byte) (handshakeMessage, error) 
 // Extending (*Conn).connectionStateLocked()
 func (c *Conn) utlsConnectionStateLocked(state *ConnectionState) {
 	state.PeerApplicationSettings = c.utls.peerApplicationSettings
+	state.ECHRetryConfigs = c.utls.echRetryConfigs
 }
 
 type utlsConnExtraFields struct {
@@ -866,6 +876,9 @@ type utlsConnExtraFields struct {
 	hasApplicationSettings   bool
 	peerApplicationSettings  []byte
 	localApplicationSettings []byte
+
+	// Encrypted Client Hello (ECH)
+	echRetryConfigs []ECHConfig
 
 	sessionController *sessionController
 }

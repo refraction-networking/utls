@@ -35,9 +35,11 @@ const (
 	extensionNextProtoNeg uint16 = 13172 // not IANA assigned. Removed by crypto/tls since Nov 2019
 
 	utlsExtensionPadding             uint16 = 21
-	utlsExtensionCompressCertificate uint16 = 27    // https://datatracker.ietf.org/doc/html/rfc8879#section-7.1
-	utlsExtensionApplicationSettings uint16 = 17513 // not IANA assigned
-	utlsFakeExtensionCustom          uint16 = 1234  // not IANA assigned, for ALPS
+	utlsExtensionCompressCertificate uint16 = 27     // https://datatracker.ietf.org/doc/html/rfc8879#section-7.1
+	utlsExtensionApplicationSettings uint16 = 17513  // not IANA assigned
+	utlsFakeExtensionCustom          uint16 = 1234   // not IANA assigned, for ALPS
+	utlsExtensionECH                 uint16 = 0xfe0d // draft-ietf-tls-esni-17
+	utlsExtensionECHOuterExtensions  uint16 = 0xfd00 // draft-ietf-tls-esni-17
 
 	// extensions with 'fake' prefix break connection, if server echoes them back
 	fakeExtensionEncryptThenMAC       uint16 = 22
@@ -593,6 +595,7 @@ var (
 	HelloFirefox_99   = ClientHelloID{helloFirefox, "99", nil, nil}
 	HelloFirefox_102  = ClientHelloID{helloFirefox, "102", nil, nil}
 	HelloFirefox_105  = ClientHelloID{helloFirefox, "105", nil, nil}
+	HelloFirefox_120  = ClientHelloID{helloFirefox, "120", nil, nil}
 
 	HelloChrome_Auto        = HelloChrome_106_Shuffle
 	HelloChrome_58          = ClientHelloID{helloChrome, "58", nil, nil}
@@ -617,6 +620,9 @@ var (
 	// Beta: PQ extension added. However, uTLS doesn't ship with full PQ support. Use at your own discretion.
 	HelloChrome_115_PQ     = ClientHelloID{helloChrome, "115_PQ", nil, nil}
 	HelloChrome_115_PQ_PSK = ClientHelloID{helloChrome, "115_PQ_PSK", nil, nil}
+
+	// Chrome w/ Post-Quantum Key Agreement and Encrypted ClientHello
+	HelloChrome_120 = ClientHelloID{helloChrome, "120", nil, nil}
 
 	HelloIOS_Auto = HelloIOS_14
 	HelloIOS_11_1 = ClientHelloID{helloIOS, "111", nil, nil} // legacy "111" means 11.1
