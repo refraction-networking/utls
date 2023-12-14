@@ -658,8 +658,96 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&UtlsPaddingExtension{GetPaddingLen: BoringPaddingStyle},
 			}),
 		}, nil
-	// Chrome w/ Post-Quantum Key Agreement and ECH
+	// Chrome ECH
 	case HelloChrome_120:
+		return ClientHelloSpec{
+			CipherSuites: []uint16{
+				GREASE_PLACEHOLDER,
+				TLS_AES_128_GCM_SHA256,
+				TLS_AES_256_GCM_SHA384,
+				TLS_CHACHA20_POLY1305_SHA256,
+				TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+				TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+				TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+				TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+				TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
+				TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
+				TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+				TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+				TLS_RSA_WITH_AES_128_GCM_SHA256,
+				TLS_RSA_WITH_AES_256_GCM_SHA384,
+				TLS_RSA_WITH_AES_128_CBC_SHA,
+				TLS_RSA_WITH_AES_256_CBC_SHA,
+			},
+			CompressionMethods: []byte{
+				0x00, // compressionNone
+			},
+			Extensions: ShuffleChromeTLSExtensions([]TLSExtension{
+				&UtlsGREASEExtension{},
+				&SNIExtension{},
+				&ExtendedMasterSecretExtension{},
+				&RenegotiationInfoExtension{Renegotiation: RenegotiateOnceAsClient},
+				&SupportedCurvesExtension{Curves: []CurveID{
+					GREASE_PLACEHOLDER,
+					X25519,
+					CurveP256,
+					CurveP384,
+				}},
+				&SupportedPointsExtension{SupportedPoints: []byte{
+					0x00, // pointFormatUncompressed
+				}},
+				&SessionTicketExtension{},
+				&ALPNExtension{AlpnProtocols: []string{"h2", "http/1.1"}},
+				&StatusRequestExtension{},
+				&SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []SignatureScheme{
+					ECDSAWithP256AndSHA256,
+					PSSWithSHA256,
+					PKCS1WithSHA256,
+					ECDSAWithP384AndSHA384,
+					PSSWithSHA384,
+					PKCS1WithSHA384,
+					PSSWithSHA512,
+					PKCS1WithSHA512,
+				}},
+				&SCTExtension{},
+				&KeyShareExtension{KeyShares: []KeyShare{
+					{Group: CurveID(GREASE_PLACEHOLDER), Data: []byte{0}},
+					{Group: X25519},
+				}},
+				&PSKKeyExchangeModesExtension{Modes: []uint8{
+					PskModeDHE,
+				}},
+				&SupportedVersionsExtension{Versions: []uint16{
+					GREASE_PLACEHOLDER,
+					VersionTLS13,
+					VersionTLS12,
+				}},
+				&UtlsCompressCertExtension{Algorithms: []CertCompressionAlgo{
+					CertCompressionBrotli,
+				}},
+				&ApplicationSettingsExtension{SupportedProtocols: []string{"h2"}},
+				&GREASEEncryptedClientHelloExtension{
+					CandidateCipherSuites: []HPKESymmetricCipherSuite{
+						{
+							KdfId:  dicttls.HKDF_SHA256,
+							AeadId: dicttls.AEAD_AES_128_GCM,
+						},
+						{
+							KdfId:  dicttls.HKDF_SHA256,
+							AeadId: dicttls.AEAD_AES_256_GCM,
+						},
+						{
+							KdfId:  dicttls.HKDF_SHA256,
+							AeadId: dicttls.AEAD_CHACHA20_POLY1305,
+						},
+					},
+					CandidatePayloadLens: []uint16{128, 160}, // +16: 144, 176
+				},
+				&UtlsGREASEExtension{},
+			}),
+		}, nil
+	// Chrome w/ Post-Quantum Key Agreement and ECH
+	case HelloChrome_120_PQ:
 		return ClientHelloSpec{
 			CipherSuites: []uint16{
 				GREASE_PLACEHOLDER,
