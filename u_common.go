@@ -621,8 +621,10 @@ var (
 	HelloChrome_115_PQ     = ClientHelloID{helloChrome, "115_PQ", nil, nil}
 	HelloChrome_115_PQ_PSK = ClientHelloID{helloChrome, "115_PQ_PSK", nil, nil}
 
-	// Chrome w/ Post-Quantum Key Agreement and Encrypted ClientHello
+	// Chrome ECH
 	HelloChrome_120 = ClientHelloID{helloChrome, "120", nil, nil}
+	// Chrome w/ Post-Quantum Key Agreement and Encrypted ClientHello
+	HelloChrome_120_PQ = ClientHelloID{helloChrome, "120_PQ", nil, nil}
 
 	HelloIOS_Auto = HelloIOS_14
 	HelloIOS_11_1 = ClientHelloID{helloIOS, "111", nil, nil} // legacy "111" means 11.1
