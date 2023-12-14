@@ -841,6 +841,17 @@ type Config struct {
 	// autoSessionTicketKeys is like sessionTicketKeys but is owned by the
 	// auto-rotation logic. See Config.ticketKeys.
 	autoSessionTicketKeys []ticketKey
+
+	// ECHConfigs contains the ECH configurations to be used by the ECH
+	// extension if any.
+	// It could either be distributed by the server in EncryptedExtensions
+	// message or out-of-band.
+	//
+	// If ECHConfigs is nil and an ECH extension is present, GREASEd ECH
+	// extension will be sent.
+	//
+	// If GREASE ECH extension is present, this field will be ignored.
+	ECHConfigs []ECHConfig // [uTLS]
 }
 
 const (
@@ -926,6 +937,7 @@ func (c *Config) Clone() *Config {
 		autoSessionTicketKeys:       c.autoSessionTicketKeys,
 
 		PreferSkipResumptionOnNilExtension: c.PreferSkipResumptionOnNilExtension, // [UTLS]
+		ECHConfigs:                         c.ECHConfigs,                         // [uTLS]
 	}
 }
 

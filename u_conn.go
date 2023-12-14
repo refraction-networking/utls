@@ -620,6 +620,9 @@ func (uconn *UConn) ApplyConfig() error {
 
 func (uconn *UConn) MarshalClientHello() error {
 	if uconn.ech != nil {
+		if err := uconn.ech.Configure(uconn.config.ECHConfigs); err != nil {
+			return err
+		}
 		return uconn.ech.MarshalClientHello(uconn)
 	}
 	hello := uconn.HandshakeState.Hello
