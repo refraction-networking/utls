@@ -49,7 +49,7 @@ func HttpGetByHelloID(hostname string, addr string, helloID tls.ClientHelloID) (
 		return nil, fmt.Errorf("uTlsConn.Handshake() error: %+v", err)
 	}
 
-	return httpGetOverConn(uTlsConn, uTlsConn.HandshakeState.ServerHello.AlpnProtocol)
+	return httpGetOverConn(uTlsConn, uTlsConn.ConnectionState().NegotiatedProtocol)
 }
 
 // this example generates a randomized fingeprint, then re-uses it in a follow-up connection
@@ -80,7 +80,7 @@ func HttpGetConsistentRandomized(hostname string, addr string) (*http.Response, 
 		return nil, fmt.Errorf("uTlsConn.Handshake() error: %+v", err)
 	}
 
-	return httpGetOverConn(uTlsConn2, uTlsConn2.HandshakeState.ServerHello.AlpnProtocol)
+	return httpGetOverConn(uTlsConn2, uTlsConn2.ConnectionState().NegotiatedProtocol)
 }
 
 func HttpGetExplicitRandom(hostname string, addr string) (*http.Response, error) {
@@ -112,7 +112,7 @@ func HttpGetExplicitRandom(hostname string, addr string) (*http.Response, error)
 	fmt.Printf("#> ClientHello Random:\n%s", hex.Dump(uTlsConn.HandshakeState.Hello.Random))
 	fmt.Printf("#> ServerHello Random:\n%s", hex.Dump(uTlsConn.HandshakeState.ServerHello.Random))
 
-	return httpGetOverConn(uTlsConn, uTlsConn.HandshakeState.ServerHello.AlpnProtocol)
+	return httpGetOverConn(uTlsConn, uTlsConn.ConnectionState().NegotiatedProtocol)
 }
 
 // Note that the server will reject the fake ticket(unless you set up your server to accept them) and do full handshake
@@ -152,7 +152,7 @@ func HttpGetTicket(hostname string, addr string) (*http.Response, error) {
 	fmt.Println("#> This is how client hello with session ticket looked:")
 	fmt.Print(hex.Dump(uTlsConn.HandshakeState.Hello.Raw))
 
-	return httpGetOverConn(uTlsConn, uTlsConn.HandshakeState.ServerHello.AlpnProtocol)
+	return httpGetOverConn(uTlsConn, uTlsConn.ConnectionState().NegotiatedProtocol)
 }
 
 // Note that the server will reject the fake ticket(unless you set up your server to accept them) and do full handshake
@@ -183,7 +183,7 @@ func HttpGetTicketHelloID(hostname string, addr string, helloID tls.ClientHelloI
 	fmt.Println("#> This is how client hello with session ticket looked:")
 	fmt.Print(hex.Dump(uTlsConn.HandshakeState.Hello.Raw))
 
-	return httpGetOverConn(uTlsConn, uTlsConn.HandshakeState.ServerHello.AlpnProtocol)
+	return httpGetOverConn(uTlsConn, uTlsConn.ConnectionState().NegotiatedProtocol)
 }
 
 func HttpGetCustom(hostname string, addr string) (*http.Response, error) {
@@ -253,7 +253,7 @@ func HttpGetCustom(hostname string, addr string) (*http.Response, error) {
 		return nil, fmt.Errorf("uTlsConn.Handshake() error: %+v", err)
 	}
 
-	return httpGetOverConn(uTlsConn, uTlsConn.HandshakeState.ServerHello.AlpnProtocol)
+	return httpGetOverConn(uTlsConn, uTlsConn.ConnectionState().NegotiatedProtocol)
 }
 
 var roller *tls.Roller
@@ -277,7 +277,7 @@ func HttpGetGoogleWithRoller() (*http.Response, error) {
 		return nil, err
 	}
 
-	return httpGetOverConn(c, c.HandshakeState.ServerHello.AlpnProtocol)
+	return httpGetOverConn(c, c.ConnectionState().NegotiatedProtocol)
 }
 
 func forgeConn() {
