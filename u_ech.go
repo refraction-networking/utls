@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/cloudflare/circl/hpke"
+	"github.com/refraction-networking/utls/dicttls"
 )
 
 // Unstable API: This is a work in progress and may change in the future. Using
@@ -233,4 +234,20 @@ func (*UnimplementedECHExtension) MarshalClientHello(*UConn) error {
 
 func (*UnimplementedECHExtension) mustEmbedUnimplementedECHExtension() {
 	panic("mustEmbedUnimplementedECHExtension() is not implemented")
+}
+
+func BoringGREASEECH() *GREASEEncryptedClientHelloExtension {
+	return &GREASEEncryptedClientHelloExtension{
+		CandidateCipherSuites: []HPKESymmetricCipherSuite{
+			{
+				KdfId:  dicttls.HKDF_SHA256,
+				AeadId: dicttls.AEAD_AES_128_GCM,
+			},
+			{
+				KdfId:  dicttls.HKDF_SHA256,
+				AeadId: dicttls.AEAD_CHACHA20_POLY1305,
+			},
+		},
+		CandidatePayloadLens: []uint16{128, 160, 192, 224}, // +16: 144, 176, 208, 240
+	}
 }
