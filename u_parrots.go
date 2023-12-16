@@ -1295,14 +1295,10 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 						},
 						{
 							KdfId:  dicttls.HKDF_SHA256,
-							AeadId: dicttls.AEAD_AES_256_GCM,
-						},
-						{
-							KdfId:  dicttls.HKDF_SHA256,
 							AeadId: dicttls.AEAD_CHACHA20_POLY1305,
 						},
 					},
-					CandidatePayloadLens: []uint16{128, 223}, // +16: 144, 239
+					CandidatePayloadLens: []uint16{223}, // +16: 239
 				},
 			},
 		}, nil
