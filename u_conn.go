@@ -619,12 +619,19 @@ func (uconn *UConn) ApplyConfig() error {
 }
 
 func (uconn *UConn) MarshalClientHello() error {
-	if uconn.ech != nil {
+	if len(uconn.config.ECHConfigs) > 0 && uconn.ech != nil {
 		if err := uconn.ech.Configure(uconn.config.ECHConfigs); err != nil {
 			return err
 		}
 		return uconn.ech.MarshalClientHello(uconn)
 	}
+
+	return uconn.MarshalClientHelloNoECH() // if no ECH pointer, just marshal normally
+}
+
+// MarshalClientHelloNoECH marshals ClientHello as if there was no
+// ECH extension present.
+func (uconn *UConn) MarshalClientHelloNoECH() error {
 	hello := uconn.HandshakeState.Hello
 	headerLength := 2 + 32 + 1 + len(hello.SessionId) +
 		2 + len(hello.CipherSuites)*2 +

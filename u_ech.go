@@ -10,6 +10,7 @@ import (
 
 	"github.com/cloudflare/circl/hpke"
 	"github.com/refraction-networking/utls/dicttls"
+	"golang.org/x/crypto/cryptobyte"
 )
 
 // Unstable API: This is a work in progress and may change in the future. Using
@@ -166,17 +167,21 @@ func (g *GREASEEncryptedClientHelloExtension) randomizePayload(encodedHelloInner
 	return nil
 }
 
+// writeToUConn implements TLSExtension.
+//
 // For ECH extensions, writeToUConn simply points the ech field in UConn to the extension.
 func (g *GREASEEncryptedClientHelloExtension) writeToUConn(uconn *UConn) error {
-	// uconn.ech = g // don't do this, so we don't intercept the MarshalClientHello() call
-	return nil
+	uconn.ech = g
+	return uconn.MarshalClientHelloNoECH()
 }
 
+// Len implements TLSExtension.
 func (g *GREASEEncryptedClientHelloExtension) Len() int {
 	g.init()
 	return 2 + 2 + 1 /* ClientHello Type */ + 4 /* CipherSuite */ + 1 /* Config ID */ + 2 + len(g.EncapsulatedKey) + 2 + len(g.payload)
 }
 
+// Read implements TLSExtension.
 func (g *GREASEEncryptedClientHelloExtension) Read(b []byte) (int, error) {
 	if len(b) < g.Len() {
 		return 0, io.ErrShortBuffer
@@ -202,40 +207,111 @@ func (g *GREASEEncryptedClientHelloExtension) Read(b []byte) (int, error) {
 	return g.Len(), io.EOF
 }
 
+// Configure implements EncryptedClientHelloExtension.
 func (*GREASEEncryptedClientHelloExtension) Configure([]ECHConfig) error {
-	return errors.New("tls: grease ech: Configure() is not implemented")
+	return nil // no-op, it is not possible to configure a GREASE extension for now
 }
 
+// MarshalClientHello implements EncryptedClientHelloExtension.
 func (*GREASEEncryptedClientHelloExtension) MarshalClientHello(*UConn) error {
 	return errors.New("tls: grease ech: MarshalClientHello() is not implemented, use (*UConn).MarshalClientHello() instead")
 }
 
+// Write implements TLSExtensionWriter.
+func (g *GREASEEncryptedClientHelloExtension) Write(b []byte) (int, error) {
+	fullLen := len(b)
+	extData := cryptobyte.String(b)
+
+	// Check the extension type, it must be OuterClientHello otherwise we are not
+	// parsing the correct extension
+	var chType uint8 // 0: outer, 1: inner
+	var ignored cryptobyte.String
+	if !extData.ReadUint8(&chType) || chType != 0 {
+		return fullLen, errors.New("bad Client Hello type, expected 0, got " + fmt.Sprintf("%d", chType))
+	}
+
+	// Parse the cipher suite
+	if !extData.ReadUint16(&g.cipherSuite.KdfId) || !extData.ReadUint16(&g.cipherSuite.AeadId) {
+		return fullLen, errors.New("bad cipher suite")
+	}
+	if g.cipherSuite.KdfId != dicttls.HKDF_SHA256 &&
+		g.cipherSuite.KdfId != dicttls.HKDF_SHA384 &&
+		g.cipherSuite.KdfId != dicttls.HKDF_SHA512 {
+		return fullLen, errors.New("bad KDF ID: " + fmt.Sprintf("%d", g.cipherSuite.KdfId))
+	}
+	if g.cipherSuite.AeadId != dicttls.AEAD_AES_128_GCM &&
+		g.cipherSuite.AeadId != dicttls.AEAD_AES_256_GCM &&
+		g.cipherSuite.AeadId != dicttls.AEAD_CHACHA20_POLY1305 {
+		return fullLen, errors.New("bad AEAD ID: " + fmt.Sprintf("%d", g.cipherSuite.AeadId))
+	}
+	g.CandidateCipherSuites = []HPKESymmetricCipherSuite{g.cipherSuite}
+
+	// GREASE the ConfigId
+	if !extData.ReadUint8(&g.configId) {
+		return fullLen, errors.New("bad config ID")
+	}
+	// we don't write to CandidateConfigIds because we don't really want to reuse the same config_id
+
+	// GREASE the EncapsulatedKey
+	if !extData.ReadUint16LengthPrefixed(&ignored) {
+		return fullLen, errors.New("bad encapsulated key")
+	}
+	g.EncapsulatedKey = make([]byte, len(ignored))
+	n, err := rand.Read(g.EncapsulatedKey)
+	if err != nil {
+		return fullLen, fmt.Errorf("tls: generating grease ech encapsulated key: %w", err)
+	}
+	if n != len(g.EncapsulatedKey) {
+		return fullLen, fmt.Errorf("tls: generating grease ech encapsulated key: short read for %d bytes", len(ignored)-n)
+	}
+
+	// GREASE the payload
+	if !extData.ReadUint16LengthPrefixed(&ignored) {
+		return fullLen, errors.New("bad payload")
+	}
+	aead := hpke.AEAD(g.cipherSuite.AeadId)
+	g.CandidatePayloadLens = []uint16{uint16(len(ignored) - int(aead.CipherLen(0)))}
+
+	return fullLen, nil
+}
+
+// UnimplementedECHExtension is a placeholder for an ECH extension that is not implemented.
+// All implementations of EncryptedClientHelloExtension should embed this struct to ensure
+// forward compatibility.
 type UnimplementedECHExtension struct{}
 
+// writeToUConn implements TLSExtension.
 func (*UnimplementedECHExtension) writeToUConn(_ *UConn) error {
 	return errors.New("tls: unimplemented ECHExtension")
 }
 
+// Len implements TLSExtension.
 func (*UnimplementedECHExtension) Len() int {
 	return 0
 }
 
+// Read implements TLSExtension.
 func (*UnimplementedECHExtension) Read(_ []byte) (int, error) {
 	return 0, errors.New("tls: unimplemented ECHExtension")
 }
 
+// Configure implements EncryptedClientHelloExtension.
 func (*UnimplementedECHExtension) Configure([]ECHConfig) error {
 	return errors.New("tls: unimplemented ECHExtension")
 }
 
+// MarshalClientHello implements EncryptedClientHelloExtension.
 func (*UnimplementedECHExtension) MarshalClientHello(*UConn) error {
 	return errors.New("tls: unimplemented ECHExtension")
 }
 
+// mustEmbedUnimplementedECHExtension is a noop function but is required to
+// ensure forward compatibility.
 func (*UnimplementedECHExtension) mustEmbedUnimplementedECHExtension() {
 	panic("mustEmbedUnimplementedECHExtension() is not implemented")
 }
 
+// BoringGREASEECH returns a GREASE scheme BoringSSL uses by default.
 func BoringGREASEECH() *GREASEEncryptedClientHelloExtension {
 	return &GREASEEncryptedClientHelloExtension{
 		CandidateCipherSuites: []HPKESymmetricCipherSuite{
