@@ -43,6 +43,8 @@ func ExtensionFromID(id uint16) TLSExtension {
 		return &FakeTokenBindingExtension{}
 	case utlsExtensionCompressCertificate:
 		return &UtlsCompressCertExtension{}
+	case fakeRecordSizeLimit:
+		return &FakeRecordSizeLimitExtension{}
 	case fakeExtensionDelegatedCredentials:
 		return &FakeDelegatedCredentialsExtension{}
 	case extensionSessionTicket:
@@ -73,8 +75,8 @@ func ExtensionFromID(id uint16) TLSExtension {
 		return &FakeChannelIDExtension{true}
 	case fakeExtensionChannelID:
 		return &FakeChannelIDExtension{}
-	case fakeRecordSizeLimit:
-		return &FakeRecordSizeLimitExtension{}
+	case utlsExtensionECH:
+		return &GREASEEncryptedClientHelloExtension{}
 	case extensionRenegotiationInfo:
 		return &RenegotiationInfoExtension{}
 	default:
