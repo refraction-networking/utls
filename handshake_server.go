@@ -171,6 +171,13 @@ func (c *Conn) readClientHello(ctx context.Context) (*clientHelloMsg, error) {
 	c.in.version = c.vers
 	c.out.version = c.vers
 
+	// [UTLS SECTION BEGIN]
+	// Disable unsupported godebug package
+	// if c.config.MinVersion == 0 && c.vers < VersionTLS12 {
+	// 	tls10server.IncNonDefault()
+	// }
+	// [UTLS SECTION END]
+
 	return clientHello, nil
 }
 
@@ -368,6 +375,13 @@ func (hs *serverHandshakeState) pickCipherSuite() error {
 		return errors.New("tls: no cipher suite supported by both client and server")
 	}
 	c.cipherSuite = hs.suite.id
+
+	// [UTLS SECTION BEGIN]
+	// Disable unsupported godebug package
+	// if c.config.CipherSuites == nil && rsaKexCiphers[hs.suite.id] {
+	// 	tlsrsakex.IncNonDefault()
+	// }
+	// [UTLS SECTION END]
 
 	for _, id := range hs.clientHello.cipherSuites {
 		if id == TLS_FALLBACK_SCSV {
@@ -870,9 +884,12 @@ func (c *Conn) processCertsFromClient(certificate Certificate) error {
 			c.sendAlert(alertBadCertificate)
 			return errors.New("tls: failed to parse client certificate: " + err.Error())
 		}
-		if certs[i].PublicKeyAlgorithm == x509.RSA && certs[i].PublicKey.(*rsa.PublicKey).N.BitLen() > maxRSAKeySize {
-			c.sendAlert(alertBadCertificate)
-			return fmt.Errorf("tls: client sent certificate containing RSA key larger than %d bits", maxRSAKeySize)
+		if certs[i].PublicKeyAlgorithm == x509.RSA {
+			n := certs[i].PublicKey.(*rsa.PublicKey).N.BitLen()
+			if max, ok := checkKeySize(n); !ok {
+				c.sendAlert(alertBadCertificate)
+				return fmt.Errorf("tls: client sent certificate containing RSA key larger than %d bits", max)
+			}
 		}
 	}
 

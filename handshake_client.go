@@ -41,7 +41,7 @@ type clientHandshakeState struct {
 
 var testingOnlyForceClientHelloSignatureAlgorithms []SignatureScheme
 
-func (c *Conn) makeClientHello() (*clientHelloMsg, clientKeySharePrivate, error) {
+func (c *Conn) makeClientHello() (*clientHelloMsg, clientKeySharePrivate, error) { // [uTLS] using clientKeySharePrivate instead of ecdheKey
 	config := c.config
 
 	// [UTLS SECTION START]
@@ -132,19 +132,23 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, clientKeySharePrivate, error)
 	}
 
 	if hello.vers >= VersionTLS12 {
+		// hello.supportedSignatureAlgorithms = supportedSignatureAlgorithms()
 		hello.supportedSignatureAlgorithms = config.supportedSignatureAlgorithms() // [UTLS] ported from cloudflare/go
 	}
 	if testingOnlyForceClientHelloSignatureAlgorithms != nil {
 		hello.supportedSignatureAlgorithms = testingOnlyForceClientHelloSignatureAlgorithms
 	}
 
+	// var key *ecdh.PrivateKey
 	var secret clientKeySharePrivate // [UTLS]
 	if hello.supportedVersions[0] == VersionTLS13 {
 		// Reset the list of ciphers when the client only supports TLS 1.3.
 		if len(hello.supportedVersions) == 1 {
 			hello.cipherSuites = nil
 		}
-		if hasAESGCMHardwareSupport {
+		if needFIPS() {
+			hello.cipherSuites = append(hello.cipherSuites, defaultCipherSuitesTLS13FIPS...)
+		} else if hasAESGCMHardwareSupport {
 			hello.cipherSuites = append(hello.cipherSuites, defaultCipherSuitesTLS13...)
 		} else {
 			hello.cipherSuites = append(hello.cipherSuites, defaultCipherSuitesTLS13NoAES...)
@@ -201,7 +205,8 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 	// need to be reset.
 	c.didResume = false
 
-	hello, keySharePrivate, err := c.makeClientHello()
+	// hello, ecdheKey, err := c.makeClientHello()
+	hello, keySharePrivate, err := c.makeClientHello() // [uTLS] using keySharePrivate instead of ecdheKey
 	if err != nil {
 		return err
 	}
@@ -275,7 +280,7 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 			ctx:         ctx,
 			serverHello: serverHello,
 			hello:       hello,
-			// ecdheKey:    ecdheKey,
+			// ecdheKey:    ecdheKey, // [uTLS]
 			session:     session,
 			earlySecret: earlySecret,
 			binderKey:   binderKey,
@@ -471,6 +476,7 @@ func (c *Conn) loadSession(hello *clientHelloMsg) (
 	if err := hello.updateBinders(pskBinders); err != nil {
 		return nil, nil, nil, err
 	}
+
 	return
 }
 
@@ -585,6 +591,13 @@ func (hs *clientHandshakeState) pickCipherSuite() error {
 		hs.c.sendAlert(alertHandshakeFailure)
 		return errors.New("tls: server chose an unconfigured cipher suite")
 	}
+
+	// [UTLS SECTION START]
+	// Disable unsupported godebug packages
+	// if hs.c.config.CipherSuites == nil && rsaKexCiphers[hs.suite.id] {
+	// 	tlsrsakex.IncNonDefault()
+	// }
+	// [UTLS SECTION END]
 
 	hs.c.cipherSuite = hs.suite.id
 	return nil
@@ -1002,9 +1015,26 @@ func (hs *clientHandshakeState) sendFinished(out []byte) error {
 	return nil
 }
 
-// maxRSAKeySize is the maximum RSA key size in bits that we are willing
+// defaultMaxRSAKeySize is the maximum RSA key size in bits that we are willing
 // to verify the signatures of during a TLS handshake.
-const maxRSAKeySize = 8192
+const defaultMaxRSAKeySize = 8192
+
+// var tlsmaxrsasize = godebug.New("tlsmaxrsasize") // [uTLS] unused
+
+func checkKeySize(n int) (max int, ok bool) {
+	// [uTLS SECTION START]
+	// Disable the unsupported godebug package
+	// if v := tlsmaxrsasize.Value(); v != "" {
+	// 	if max, err := strconv.Atoi(v); err == nil {
+	// 		if (n <= max) != (n <= defaultMaxRSAKeySize) {
+	// 			tlsmaxrsasize.IncNonDefault()
+	// 		}
+	// 		return max, n <= max
+	// 	}
+	// }
+	// [uTLS SECTION END]
+	return defaultMaxRSAKeySize, n <= defaultMaxRSAKeySize
+}
 
 // verifyServerCertificate parses and verifies the provided chain, setting
 // c.verifiedChains and c.peerCertificates or sending the appropriate alert.
@@ -1017,9 +1047,12 @@ func (c *Conn) verifyServerCertificate(certificates [][]byte) error {
 			c.sendAlert(alertBadCertificate)
 			return errors.New("tls: failed to parse certificate from server: " + err.Error())
 		}
-		if cert.cert.PublicKeyAlgorithm == x509.RSA && cert.cert.PublicKey.(*rsa.PublicKey).N.BitLen() > maxRSAKeySize {
-			c.sendAlert(alertBadCertificate)
-			return fmt.Errorf("tls: server sent certificate containing RSA key larger than %d bits", maxRSAKeySize)
+		if cert.cert.PublicKeyAlgorithm == x509.RSA {
+			n := cert.cert.PublicKey.(*rsa.PublicKey).N.BitLen()
+			if max, ok := checkKeySize(n); !ok {
+				c.sendAlert(alertBadCertificate)
+				return fmt.Errorf("tls: server sent certificate containing RSA key larger than %d bits", max)
+			}
 		}
 		activeHandles[i] = cert
 		certs[i] = cert.cert
