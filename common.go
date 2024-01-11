@@ -1084,7 +1084,7 @@ func (c *Config) time() time.Time {
 	return t()
 }
 
-var tlsrsakex = godebug.New("tlsrsakex")
+// var tlsrsakex = godebug.New("tlsrsakex") // [UTLS] unsupported
 
 func (c *Config) cipherSuites() []uint16 {
 	if needFIPS() {
@@ -1093,9 +1093,13 @@ func (c *Config) cipherSuites() []uint16 {
 	if c.CipherSuites != nil {
 		return c.CipherSuites
 	}
-	if tlsrsakex.Value() == "1" {
-		return defaultCipherSuitesWithRSAKex
-	}
+
+	// [uTLS SECTION BEGIN]
+	// Disable unsupported godebug package
+	// if tlsrsakex.Value() == "1" {
+	// 	return defaultCipherSuitesWithRSAKex
+	// }
+	// [uTLS SECTION END]
 	return defaultCipherSuites
 }
 
@@ -1111,7 +1115,7 @@ var supportedVersions = []uint16{
 const roleClient = true
 const roleServer = false
 
-var tls10server = godebug.New("tls10server")
+// var tls10server = godebug.New("tls10server") // [UTLS] unsupported
 
 func (c *Config) supportedVersions(isClient bool) []uint16 {
 	versions := make([]uint16, 0, len(supportedVersions))
@@ -1120,9 +1124,15 @@ func (c *Config) supportedVersions(isClient bool) []uint16 {
 			continue
 		}
 		if (c == nil || c.MinVersion == 0) && v < VersionTLS12 {
-			if isClient || tls10server.Value() != "1" {
+			// [uTLS SECTION BEGIN]
+			// Disable unsupported godebug package
+			// if isClient || tls10server.Value() != "1" {
+			// 	continue
+			// }
+			if isClient {
 				continue
 			}
+			// [uTLS SECTION END]
 		}
 		if c != nil && c.MinVersion != 0 && v < c.MinVersion {
 			continue

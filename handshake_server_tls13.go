@@ -276,27 +276,6 @@ GroupSelection:
 		}
 	}
 
-	selectedProto, err := negotiateALPN(c.config.NextProtos, hs.clientHello.alpnProtocols, c.quic != nil)
-	if err != nil {
-		c.sendAlert(alertNoApplicationProtocol)
-		return err
-	}
-	c.clientProtocol = selectedProto
-
-	if c.quic != nil {
-		if hs.clientHello.quicTransportParameters == nil {
-			// RFC 9001 Section 8.2.
-			c.sendAlert(alertMissingExtension)
-			return errors.New("tls: client did not send a quic_transport_parameters extension")
-		}
-		c.quicSetTransportParameters(hs.clientHello.quicTransportParameters)
-	} else {
-		if hs.clientHello.quicTransportParameters != nil {
-			c.sendAlert(alertUnsupportedExtension)
-			return errors.New("tls: client sent an unexpected quic_transport_parameters extension")
-		}
-	}
-
 	c.serverName = hs.clientHello.serverName
 	return nil
 }

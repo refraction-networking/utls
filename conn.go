@@ -1610,7 +1610,7 @@ func (c *Conn) ConnectionState() ConnectionState {
 	return c.connectionStateLocked()
 }
 
-var tlsunsafeekm = godebug.New("tlsunsafeekm")
+// var tlsunsafeekm = godebug.New("tlsunsafeekm") // [uTLS] unsupportted
 
 func (c *Conn) connectionStateLocked() ConnectionState {
 	var state ConnectionState
@@ -1636,10 +1636,13 @@ func (c *Conn) connectionStateLocked() ConnectionState {
 		state.ekm = noEKMBecauseRenegotiation
 	} else if c.vers != VersionTLS13 && !c.extMasterSecret {
 		state.ekm = func(label string, context []byte, length int) ([]byte, error) {
-			if tlsunsafeekm.Value() == "1" {
-				tlsunsafeekm.IncNonDefault()
-				return c.ekm(label, context, length)
-			}
+			// [uTLS SECTION START]
+			// Disabling unsupported godebug package
+			// if tlsunsafeekm.Value() == "1" {
+			// 	tlsunsafeekm.IncNonDefault()
+			// 	return c.ekm(label, context, length)
+			// }
+			// [uTLS SECTION END]
 			return noEKMBecauseNoEMS(label, context, length)
 		}
 	} else {
