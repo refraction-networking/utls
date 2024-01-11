@@ -87,7 +87,7 @@ type clientHandshakeStateTLS13 struct {
 	session       *SessionState
 	earlySecret   []byte
 	binderKey     []byte
-	selectedGroup CurveID
+	selectedGroup CurveID // [uTLS] ported from cloudflare/go
 
 	certReq       *certificateRequestMsgTLS13
 	usingPSK      bool

@@ -165,6 +165,9 @@ func (hs *serverHandshakeStateTLS13) processClientHello() error {
 	if !hasAESGCMHardwareSupport || !aesgcmPreferred(hs.clientHello.cipherSuites) {
 		preferenceList = defaultCipherSuitesTLS13NoAES
 	}
+	if needFIPS() {
+		preferenceList = defaultCipherSuitesTLS13FIPS
+	}
 	for _, suiteID := range preferenceList {
 		hs.suite = mutualCipherSuiteTLS13(hs.clientHello.cipherSuites, suiteID)
 		if hs.suite != nil {
@@ -213,6 +216,8 @@ GroupSelection:
 		clientKeyShare = &hs.clientHello.keyShares[0]
 	}
 
+	// [uTLS SECTION BEGIN]
+	// ported from cloudflare/go
 	if _, ok := curveForCurveID(selectedGroup); selectedGroup != X25519 && curveIdToCirclScheme(selectedGroup) == nil && !ok {
 		c.sendAlert(alertInternalError)
 		return errors.New("tls: CurvePreferences includes unsupported curve")
@@ -240,6 +245,35 @@ GroupSelection:
 	if hs.sharedKey == nil {
 		c.sendAlert(alertIllegalParameter)
 		return errors.New("tls: invalid client key share")
+	}
+	// [uTLS SECTION END]
+
+	selectedProto, err := negotiateALPN(c.config.NextProtos, hs.clientHello.alpnProtocols, c.quic != nil)
+	if err != nil {
+		c.sendAlert(alertNoApplicationProtocol)
+		return err
+	}
+	c.clientProtocol = selectedProto
+
+	if c.quic != nil {
+		// RFC 9001 Section 4.2: Clients MUST NOT offer TLS versions older than 1.3.
+		for _, v := range hs.clientHello.supportedVersions {
+			if v < VersionTLS13 {
+				c.sendAlert(alertProtocolVersion)
+				return errors.New("tls: client offered TLS version older than TLS 1.3")
+			}
+		}
+		// RFC 9001 Section 8.2.
+		if hs.clientHello.quicTransportParameters == nil {
+			c.sendAlert(alertMissingExtension)
+			return errors.New("tls: client did not send a quic_transport_parameters extension")
+		}
+		c.quicSetTransportParameters(hs.clientHello.quicTransportParameters)
+	} else {
+		if hs.clientHello.quicTransportParameters != nil {
+			c.sendAlert(alertUnsupportedExtension)
+			return errors.New("tls: client sent an unexpected quic_transport_parameters extension")
+		}
 	}
 
 	selectedProto, err := negotiateALPN(c.config.NextProtos, hs.clientHello.alpnProtocols, c.quic != nil)
