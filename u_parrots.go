@@ -6,11 +6,14 @@ package tls
 
 import (
 	"crypto/ecdh"
+	crand "crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"math/big"
 	"math/rand"
 	"sort"
 	"strconv"
@@ -2558,12 +2561,24 @@ func ShuffleChromeTLSExtensions(exts []TLSExtension) []TLSExtension {
 	}
 
 	// Shuffle other extensions
-	rand.Shuffle(len(exts), func(i, j int) {
-		if skipShuf(i, exts) || skipShuf(j, exts) {
-			return // do not shuffle some of the extensions
-		}
-		exts[i], exts[j] = exts[j], exts[i]
-	})
+	randInt64, err := crand.Int(crand.Reader, big.NewInt(math.MaxInt64))
+	if err != nil {
+		// warning: random could be deterministic
+		rand.Shuffle(len(exts), func(i, j int) {
+			if skipShuf(i, exts) || skipShuf(j, exts) {
+				return // do not shuffle some of the extensions
+			}
+			exts[i], exts[j] = exts[j], exts[i]
+		})
+		fmt.Println("Warning: failed to use a cryptographically secure random number generator. The shuffle can be deterministic.")
+	} else {
+		rand.New(rand.NewSource(randInt64.Int64())).Shuffle(len(exts), func(i, j int) {
+			if skipShuf(i, exts) || skipShuf(j, exts) {
+				return // do not shuffle some of the extensions
+			}
+			exts[i], exts[j] = exts[j], exts[i]
+		})
+	}
 
 	return exts
 }
