@@ -1563,11 +1563,11 @@ type RenegotiationInfoExtension struct {
 	// If this is the initial handshake for a connection, then the
 	// "renegotiated_connection" field is of zero length in both the
 	// ClientHello and the ServerHello.
-	// RenegotiatedConnection []byte
+	RenegotiatedConnection []byte
 }
 
 func (e *RenegotiationInfoExtension) Len() int {
-	return 5 // + len(e.RenegotiatedConnection)
+	return 5 + len(e.RenegotiatedConnection)
 }
 
 func (e *RenegotiationInfoExtension) Read(b []byte) (int, error) {
@@ -1575,15 +1575,15 @@ func (e *RenegotiationInfoExtension) Read(b []byte) (int, error) {
 		return 0, io.ErrShortBuffer
 	}
 
-	// dataLen := len(e.RenegotiatedConnection)
-	extBodyLen := 1 // + len(dataLen)
+	dataLen := len(e.RenegotiatedConnection)
+	extBodyLen := 1 + dataLen
 
 	b[0] = byte(extensionRenegotiationInfo >> 8)
 	b[1] = byte(extensionRenegotiationInfo & 0xff)
 	b[2] = byte(extBodyLen >> 8)
 	b[3] = byte(extBodyLen)
-	// b[4] = byte(dataLen)
-	// copy(b[5:], e.RenegotiatedConnection)
+	b[4] = byte(dataLen)
+	copy(b[5:], e.RenegotiatedConnection)
 
 	return e.Len(), io.EOF
 }
@@ -1593,7 +1593,7 @@ func (e *RenegotiationInfoExtension) UnmarshalJSON(_ []byte) error {
 	return nil
 }
 
-func (e *RenegotiationInfoExtension) Write(_ []byte) (int, error) {
+func (e *RenegotiationInfoExtension) Write(b []byte) (int, error) {
 	e.Renegotiation = RenegotiateOnceAsClient // none empty or other modes are unsupported
 	// extData := cryptobyte.String(b)
 	// var renegotiatedConnection cryptobyte.String
@@ -1602,7 +1602,10 @@ func (e *RenegotiationInfoExtension) Write(_ []byte) (int, error) {
 	// }
 	// e.RenegotiatedConnection = make([]byte, len(renegotiatedConnection))
 	// copy(e.RenegotiatedConnection, renegotiatedConnection)
-	return 0, nil
+
+	// we don't really want to parse it at all.
+
+	return len(b), nil
 }
 
 func (e *RenegotiationInfoExtension) writeToUConn(uc *UConn) error {
@@ -1612,6 +1615,10 @@ func (e *RenegotiationInfoExtension) writeToUConn(uc *UConn) error {
 		fallthrough
 	case RenegotiateFreelyAsClient:
 		uc.HandshakeState.Hello.SecureRenegotiationSupported = true
+		// TODO: don't do backward propagation here
+		if uc.handshakes > 0 {
+			e.RenegotiatedConnection = uc.clientFinished[:]
+		}
 	case RenegotiateNever:
 	default:
 	}
