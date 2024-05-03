@@ -2672,12 +2672,21 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 			hello.CipherSuites[i] = GetBoringGREASEValue(uconn.greaseSeed, ssl_grease_cipher)
 		}
 	}
-	var sessionID [32]byte
-	_, err = io.ReadFull(uconn.config.rand(), sessionID[:])
-	if err != nil {
-		return err
+
+	// A random session ID is used to detect when the server accepted a ticket
+	// and is resuming a session (see RFC 5077). In TLS 1.3, it's always set as
+	// a compatibility measure (see RFC 8446, Section 4.1.2).
+	//
+	// The session ID is not set for QUIC connections (see RFC 9001, Section 8.4).
+	if uconn.quic == nil {
+		var sessionID [32]byte
+		_, err = io.ReadFull(uconn.config.rand(), sessionID[:])
+		if err != nil {
+			return err
+		}
+		uconn.HandshakeState.Hello.SessionId = sessionID[:]
 	}
-	uconn.HandshakeState.Hello.SessionId = sessionID[:]
+
 	uconn.Extensions = make([]TLSExtension, len(p.Extensions))
 	copy(uconn.Extensions, p.Extensions)
 
