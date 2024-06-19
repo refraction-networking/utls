@@ -125,21 +125,27 @@ func (uconn *UConn) BuildHandshakeState() error {
 			return err
 		}
 
-		err = uconn.uLoadSession()
-		if err != nil {
-			return err
-		}
-
 		err = uconn.MarshalClientHello()
 		if err != nil {
 			return err
 		}
 
-		uconn.uApplyPatch()
-
-		uconn.sessionController.finalCheck()
-		uconn.clientHelloBuildStatus = BuildByUtls
 	}
+	return nil
+}
+
+func (uconn *UConn) lockSessionState() error {
+
+	err := uconn.uLoadSession()
+	if err != nil {
+		return err
+	}
+
+	uconn.uApplyPatch()
+
+	uconn.sessionController.finalCheck()
+	uconn.clientHelloBuildStatus = BuildByUtls
+
 	return nil
 }
 
@@ -355,6 +361,10 @@ func (c *UConn) handshakeContext(ctx context.Context) (ret error) {
 	// [uTLS section begins]
 	if c.isClient {
 		err := c.BuildHandshakeState()
+		if err != nil {
+			return err
+		}
+		err = c.lockSessionState()
 		if err != nil {
 			return err
 		}
@@ -981,6 +991,9 @@ func (c *UConn) handleRenegotiation() error {
 
 	// [uTLS section begins]
 	if err = c.BuildHandshakeState(); err != nil {
+		return err
+	}
+	if err = c.lockSessionState(); err != nil {
 		return err
 	}
 	// [uTLS section ends]

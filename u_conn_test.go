@@ -512,6 +512,11 @@ func (test *clientTest) runUTLS(t *testing.T, write bool, hello helloStrategy, o
 			t.Errorf("Client.BuildHandshakeState() failed: %s", err)
 			return
 		}
+		err = client.lockSessionState()
+		if err != nil {
+			t.Errorf("Client.lockSessionState() failed: %s", err)
+			return
+		}
 		// TODO: fix this name hack if we ever decide to use non-standard testing object
 		err = client.SetClientRandom([]byte("Custom ClientRandom h^xbw8bf0sn3"))
 		if err != nil {
