@@ -138,6 +138,7 @@ func HttpGetTicket(hostname string, addr string) (*http.Response, error) {
 	sessionState := tls.MakeClientSessionState(sessionTicket, uint16(tls.VersionTLS12),
 		tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
 		masterSecret,
+		false,
 		nil, nil)
 
 	err = uTlsConn.SetSessionState(sessionState)
@@ -172,6 +173,7 @@ func HttpGetTicketHelloID(hostname string, addr string, helloID tls.ClientHelloI
 	sessionState := tls.MakeClientSessionState(sessionTicket, uint16(tls.VersionTLS12),
 		tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
 		masterSecret,
+		false,
 		nil, nil)
 
 	uTlsConn.SetSessionState(sessionState)
