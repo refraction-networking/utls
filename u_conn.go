@@ -83,9 +83,33 @@ func UClient(conn net.Conn, config *Config, clientHelloID ClientHelloID) *UConn 
 //	[each call] marshal ClientHello.
 //
 // BuildHandshakeState is automatically called before uTLS performs handshake,
-// amd should only be called explicitly to inspect/change fields of
+// and should only be called explicitly to inspect/change fields of
 // default/mimicked ClientHello.
+// With the excpetion of session ticket and psk extensions, which cannot be changed
+// after calling BuildHandshakeState, all other fields can be modified.
 func (uconn *UConn) BuildHandshakeState() error {
+	err := uconn.BuildHandshakeStateWithoutSession()
+	if err != nil {
+		return err
+	}
+	if uconn.ClientHelloID != HelloGolang {
+		err := uconn.uLoadSession()
+		if err != nil {
+			return err
+		}
+
+		uconn.uApplyPatch()
+
+		uconn.sessionController.finalCheck()
+	}
+	return nil
+}
+
+// BuildHandshakeStateWithoutSession is the same as BuildHandshakeState, but does not
+// set the session. This is only useful when you want to inspect the ClientHello before
+// setting the session manually through SetSessionTicketExtension or SetPSKExtension.
+// BuildHandshakeState is automatically called before uTLS performs handshake.
+func (uconn *UConn) BuildHandshakeStateWithoutSession() error {
 	if uconn.ClientHelloID == HelloGolang {
 		if uconn.clientHelloBuildStatus == BuildByGoTLS {
 			return nil
@@ -129,23 +153,8 @@ func (uconn *UConn) BuildHandshakeState() error {
 		if err != nil {
 			return err
 		}
-
+		uconn.clientHelloBuildStatus = BuildByUtls
 	}
-	return nil
-}
-
-func (uconn *UConn) lockSessionState() error {
-
-	err := uconn.uLoadSession()
-	if err != nil {
-		return err
-	}
-
-	uconn.uApplyPatch()
-
-	uconn.sessionController.finalCheck()
-	uconn.clientHelloBuildStatus = BuildByUtls
-
 	return nil
 }
 
@@ -361,10 +370,6 @@ func (c *UConn) handshakeContext(ctx context.Context) (ret error) {
 	// [uTLS section begins]
 	if c.isClient {
 		err := c.BuildHandshakeState()
-		if err != nil {
-			return err
-		}
-		err = c.lockSessionState()
 		if err != nil {
 			return err
 		}
@@ -991,9 +996,6 @@ func (c *UConn) handleRenegotiation() error {
 
 	// [uTLS section begins]
 	if err = c.BuildHandshakeState(); err != nil {
-		return err
-	}
-	if err = c.lockSessionState(); err != nil {
 		return err
 	}
 	// [uTLS section ends]
