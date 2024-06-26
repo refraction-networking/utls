@@ -88,21 +88,7 @@ func UClient(conn net.Conn, config *Config, clientHelloID ClientHelloID) *UConn 
 // With the excpetion of session ticket and psk extensions, which cannot be changed
 // after calling BuildHandshakeState, all other fields can be modified.
 func (uconn *UConn) BuildHandshakeState() error {
-	err := uconn.BuildHandshakeStateWithoutSession()
-	if err != nil {
-		return err
-	}
-	if uconn.ClientHelloID != HelloGolang {
-		err := uconn.uLoadSession()
-		if err != nil {
-			return err
-		}
-
-		uconn.uApplyPatch()
-
-		uconn.sessionController.finalCheck()
-	}
-	return nil
+	return uconn.buildHandshakeState(true)
 }
 
 // BuildHandshakeStateWithoutSession is the same as BuildHandshakeState, but does not
@@ -110,6 +96,10 @@ func (uconn *UConn) BuildHandshakeState() error {
 // setting the session manually through SetSessionTicketExtension or SetPSKExtension.
 // BuildHandshakeState is automatically called before uTLS performs handshake.
 func (uconn *UConn) BuildHandshakeStateWithoutSession() error {
+	return uconn.buildHandshakeState(false)
+}
+
+func (uconn *UConn) buildHandshakeState(loadSession bool) error {
 	if uconn.ClientHelloID == HelloGolang {
 		if uconn.clientHelloBuildStatus == BuildByGoTLS {
 			return nil
@@ -149,10 +139,23 @@ func (uconn *UConn) BuildHandshakeStateWithoutSession() error {
 			return err
 		}
 
+		if loadSession {
+			err = uconn.uLoadSession()
+			if err != nil {
+				return err
+			}
+		}
+
 		err = uconn.MarshalClientHello()
 		if err != nil {
 			return err
 		}
+
+		if loadSession {
+			uconn.uApplyPatch()
+			uconn.sessionController.finalCheck()
+		}
+
 		uconn.clientHelloBuildStatus = BuildByUtls
 	}
 	return nil
