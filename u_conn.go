@@ -83,9 +83,23 @@ func UClient(conn net.Conn, config *Config, clientHelloID ClientHelloID) *UConn 
 //	[each call] marshal ClientHello.
 //
 // BuildHandshakeState is automatically called before uTLS performs handshake,
-// amd should only be called explicitly to inspect/change fields of
+// and should only be called explicitly to inspect/change fields of
 // default/mimicked ClientHello.
+// With the excpetion of session ticket and psk extensions, which cannot be changed
+// after calling BuildHandshakeState, all other fields can be modified.
 func (uconn *UConn) BuildHandshakeState() error {
+	return uconn.buildHandshakeState(true)
+}
+
+// BuildHandshakeStateWithoutSession is the same as BuildHandshakeState, but does not
+// set the session. This is only useful when you want to inspect the ClientHello before
+// setting the session manually through SetSessionTicketExtension or SetPSKExtension.
+// BuildHandshakeState is automatically called before uTLS performs handshake.
+func (uconn *UConn) BuildHandshakeStateWithoutSession() error {
+	return uconn.buildHandshakeState(false)
+}
+
+func (uconn *UConn) buildHandshakeState(loadSession bool) error {
 	if uconn.ClientHelloID == HelloGolang {
 		if uconn.clientHelloBuildStatus == BuildByGoTLS {
 			return nil
@@ -125,9 +139,11 @@ func (uconn *UConn) BuildHandshakeState() error {
 			return err
 		}
 
-		err = uconn.uLoadSession()
-		if err != nil {
-			return err
+		if loadSession {
+			err = uconn.uLoadSession()
+			if err != nil {
+				return err
+			}
 		}
 
 		err = uconn.MarshalClientHello()
@@ -135,9 +151,11 @@ func (uconn *UConn) BuildHandshakeState() error {
 			return err
 		}
 
-		uconn.uApplyPatch()
+		if loadSession {
+			uconn.uApplyPatch()
+			uconn.sessionController.finalCheck()
+		}
 
-		uconn.sessionController.finalCheck()
 		uconn.clientHelloBuildStatus = BuildByUtls
 	}
 	return nil

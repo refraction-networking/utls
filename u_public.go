@@ -617,6 +617,9 @@ func (PSS PskIdentities) ToPrivate() []pskIdentity {
 
 // ClientSessionState is public, but all its fields are private. Let's add setters, getters and constructor
 
+// TODO! can we change this enought (or export SessionState),
+// such that we wouldn't need to fork crypto/tls?
+
 // ClientSessionState contains the state needed by clients to resume TLS sessions.
 func MakeClientSessionState(
 	SessionTicket []uint8,
@@ -625,6 +628,7 @@ func MakeClientSessionState(
 	MasterSecret []byte,
 	ServerCertificates []*x509.Certificate,
 	VerifiedChains [][]*x509.Certificate) *ClientSessionState {
+	// TODO: Add EMS to this constructor in uTLS v2
 	css := &ClientSessionState{
 		ticket: SessionTicket,
 		session: &SessionState{
@@ -658,6 +662,10 @@ func (css *ClientSessionState) MasterSecret() []byte {
 	return css.session.secret
 }
 
+func (css *ClientSessionState) EMS() bool {
+	return css.session.extMasterSecret
+}
+
 // Certificate chain presented by the server
 func (css *ClientSessionState) ServerCertificates() []*x509.Certificate {
 	return css.session.peerCertificates
@@ -688,6 +696,12 @@ func (css *ClientSessionState) SetMasterSecret(MasterSecret []byte) {
 		css.session = &SessionState{}
 	}
 	css.session.secret = MasterSecret
+}
+func (css *ClientSessionState) SetEMS(ems bool) {
+	if css.session == nil {
+		css.session = &SessionState{}
+	}
+	css.session.extMasterSecret = ems
 }
 func (css *ClientSessionState) SetServerCertificates(ServerCertificates []*x509.Certificate) {
 	if css.session == nil {
