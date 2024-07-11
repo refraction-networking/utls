@@ -691,6 +691,12 @@ func (css *ClientSessionState) SetCipherSuite(CipherSuite uint16) {
 	}
 	css.session.cipherSuite = CipherSuite
 }
+func (css *ClientSessionState) SetCreatedAt(createdAt uint64) {
+	if css.session == nil {
+		css.session = &SessionState{}
+	}
+	css.session.createdAt = createdAt
+}
 func (css *ClientSessionState) SetMasterSecret(MasterSecret []byte) {
 	if css.session == nil {
 		css.session = &SessionState{}
@@ -714,6 +720,18 @@ func (css *ClientSessionState) SetVerifiedChains(VerifiedChains [][]*x509.Certif
 		css.session = &SessionState{}
 	}
 	css.session.verifiedChains = VerifiedChains
+}
+func (css *ClientSessionState) SetUseBy(useBy uint64) {
+	if css.session == nil {
+		css.session = &SessionState{}
+	}
+	css.session.useBy = useBy
+}
+func (css *ClientSessionState) SetAgeAdd(ageAdd uint32) {
+	if css.session == nil {
+		css.session = &SessionState{}
+	}
+	css.session.ageAdd = ageAdd
 }
 
 // TicketKey is the internal representation of a session ticket key.
