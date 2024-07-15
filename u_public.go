@@ -617,9 +617,6 @@ func (PSS PskIdentities) ToPrivate() []pskIdentity {
 
 // ClientSessionState is public, but all its fields are private. Let's add setters, getters and constructor
 
-// TODO! can we change this enought (or export SessionState),
-// such that we wouldn't need to fork crypto/tls?
-
 // ClientSessionState contains the state needed by clients to resume TLS sessions.
 func MakeClientSessionState(
 	SessionTicket []uint8,
