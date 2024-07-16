@@ -223,7 +223,7 @@ func (s *sessionController) shouldUpdateBinders() bool {
 
 func (s *sessionController) updateBinders() {
 	uAssert(s.shouldUpdateBinders(), "tls: updateBinders failed: shouldn't update binders")
-	s.pskExtension.PatchBuiltHello(s.uconnRef.HandshakeState.Hello)
+	s.pskExtension.PatchBuiltHello(s.uconnRef.HandshakeState.Hello) // bugrisk: retured error is ignored
 }
 
 func (s *sessionController) overrideExtension(extension Initializable, override func(), initializedState sessionControllerState) error {
