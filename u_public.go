@@ -676,54 +676,63 @@ func (css *ClientSessionState) VerifiedChains() [][]*x509.Certificate {
 func (css *ClientSessionState) SetSessionTicket(SessionTicket []uint8) {
 	css.ticket = SessionTicket
 }
+
 func (css *ClientSessionState) SetVers(Vers uint16) {
 	if css.session == nil {
 		css.session = &SessionState{}
 	}
 	css.session.version = Vers
 }
+
 func (css *ClientSessionState) SetCipherSuite(CipherSuite uint16) {
 	if css.session == nil {
 		css.session = &SessionState{}
 	}
 	css.session.cipherSuite = CipherSuite
 }
+
 func (css *ClientSessionState) SetCreatedAt(createdAt uint64) {
 	if css.session == nil {
 		css.session = &SessionState{}
 	}
 	css.session.createdAt = createdAt
 }
+
 func (css *ClientSessionState) SetMasterSecret(MasterSecret []byte) {
 	if css.session == nil {
 		css.session = &SessionState{}
 	}
 	css.session.secret = MasterSecret
 }
+
 func (css *ClientSessionState) SetEMS(ems bool) {
 	if css.session == nil {
 		css.session = &SessionState{}
 	}
 	css.session.extMasterSecret = ems
 }
+
 func (css *ClientSessionState) SetServerCertificates(ServerCertificates []*x509.Certificate) {
 	if css.session == nil {
 		css.session = &SessionState{}
 	}
 	css.session.peerCertificates = ServerCertificates
 }
+
 func (css *ClientSessionState) SetVerifiedChains(VerifiedChains [][]*x509.Certificate) {
 	if css.session == nil {
 		css.session = &SessionState{}
 	}
 	css.session.verifiedChains = VerifiedChains
 }
+
 func (css *ClientSessionState) SetUseBy(useBy uint64) {
 	if css.session == nil {
 		css.session = &SessionState{}
 	}
 	css.session.useBy = useBy
 }
+
 func (css *ClientSessionState) SetAgeAdd(ageAdd uint32) {
 	if css.session == nil {
 		css.session = &SessionState{}
