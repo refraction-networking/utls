@@ -2588,25 +2588,31 @@ func ShuffleChromeTLSExtensions(exts []TLSExtension) []TLSExtension {
 }
 
 func (uconn *UConn) applyPresetByID(id ClientHelloID) (err error) {
-	var spec ClientHelloSpec
-	uconn.ClientHelloID = id
-	// choose/generate the spec
-	switch id.Client {
-	case helloRandomized, helloRandomizedNoALPN, helloRandomizedALPN:
-		spec, err = uconn.generateRandomizedSpec()
-		if err != nil {
-			return err
+
+	if uconn.clientHelloSpec == nil {
+		var spec ClientHelloSpec
+		uconn.ClientHelloID = id
+
+		// choose/generate the spec
+		switch id.Client {
+		case helloRandomized, helloRandomizedNoALPN, helloRandomizedALPN:
+			spec, err = uconn.generateRandomizedSpec()
+			if err != nil {
+				return err
+			}
+		case helloCustom:
+			return nil
+		default:
+			spec, err = UTLSIdToSpec(id)
+			if err != nil {
+				return err
+			}
 		}
-	case helloCustom:
-		return nil
-	default:
-		spec, err = UTLSIdToSpec(id)
-		if err != nil {
-			return err
-		}
+
+		uconn.clientHelloSpec = &spec
 	}
 
-	return uconn.ApplyPreset(&spec)
+	return uconn.ApplyPreset(uconn.clientHelloSpec)
 }
 
 // ApplyPreset should only be used in conjunction with HelloCustom to apply custom specs.
