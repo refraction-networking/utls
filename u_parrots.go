@@ -2590,7 +2590,6 @@ func ShuffleChromeTLSExtensions(exts []TLSExtension) []TLSExtension {
 func (uconn *UConn) applyPresetByID(id ClientHelloID) (err error) {
 
 	if uconn.clientHelloSpec == nil {
-
 		var spec ClientHelloSpec
 		uconn.ClientHelloID = id
 
