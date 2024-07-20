@@ -219,7 +219,6 @@ func (c *Conn) makeClientHelloForApplyPreset() (*clientHelloMsg, clientKeyShareP
 		vers:                         clientHelloVersion,
 		compressionMethods:           []uint8{compressionNone},
 		random:                       make([]byte, 32),
-		extendedMasterSecret:         true,
 		ocspStapling:                 true,
 		scts:                         true,
 		serverName:                   hostnameInSNI(config.ServerName),
