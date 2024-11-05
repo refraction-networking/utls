@@ -11,9 +11,14 @@ require (
 	github.com/andybalholm/brotli v1.0.6
 	github.com/cloudflare/circl v1.3.7
 	github.com/klauspost/compress v1.17.4
-	golang.org/x/crypto v0.21.0
-	golang.org/x/net v0.23.0
-	golang.org/x/sys v0.18.0
+	golang.org/x/crypto v0.27.0
+	golang.org/x/net v0.29.0
+	golang.org/x/sys v0.25.0
 )
 
-require golang.org/x/text v0.14.0 // indirect
+require (
+	github.com/pion/dtls/v3 v3.0.3 // indirect
+	github.com/pion/logging v0.2.2 // indirect
+	github.com/pion/transport/v3 v3.0.7 // indirect
+	golang.org/x/text v0.18.0 // indirect
+)
