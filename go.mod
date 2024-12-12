@@ -8,7 +8,7 @@ retract (
 )
 
 require (
-	github.com/andybalholm/brotli v1.0.6
+	github.com/andybalholm/brotli v1.1.1
 	github.com/cloudflare/circl v1.3.7
 	github.com/klauspost/compress v1.17.4
 	golang.org/x/crypto v0.21.0
