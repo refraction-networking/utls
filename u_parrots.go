@@ -861,7 +861,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&SCTExtension{},
 				&KeyShareExtension{[]KeyShare{
 					{Group: CurveID(GREASE_PLACEHOLDER), Data: []byte{0}},
-					{Group: X25519Kyber768Draft00},
+					{Group: X25519MLKEM768},
 					{Group: X25519},
 				}},
 				&PSKKeyExchangeModesExtension{[]uint8{
