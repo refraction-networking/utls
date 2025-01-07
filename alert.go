@@ -95,7 +95,7 @@ var alertText = map[alert]string{
 	alertUnknownPSKIdentity:           "unknown PSK identity",
 	alertCertificateRequired:          "certificate required",
 	alertNoApplicationProtocol:        "no application protocol",
-	alertECHRequired:                  "ECH required",
+	alertECHRequired:                  "encrypted client hello required",
 }
 
 func (e alert) String() string {

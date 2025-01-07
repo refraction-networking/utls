@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/cloudflare/circl/kem"
+	"github.com/cloudflare/circl/kem/kyber/kyber768"
+	"github.com/refraction-networking/utls/internal/mlkem768"
 )
 
 // ClientHandshakeState includes both TLS 1.3-only and TLS 1.2-only states,
@@ -38,17 +40,20 @@ type PubClientHandshakeState struct {
 
 // TLS 1.3 only
 type TLS13OnlyState struct {
-	Suite           *PubCipherSuiteTLS13
+	// Deprecated: Use KeyShareKeys instead.
 	EcdheKey        *ecdh.PrivateKey
 	KeySharesParams *KeySharesParameters
 	KEMKey          *KemPrivateKey
-	EarlySecret     []byte
-	BinderKey       []byte
-	CertReq         *CertificateRequestMsgTLS13
-	UsingPSK        bool // don't set this field when building client hello
-	SentDummyCCS    bool
-	Transcript      hash.Hash
-	TrafficSecret   []byte // client_application_traffic_secret_0
+
+	KeyShareKeys  *KeySharePrivateKeys
+	Suite         *PubCipherSuiteTLS13
+	EarlySecret   []byte
+	BinderKey     []byte
+	CertReq       *CertificateRequestMsgTLS13
+	UsingPSK      bool // don't set this field when building client hello
+	SentDummyCCS  bool
+	Transcript    hash.Hash
+	TrafficSecret []byte // client_application_traffic_secret_0
 }
 
 // TLS 1.2 and before only
@@ -57,17 +62,58 @@ type TLS12OnlyState struct {
 	Suite        PubCipherSuite
 }
 
+func mlkemCirclToGo(circlKey kem.PrivateKey) (*mlkem768.DecapsulationKey, error) {
+	encodedKey, err := circlKey.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+
+	return mlkem768.NewKeyFromExtendedEncoding(encodedKey)
+}
+
+func (chs *TLS13OnlyState) private13KeyShareKeys() *keySharePrivateKeys {
+	if chs.KeyShareKeys != nil {
+		return chs.KeyShareKeys.ToPrivate()
+	}
+
+	if chs.KEMKey != nil {
+		if key, err := mlkemCirclToGo(chs.KEMKey.SecretKey); err == nil {
+			return &keySharePrivateKeys{
+				kyber: key,
+			}
+		}
+	}
+
+	if chs.EcdheKey != nil {
+		return &keySharePrivateKeys{
+			ecdhe: chs.EcdheKey,
+		}
+	}
+
+	return nil
+}
+
+func (ksp *keySharePrivateKeys) publicKEMKey() *KemPrivateKey {
+	if ksp.kyber != nil {
+		if privkey, err := kyber768.Scheme().UnmarshalBinaryPrivateKey(ksp.kyber.Bytes()); err == nil {
+			return &KemPrivateKey{
+				SecretKey: privkey,
+			}
+		}
+	}
+
+	return nil
+}
+
 func (chs *PubClientHandshakeState) toPrivate13() *clientHandshakeStateTLS13 {
 	if chs == nil {
 		return nil
 	} else {
 		return &clientHandshakeStateTLS13{
-			c:               chs.C,
-			serverHello:     chs.ServerHello.getPrivatePtr(),
-			hello:           chs.Hello.getPrivatePtr(),
-			ecdheKey:        chs.State13.EcdheKey,
-			keySharesParams: chs.State13.KeySharesParams,
-			kemKey:          chs.State13.KEMKey.ToPrivate(),
+			c:            chs.C,
+			serverHello:  chs.ServerHello.getPrivatePtr(),
+			hello:        chs.Hello.getPrivatePtr(),
+			keyShareKeys: chs.State13.private13KeyShareKeys(),
 
 			session:     chs.Session,
 			earlySecret: chs.State13.EarlySecret,
@@ -92,8 +138,8 @@ func (chs13 *clientHandshakeStateTLS13) toPublic13() *PubClientHandshakeState {
 	} else {
 		tls13State := TLS13OnlyState{
 			KeySharesParams: chs13.keySharesParams,
-			EcdheKey:        chs13.ecdheKey,
-			KEMKey:          chs13.kemKey.ToPublic(),
+			EcdheKey:        chs13.keyShareKeys.ecdhe,
+			KEMKey:          chs13.keyShareKeys.publicKEMKey(),
 			EarlySecret:     chs13.earlySecret,
 			BinderKey:       chs13.binderKey,
 			CertReq:         chs13.certReq.toPublic(),
@@ -168,7 +214,9 @@ func (chs12 *clientHandshakeState) toPublic12() *PubClientHandshakeState {
 // }
 
 type CertificateRequestMsgTLS13 struct {
-	Raw                              []byte
+	// Deprecated: crypto/tls no longer use this variable
+	Raw []byte
+
 	OcspStapling                     bool
 	Scts                             bool
 	SupportedSignatureAlgorithms     []SignatureScheme
@@ -180,8 +228,13 @@ func (crm *certificateRequestMsgTLS13) toPublic() *CertificateRequestMsgTLS13 {
 	if crm == nil {
 		return nil
 	} else {
+		rawBytes := []byte{}
+		if raw, err := crm.marshal(); err != nil {
+			rawBytes = raw
+		}
+
 		return &CertificateRequestMsgTLS13{
-			Raw:                              crm.raw,
+			Raw:                              rawBytes,
 			OcspStapling:                     crm.ocspStapling,
 			Scts:                             crm.scts,
 			SupportedSignatureAlgorithms:     crm.supportedSignatureAlgorithms,
@@ -196,7 +249,6 @@ func (crm *CertificateRequestMsgTLS13) toPrivate() *certificateRequestMsgTLS13 {
 		return nil
 	} else {
 		return &certificateRequestMsgTLS13{
-			raw:                              crm.Raw,
 			ocspStapling:                     crm.OcspStapling,
 			scts:                             crm.Scts,
 			supportedSignatureAlgorithms:     crm.SupportedSignatureAlgorithms,
@@ -240,7 +292,7 @@ func (c *PubCipherSuiteTLS13) toPrivate() *cipherSuiteTLS13 {
 }
 
 type PubServerHelloMsg struct {
-	Raw                          []byte
+	Raw                          []byte // renamed to serverHelloMsg.original in crypto/tls
 	Vers                         uint16
 	Random                       []byte
 	SessionId                    []byte
@@ -271,7 +323,7 @@ func (shm *PubServerHelloMsg) getPrivatePtr() *serverHelloMsg {
 		return nil
 	} else {
 		return &serverHelloMsg{
-			raw:                          shm.Raw,
+			original:                     shm.Raw,
 			vers:                         shm.Vers,
 			random:                       shm.Random,
 			sessionId:                    shm.SessionId,
@@ -301,7 +353,7 @@ func (shm *serverHelloMsg) getPublicPtr() *PubServerHelloMsg {
 		return nil
 	} else {
 		return &PubServerHelloMsg{
-			Raw:                          shm.raw,
+			Raw:                          shm.original,
 			Vers:                         shm.vers,
 			Random:                       shm.random,
 			SessionId:                    shm.sessionId,
@@ -327,7 +379,7 @@ func (shm *serverHelloMsg) getPublicPtr() *PubServerHelloMsg {
 }
 
 type PubClientHelloMsg struct {
-	Raw                          []byte
+	Raw                          []byte // renamed to serverHelloMsg.original in crypto/tls
 	Vers                         uint16
 	Random                       []byte
 	SessionId                    []byte
@@ -366,7 +418,7 @@ func (chm *PubClientHelloMsg) getPrivatePtr() *clientHelloMsg {
 		return nil
 	} else {
 		private := &clientHelloMsg{
-			raw:                              chm.Raw,
+			original:                         chm.Raw,
 			vers:                             chm.Vers,
 			random:                           chm.Random,
 			sessionId:                        chm.SessionId,
@@ -415,7 +467,7 @@ func (chm *clientHelloMsg) getPublicPtr() *PubClientHelloMsg {
 		return nil
 	} else {
 		return &PubClientHelloMsg{
-			Raw:                          chm.raw,
+			Raw:                          chm.original,
 			Vers:                         chm.vers,
 			Random:                       chm.random,
 			SessionId:                    chm.sessionId,
@@ -627,13 +679,13 @@ func MakeClientSessionState(
 	VerifiedChains [][]*x509.Certificate) *ClientSessionState {
 	// TODO: Add EMS to this constructor in uTLS v2
 	css := &ClientSessionState{
-		ticket: SessionTicket,
 		session: &SessionState{
 			version:          Vers,
 			cipherSuite:      CipherSuite,
 			secret:           MasterSecret,
 			peerCertificates: ServerCertificates,
 			verifiedChains:   VerifiedChains,
+			ticket:           SessionTicket,
 		},
 	}
 	return css
@@ -641,7 +693,7 @@ func MakeClientSessionState(
 
 // Encrypted ticket used for session resumption with server
 func (css *ClientSessionState) SessionTicket() []uint8 {
-	return css.ticket
+	return css.session.ticket
 }
 
 // SSL/TLS version negotiated for the session
@@ -674,7 +726,7 @@ func (css *ClientSessionState) VerifiedChains() [][]*x509.Certificate {
 }
 
 func (css *ClientSessionState) SetSessionTicket(SessionTicket []uint8) {
-	css.ticket = SessionTicket
+	css.session.ticket = SessionTicket
 }
 
 func (css *ClientSessionState) SetVers(Vers uint16) {
@@ -815,5 +867,27 @@ func (kpk *kemPrivateKey) ToPublic() *KemPrivateKey {
 			SecretKey: kpk.secretKey,
 			CurveID:   kpk.curveID,
 		}
+	}
+}
+
+type KeySharePrivateKeys struct {
+	CurveID CurveID
+	Ecdhe   *ecdh.PrivateKey
+	Kyber   *mlkem768.DecapsulationKey
+}
+
+func (ksp *KeySharePrivateKeys) ToPrivate() *keySharePrivateKeys {
+	return &keySharePrivateKeys{
+		curveID: ksp.CurveID,
+		ecdhe:   ksp.Ecdhe,
+		kyber:   ksp.Kyber,
+	}
+}
+
+func (ksp *keySharePrivateKeys) ToPublic() *KeySharePrivateKeys {
+	return &KeySharePrivateKeys{
+		CurveID: ksp.curveID,
+		Ecdhe:   ksp.ecdhe,
+		Kyber:   ksp.kyber,
 	}
 }

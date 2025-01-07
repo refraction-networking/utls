@@ -9,13 +9,14 @@ import (
 	"bytes"
 	"context"
 	"crypto/cipher"
-	"crypto/ecdh"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"hash"
 	"net"
 	"strconv"
+
+	"github.com/cloudflare/circl/kem/mlkem/mlkem768"
 )
 
 type ClientHelloBuildStatus int
@@ -108,16 +109,18 @@ func (uconn *UConn) buildHandshakeState(loadSession bool) error {
 		uAssert(uconn.clientHelloBuildStatus == NotBuilt, "BuildHandshakeState failed: invalid call, client hello has already been built by utls")
 
 		// use default Golang ClientHello.
-		hello, keySharePrivate, err := uconn.makeClientHello()
+		hello, keySharePrivate, _, err := uconn.makeClientHello()
 		if err != nil {
 			return err
 		}
 
 		uconn.HandshakeState.Hello = hello.getPublicPtr()
-		if ecdheKey, ok := keySharePrivate.(*ecdh.PrivateKey); ok {
-			uconn.HandshakeState.State13.EcdheKey = ecdheKey
-		} else if kemKey, ok := keySharePrivate.(*kemPrivateKey); ok {
-			uconn.HandshakeState.State13.KEMKey = kemKey.ToPublic()
+		if keySharePrivate.ecdhe != nil {
+			uconn.HandshakeState.State13.EcdheKey = keySharePrivate.ecdhe
+		} else if keySharePrivate.kyber != nil {
+			kemPrivKey := &mlkem768.PrivateKey{}
+			kemPrivKey.Unpack(keySharePrivate.kyber.EncapsulationKey())
+			uconn.HandshakeState.State13.KEMKey = &KemPrivateKey{CurveID: keySharePrivate.curveID, SecretKey: kemPrivKey}
 		} else {
 			return fmt.Errorf("uTLS: unknown keySharePrivate type: %T", keySharePrivate)
 		}
@@ -214,7 +217,7 @@ func (uconn *UConn) DidTls12Resume() bool {
 func (uconn *UConn) SetSessionState(session *ClientSessionState) error {
 	sessionTicketExt := &SessionTicketExtension{Initialized: true}
 	if session != nil {
-		sessionTicketExt.Ticket = session.ticket
+		sessionTicketExt.Ticket = session.session.ticket
 		sessionTicketExt.Session = session.session
 	}
 	return uconn.SetSessionTicketExtension(sessionTicketExt)

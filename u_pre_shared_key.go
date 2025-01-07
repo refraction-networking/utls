@@ -269,7 +269,7 @@ func (e *UtlsPreSharedKeyExtension) PatchBuiltHello(hello *PubClientHelloMsg) er
 	if private == nil {
 		private = hello.getPrivatePtr()
 	}
-	private.raw = hello.Raw
+	private.original = hello.Raw
 	private.pskBinders = e.Binders // set the placeholder to the private Hello
 
 	//--- mirror loadSession() begin ---//

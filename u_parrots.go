@@ -5,7 +5,6 @@
 package tls
 
 import (
-	"crypto/ecdh"
 	crand "crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
@@ -2626,15 +2625,13 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 		return err
 	}
 
-	privateHello, clientKeySharePrivate, err := uconn.makeClientHelloForApplyPreset()
+	privateHello, clientKeySharePrivate, _, err := uconn.makeClientHelloForApplyPreset()
 	if err != nil {
 		return err
 	}
 	uconn.HandshakeState.Hello = privateHello.getPublicPtr()
-	if ecdheKey, ok := clientKeySharePrivate.(*ecdh.PrivateKey); ok {
-		uconn.HandshakeState.State13.EcdheKey = ecdheKey
-	} else if kemKey, ok := clientKeySharePrivate.(*kemPrivateKey); ok {
-		uconn.HandshakeState.State13.KEMKey = kemKey.ToPublic()
+	if clientKeySharePrivate != nil {
+		uconn.HandshakeState.State13.KeyShareKeys = clientKeySharePrivate.ToPublic()
 	}
 	uconn.HandshakeState.State13.KeySharesParams = NewKeySharesParameters()
 	hello := uconn.HandshakeState.Hello
@@ -2835,8 +2832,7 @@ func generateRandomizedSpec(
 		return p, fmt.Errorf("using non-randomized ClientHelloID %v to generate randomized spec", id.Client)
 	}
 
-	p.CipherSuites = make([]uint16, len(defaultCipherSuites))
-	copy(p.CipherSuites, defaultCipherSuites)
+	p.CipherSuites = defaultCipherSuites()
 	shuffledSuites, err := shuffledCiphers(r)
 	if err != nil {
 		return p, err

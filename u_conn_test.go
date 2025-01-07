@@ -43,11 +43,11 @@ func (hs *helloSpec) helloName() string {
 func TestUTLSMarshalNoOp(t *testing.T) {
 	str := "We rely on clientHelloMsg.marshal() not doing anything if clientHelloMsg.raw is set"
 	uconn := UClient(&net.TCPConn{}, &Config{ServerName: "foobar"}, HelloGolang)
-	msg, _, err := uconn.makeClientHello()
+	msg, _, _, err := uconn.makeClientHello()
 	if err != nil {
 		t.Errorf("Got error: %s; expected to succeed", err)
 	}
-	msg.raw = []byte(str)
+	msg.original = []byte(str)
 	marshalledHello, err := msg.marshal()
 	if err != nil {
 		t.Errorf("clientHelloMsg.marshal() returned error: %s", err.Error())
