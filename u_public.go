@@ -8,11 +8,12 @@ import (
 	"crypto"
 	"crypto/ecdh"
 	"crypto/x509"
+	"fmt"
 	"hash"
 	"time"
 
 	"github.com/cloudflare/circl/kem"
-	"github.com/cloudflare/circl/kem/kyber/kyber768"
+	"github.com/cloudflare/circl/kem/hybrid"
 	"github.com/refraction-networking/utls/internal/mlkem768"
 )
 
@@ -40,7 +41,6 @@ type PubClientHandshakeState struct {
 
 // TLS 1.3 only
 type TLS13OnlyState struct {
-	// Deprecated: Use KeyShareKeys instead.
 	EcdheKey        *ecdh.PrivateKey
 	KeySharesParams *KeySharesParameters
 	KEMKey          *KemPrivateKey
@@ -62,13 +62,30 @@ type TLS12OnlyState struct {
 	Suite        PubCipherSuite
 }
 
-func mlkemCirclToGo(circlKey kem.PrivateKey) (*mlkem768.DecapsulationKey, error) {
-	encodedKey, err := circlKey.MarshalBinary()
-	if err != nil {
-		return nil, err
+func mlkemCirclToGo(circlKey kem.PrivateKey) (*mlkem768.DecapsulationKey, *ecdh.PrivateKey, error) {
+	if circlKey.Scheme().Name() != "Kyber768-X25519" {
+		return nil, nil, fmt.Errorf("circl key is not Kyber768-X25519")
 	}
 
-	return mlkem768.NewKeyFromExtendedEncoding(encodedKey)
+	encodedKey, err := circlKey.MarshalBinary()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	ecdhKey := encodedKey[:x25519PublicKeySize]
+	kyberKey := encodedKey[x25519PublicKeySize:]
+
+	goKyberkey, err := mlkem768.NewKeyFromExtendedEncoding(kyberKey)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	goEcdhKey, err := ecdh.X25519().NewPrivateKey(ecdhKey)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return goKyberkey, goEcdhKey, nil
 }
 
 func (chs *TLS13OnlyState) private13KeyShareKeys() *keySharePrivateKeys {
@@ -77,9 +94,10 @@ func (chs *TLS13OnlyState) private13KeyShareKeys() *keySharePrivateKeys {
 	}
 
 	if chs.KEMKey != nil {
-		if key, err := mlkemCirclToGo(chs.KEMKey.SecretKey); err == nil {
+		if kyberKey, ecdhKey, err := mlkemCirclToGo(chs.KEMKey.SecretKey); err == nil {
 			return &keySharePrivateKeys{
-				kyber: key,
+				kyber: kyberKey,
+				ecdhe: ecdhKey,
 			}
 		}
 	}
@@ -94,8 +112,9 @@ func (chs *TLS13OnlyState) private13KeyShareKeys() *keySharePrivateKeys {
 }
 
 func (ksp *keySharePrivateKeys) publicKEMKey() *KemPrivateKey {
-	if ksp.kyber != nil {
-		if privkey, err := kyber768.Scheme().UnmarshalBinaryPrivateKey(ksp.kyber.Bytes()); err == nil {
+	if ksp.kyber != nil && ksp.ecdhe != nil && ksp.curveID == x25519Kyber768Draft00 {
+		key := append(ksp.ecdhe.Bytes(), ksp.kyber.Bytes()...)
+		if privkey, err := hybrid.Kyber768X25519().UnmarshalBinaryPrivateKey(key); err == nil {
 			return &KemPrivateKey{
 				SecretKey: privkey,
 			}
@@ -110,10 +129,11 @@ func (chs *PubClientHandshakeState) toPrivate13() *clientHandshakeStateTLS13 {
 		return nil
 	} else {
 		return &clientHandshakeStateTLS13{
-			c:            chs.C,
-			serverHello:  chs.ServerHello.getPrivatePtr(),
-			hello:        chs.Hello.getPrivatePtr(),
-			keyShareKeys: chs.State13.private13KeyShareKeys(),
+			c:               chs.C,
+			serverHello:     chs.ServerHello.getPrivatePtr(),
+			hello:           chs.Hello.getPrivatePtr(),
+			keyShareKeys:    chs.State13.private13KeyShareKeys(),
+			keySharesParams: chs.State13.KeySharesParams,
 
 			session:     chs.Session,
 			earlySecret: chs.State13.EarlySecret,

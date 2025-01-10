@@ -124,14 +124,14 @@ func (hs *clientHandshakeStateTLS13) handshake() error {
 	// set echdheParams to what we received from server
 	if ecdheKey, ok := hs.keySharesParams.GetEcdheKey(hs.serverHello.serverShare.group); ok {
 		hs.keyShareKeys.ecdhe = ecdheKey
-		hs.keyShareKeys.kyber = nil // unset kyber if any
+		hs.keyShareKeys.curveID = hs.serverHello.serverShare.group
 	}
 	// set kemParams to what we received from server
 	if kemKey, ok := hs.keySharesParams.GetKemKey(hs.serverHello.serverShare.group); ok {
-		if gokey, err := mlkemCirclToGo(kemKey); err == nil {
-			hs.keyShareKeys.kyber = gokey
+		if kyberKey, ecdhKey, err := mlkemCirclToGo(kemKey); err == nil {
+			hs.keyShareKeys.kyber = kyberKey
+			hs.keyShareKeys.ecdhe = ecdhKey
 			hs.keyShareKeys.curveID = hs.serverHello.serverShare.group
-			hs.keyShareKeys.ecdhe = nil // unset ecdheKey if any
 		}
 	}
 	// [uTLS SECTION END]
