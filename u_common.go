@@ -87,6 +87,18 @@ const (
 	FakeCurveFFDHE8192 CurveID = 0x0104
 )
 
+const (
+	X25519Kyber768Draft00 CurveID = x25519Kyber768Draft00
+
+	FakeCurveX25519Kyber512Draft00    CurveID = 0xfe30
+	FakeCurveX25519Kyber768Draft00Old CurveID = 0xfe31
+	FakeCurveP256Kyber768Draft00      CurveID = 0xfe32
+
+	X25519Kyber512Draft00    CurveID = FakeCurveX25519Kyber512Draft00
+	X25519Kyber768Draft00Old CurveID = FakeCurveX25519Kyber768Draft00Old
+	P256Kyber768Draft00      CurveID = FakeCurveP256Kyber768Draft00
+)
+
 // Other things
 const (
 	fakeRecordSizeLimit uint16 = 0x001c

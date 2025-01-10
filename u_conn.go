@@ -15,8 +15,6 @@ import (
 	"hash"
 	"net"
 	"strconv"
-
-	"github.com/cloudflare/circl/kem/mlkem/mlkem768"
 )
 
 type ClientHelloBuildStatus int
@@ -115,15 +113,7 @@ func (uconn *UConn) buildHandshakeState(loadSession bool) error {
 		}
 
 		uconn.HandshakeState.Hello = hello.getPublicPtr()
-		if keySharePrivate.ecdhe != nil {
-			uconn.HandshakeState.State13.EcdheKey = keySharePrivate.ecdhe
-		} else if keySharePrivate.kyber != nil {
-			kemPrivKey := &mlkem768.PrivateKey{}
-			kemPrivKey.Unpack(keySharePrivate.kyber.EncapsulationKey())
-			uconn.HandshakeState.State13.KEMKey = &KemPrivateKey{CurveID: keySharePrivate.curveID, SecretKey: kemPrivKey}
-		} else {
-			return fmt.Errorf("uTLS: unknown keySharePrivate type: %T", keySharePrivate)
-		}
+		uconn.HandshakeState.State13.KeyShareKeys = keySharePrivate.ToPublic()
 		uconn.HandshakeState.C = uconn.Conn
 		uconn.clientHelloBuildStatus = BuildByGoTLS
 	} else {

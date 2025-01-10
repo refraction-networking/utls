@@ -18,6 +18,7 @@ import (
 	"strconv"
 
 	"github.com/refraction-networking/utls/dicttls"
+	"github.com/refraction-networking/utls/internal/mlkem768"
 )
 
 var ErrUnknownClientHelloID = errors.New("tls: unknown ClientHelloID")
@@ -2732,23 +2733,38 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 					continue
 				}
 
-				if scheme := curveIdToCirclScheme(curveID); scheme != nil {
-					pk, sk, err := generateKemKeyPair(scheme, curveID, uconn.config.rand())
+				if curveID == x25519Kyber768Draft00 {
+					ecdheKey, err := generateECDHEKey(uconn.config.rand(), X25519)
 					if err != nil {
-						return fmt.Errorf("HRR generateKemKeyPair %s: %w",
-							scheme.Name(), err)
+						return err
 					}
-					packedPk, err := pk.MarshalBinary()
+					seed := make([]byte, mlkem768.SeedSize)
+					if _, err := io.ReadFull(uconn.config.rand(), seed); err != nil {
+						return err
+					}
+					kyberKey, err := mlkem768.NewKeyFromSeed(seed)
 					if err != nil {
-						return fmt.Errorf("HRR pack circl public key %s: %w",
-							scheme.Name(), err)
+						return err
 					}
-					uconn.HandshakeState.State13.KeySharesParams.AddKemKeypair(curveID, sk.secretKey, pk)
-					ext.KeyShares[i].Data = packedPk
+
+					circlKyberKey, err := kyberGoToCircl(kyberKey, ecdheKey)
+					if err != nil {
+						return err
+					}
+					uconn.HandshakeState.State13.KeySharesParams.AddKemKeypair(curveID, circlKyberKey, circlKyberKey.Public())
+
+					ext.KeyShares[i].Data = append(ecdheKey.PublicKey().Bytes(), kyberKey.EncapsulationKey()...)
 					if !preferredCurveIsSet {
 						// only do this once for the first non-grease curve
-						uconn.HandshakeState.State13.KEMKey = sk.ToPublic()
+						uconn.HandshakeState.State13.KeyShareKeys.kyber = kyberKey
 						preferredCurveIsSet = true
+					}
+
+					if len(ext.KeyShares) > i+1 && ext.KeyShares[i+1].Group == X25519 {
+						// Reuse the same X25519 ephemeral key for both keyshares, as allowed by draft-ietf-tls-hybrid-design-09, Section 3.2.
+						uconn.HandshakeState.State13.KeyShareKeys.Ecdhe = ecdheKey
+						uconn.HandshakeState.State13.KeySharesParams.AddEcdheKeypair(curveID, ecdheKey, ecdheKey.PublicKey())
+						ext.KeyShares[i+1].Data = ecdheKey.PublicKey().Bytes()
 					}
 				} else {
 					ecdheKey, err := generateECDHEKey(uconn.config.rand(), curveID)
@@ -2756,11 +2772,13 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 						return fmt.Errorf("unsupported Curve in KeyShareExtension: %v."+
 							"To mimic it, fill the Data(key) field manually", curveID)
 					}
+
 					uconn.HandshakeState.State13.KeySharesParams.AddEcdheKeypair(curveID, ecdheKey, ecdheKey.PublicKey())
+
 					ext.KeyShares[i].Data = ecdheKey.PublicKey().Bytes()
 					if !preferredCurveIsSet {
 						// only do this once for the first non-grease curve
-						uconn.HandshakeState.State13.EcdheKey = ecdheKey
+						uconn.HandshakeState.State13.KeyShareKeys.Ecdhe = ecdheKey
 						preferredCurveIsSet = true
 					}
 				}

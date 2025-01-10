@@ -41,6 +41,7 @@ type PubClientHandshakeState struct {
 
 // TLS 1.3 only
 type TLS13OnlyState struct {
+	// Deprecated: Use KeyShareKeys instead.
 	EcdheKey        *ecdh.PrivateKey
 	KeySharesParams *KeySharesParameters
 	KEMKey          *KemPrivateKey
@@ -111,6 +112,10 @@ func (chs *TLS13OnlyState) private13KeyShareKeys() *keySharePrivateKeys {
 	return nil
 }
 
+func kyberGoToCircl(kyberKey *mlkem768.DecapsulationKey, ecdhKey *ecdh.PrivateKey) (kem.PrivateKey, error) {
+	return hybrid.Kyber768X25519().UnmarshalBinaryPrivateKey(append(ecdhKey.Bytes(), kyberKey.Bytes()...))
+}
+
 func (ksp *keySharePrivateKeys) publicKEMKey() *KemPrivateKey {
 	if ksp.kyber != nil && ksp.ecdhe != nil && ksp.curveID == x25519Kyber768Draft00 {
 		key := append(ksp.ecdhe.Bytes(), ksp.kyber.Bytes()...)
@@ -160,6 +165,7 @@ func (chs13 *clientHandshakeStateTLS13) toPublic13() *PubClientHandshakeState {
 			KeySharesParams: chs13.keySharesParams,
 			EcdheKey:        chs13.keyShareKeys.ecdhe,
 			KEMKey:          chs13.keyShareKeys.publicKEMKey(),
+			KeyShareKeys:    chs13.keyShareKeys.ToPublic(),
 			EarlySecret:     chs13.earlySecret,
 			BinderKey:       chs13.binderKey,
 			CertReq:         chs13.certReq.toPublic(),
@@ -863,6 +869,11 @@ func (TKS TicketKeys) ToPrivate() []ticketKey {
 	return tks
 }
 
+type kemPrivateKey struct {
+	secretKey kem.PrivateKey
+	curveID   CurveID
+}
+
 type KemPrivateKey struct {
 	SecretKey kem.PrivateKey
 	CurveID   CurveID
@@ -893,14 +904,14 @@ func (kpk *kemPrivateKey) ToPublic() *KemPrivateKey {
 type KeySharePrivateKeys struct {
 	CurveID CurveID
 	Ecdhe   *ecdh.PrivateKey
-	Kyber   *mlkem768.DecapsulationKey
+	kyber   *mlkem768.DecapsulationKey
 }
 
 func (ksp *KeySharePrivateKeys) ToPrivate() *keySharePrivateKeys {
 	return &keySharePrivateKeys{
 		curveID: ksp.CurveID,
 		ecdhe:   ksp.Ecdhe,
-		kyber:   ksp.Kyber,
+		kyber:   ksp.kyber,
 	}
 }
 
@@ -908,6 +919,6 @@ func (ksp *keySharePrivateKeys) ToPublic() *KeySharePrivateKeys {
 	return &KeySharePrivateKeys{
 		CurveID: ksp.curveID,
 		Ecdhe:   ksp.ecdhe,
-		Kyber:   ksp.kyber,
+		kyber:   ksp.kyber,
 	}
 }

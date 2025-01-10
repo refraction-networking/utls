@@ -61,7 +61,7 @@ func (ksp *KeySharesParameters) GetEcdhePubkey(curveID CurveID) (params *ecdh.Pu
 }
 
 func (ksp *KeySharesParameters) AddKemKeypair(curveID CurveID, kemKey kem.PrivateKey, kemPubKey kem.PublicKey) {
-	if curveIdToCirclScheme(curveID) != nil { // only store for circl schemes
+	if curveID == x25519Kyber768Draft00 { // only store for x25519Kyber768Draft00
 		ksp.kemPrivKeymap[curveID] = kemKey
 		ksp.kemPubKeymap[curveID] = kemPubKey
 	}
@@ -121,17 +121,19 @@ func (hs *clientHandshakeStateTLS13) handshake() error {
 	}
 
 	// [uTLS SECTION START]
-	// set echdheParams to what we received from server
-	if ecdheKey, ok := hs.keySharesParams.GetEcdheKey(hs.serverHello.serverShare.group); ok {
-		hs.keyShareKeys.ecdhe = ecdheKey
-		hs.keyShareKeys.curveID = hs.serverHello.serverShare.group
-	}
-	// set kemParams to what we received from server
-	if kemKey, ok := hs.keySharesParams.GetKemKey(hs.serverHello.serverShare.group); ok {
-		if kyberKey, ecdhKey, err := mlkemCirclToGo(kemKey); err == nil {
-			hs.keyShareKeys.kyber = kyberKey
-			hs.keyShareKeys.ecdhe = ecdhKey
+	if hs.keyShareKeys == nil {
+		// set echdheParams to what we received from server
+		if ecdheKey, ok := hs.keySharesParams.GetEcdheKey(hs.serverHello.serverShare.group); ok {
+			hs.keyShareKeys.ecdhe = ecdheKey
 			hs.keyShareKeys.curveID = hs.serverHello.serverShare.group
+		}
+		// set kemParams to what we received from server
+		if kemKey, ok := hs.keySharesParams.GetKemKey(hs.serverHello.serverShare.group); ok {
+			if kyberKey, ecdhKey, err := mlkemCirclToGo(kemKey); err == nil {
+				hs.keyShareKeys.kyber = kyberKey
+				hs.keyShareKeys.ecdhe = ecdhKey
+				hs.keyShareKeys.curveID = hs.serverHello.serverShare.group
+			}
 		}
 	}
 	// [uTLS SECTION END]
