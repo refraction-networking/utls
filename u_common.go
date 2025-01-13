@@ -75,10 +75,11 @@ const (
 )
 
 const (
-	CurveSECP256R1 CurveID = 0x0017
-	CurveSECP384R1 CurveID = 0x0018
-	CurveSECP521R1 CurveID = 0x0019
-	CurveX25519    CurveID = 0x001d
+	CurveSECP256R1      CurveID = 0x0017
+	CurveSECP384R1      CurveID = 0x0018
+	CurveSECP521R1      CurveID = 0x0019
+	CurveX25519         CurveID = 0x001d
+	CurveX25519MLKEM768 CurveID = 0x11ec
 
 	FakeCurveFFDHE2048 CurveID = 0x0100
 	FakeCurveFFDHE3072 CurveID = 0x0101
@@ -596,6 +597,7 @@ var (
 	HelloFirefox_102  = ClientHelloID{helloFirefox, "102", nil, nil}
 	HelloFirefox_105  = ClientHelloID{helloFirefox, "105", nil, nil}
 	HelloFirefox_120  = ClientHelloID{helloFirefox, "120", nil, nil}
+	HelloFirefox_133  = ClientHelloID{helloFirefox, "133", nil, nil}
 
 	HelloChrome_Auto        = HelloChrome_120
 	HelloChrome_58          = ClientHelloID{helloChrome, "58", nil, nil}
@@ -612,6 +614,7 @@ var (
 	// Chrome w/ PSK: Chrome start sending this ClientHello after doing TLS 1.3 handshake with the same server.
 	// Beta: PSK extension added. However, uTLS doesn't ship with full PSK support.
 	// Use at your own discretion.
+	HelloChrome_PSK_Auto             = HelloChrome_114_Padding_PSK_Shuf
 	HelloChrome_100_PSK              = ClientHelloID{helloChrome, "100_PSK", nil, nil}
 	HelloChrome_112_PSK_Shuf         = ClientHelloID{helloChrome, "112_PSK", nil, nil}
 	HelloChrome_114_Padding_PSK_Shuf = ClientHelloID{helloChrome, "114_PSK", nil, nil}
@@ -624,7 +627,8 @@ var (
 	// Chrome ECH
 	HelloChrome_120 = ClientHelloID{helloChrome, "120", nil, nil}
 	// Chrome w/ Post-Quantum Key Agreement and Encrypted ClientHello
-	HelloChrome_120_PQ = ClientHelloID{helloChrome, "120_PQ", nil, nil}
+	HelloChrome_120_PQ  = ClientHelloID{helloChrome, "120_PQ", nil, nil}
+	HelloChrome_131_PSK = ClientHelloID{helloChrome, "131_PSK", nil, nil}
 
 	HelloIOS_Auto = HelloIOS_14
 	HelloIOS_11_1 = ClientHelloID{helloIOS, "111", nil, nil} // legacy "111" means 11.1

@@ -171,8 +171,9 @@ func runResumptionCheck(helloID tls.ClientHelloID, getCustomSpec func() *tls.Cli
 
 func main() {
 	tls13Url := "www.microsoft.com:443"
-	tls12Url1 := "spocs.getpocket.com:443"
-	tls12Url2 := "marketplace.visualstudio.com:443"
+	tls13HRRUrl := "marketplace.visualstudio.com:443" // will send HRR for P384/P521
+	tls12Url := "tls-v1-2.badssl.com:1012"
+
 	runResumptionCheck(tls.HelloChrome_100, nil, noResumption, tls13Url, 3, false) // no-resumption + utls
 	func() {
 		defer func() {
@@ -189,9 +190,9 @@ func main() {
 	runResumptionCheck(tls.HelloChrome_100_PSK, nil, pskResumption, tls13Url, 1, false) // psk + utls
 	runResumptionCheck(tls.HelloGolang, nil, pskResumption, tls13Url, 1, false)         // psk + crypto/tls
 
-	runResumptionCheck(tls.HelloChrome_100_PSK, nil, ticketResumption, tls12Url1, 10, false) // session ticket + utls
-	runResumptionCheck(tls.HelloGolang, nil, ticketResumption, tls12Url1, 10, false)         // session ticket + crypto/tls
-	runResumptionCheck(tls.HelloChrome_100_PSK, nil, ticketResumption, tls12Url2, 10, false) // session ticket + utls
-	runResumptionCheck(tls.HelloGolang, nil, ticketResumption, tls12Url2, 10, false)         // session ticket + crypto/tls
+	runResumptionCheck(tls.HelloChrome_100_PSK, nil, pskResumption, tls13HRRUrl, 20, false) // psk (HRR) + utls
+	runResumptionCheck(tls.HelloGolang, nil, pskResumption, tls13HRRUrl, 20, false)         // psk (HRR) + crypto/tls       // session ticket + crypto/tls
 
+	runResumptionCheck(tls.HelloChrome_100_PSK, nil, ticketResumption, tls12Url, 10, false) // session ticket + utls
+	runResumptionCheck(tls.HelloGolang, nil, ticketResumption, tls12Url, 10, false)
 }
