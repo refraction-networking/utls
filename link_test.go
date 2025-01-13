@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/refraction-networking/utls/testenv"
+	"github.com/jiwu-moz/utls/testenv"
 )
 
 // Tests that the linker is able to remove references to the Client or Server if unused.

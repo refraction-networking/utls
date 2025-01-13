@@ -1,4 +1,5 @@
-module github.com/refraction-networking/utls
+//module github.com/jiwu-moz/utls
+module github.com/jiwu-moz/utls
 
 go 1.22.5
 
