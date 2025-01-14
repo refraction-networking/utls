@@ -14,7 +14,6 @@ import (
 	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/zstd"
 	"github.com/refraction-networking/utls/internal/hpke"
-	"github.com/refraction-networking/utls/internal/mlkem768"
 )
 
 // This function is called by (*clientHandshakeStateTLS13).readServerCertificate()
@@ -292,40 +291,40 @@ func (c *Conn) makeClientHelloForApplyPreset() (*clientHelloMsg, *keySharePrivat
 			hello.cipherSuites = append(hello.cipherSuites, defaultCipherSuitesTLS13NoAES...)
 		}
 
-		curveID := config.curvePreferences(maxVersion)[0]
-		keyShareKeys = &keySharePrivateKeys{curveID: curveID}
-		if curveID == x25519Kyber768Draft00 {
-			keyShareKeys.ecdhe, err = generateECDHEKey(config.rand(), X25519)
-			if err != nil {
-				return nil, nil, nil, err
-			}
-			seed := make([]byte, mlkem768.SeedSize)
-			if _, err := io.ReadFull(config.rand(), seed); err != nil {
-				return nil, nil, nil, err
-			}
-			keyShareKeys.kyber, err = mlkem768.NewKeyFromSeed(seed)
-			if err != nil {
-				return nil, nil, nil, err
-			}
-			// For draft-tls-westerbaan-xyber768d00-03, we send both a hybrid
-			// and a standard X25519 key share, since most servers will only
-			// support the latter. We reuse the same X25519 ephemeral key for
-			// both, as allowed by draft-ietf-tls-hybrid-design-09, Section 3.2.
-			hello.keyShares = []keyShare{
-				{group: x25519Kyber768Draft00, data: append(keyShareKeys.ecdhe.PublicKey().Bytes(),
-					keyShareKeys.kyber.EncapsulationKey()...)},
-				{group: X25519, data: keyShareKeys.ecdhe.PublicKey().Bytes()},
-			}
-		} else {
-			if _, ok := curveForCurveID(curveID); !ok {
-				return nil, nil, nil, errors.New("tls: CurvePreferences includes unsupported curve")
-			}
-			keyShareKeys.ecdhe, err = generateECDHEKey(config.rand(), curveID)
-			if err != nil {
-				return nil, nil, nil, err
-			}
-			hello.keyShares = []keyShare{{group: curveID, data: keyShareKeys.ecdhe.PublicKey().Bytes()}}
-		}
+		// curveID := config.curvePreferences(maxVersion)[0]
+		// keyShareKeys = &keySharePrivateKeys{curveID: curveID}
+		// if curveID == x25519Kyber768Draft00 {
+		// 	keyShareKeys.ecdhe, err = generateECDHEKey(config.rand(), X25519)
+		// 	if err != nil {
+		// 		return nil, nil, nil, err
+		// 	}
+		// 	seed := make([]byte, mlkem768.SeedSize)
+		// 	if _, err := io.ReadFull(config.rand(), seed); err != nil {
+		// 		return nil, nil, nil, err
+		// 	}
+		// 	keyShareKeys.kyber, err = mlkem768.NewKeyFromSeed(seed)
+		// 	if err != nil {
+		// 		return nil, nil, nil, err
+		// 	}
+		// 	// For draft-tls-westerbaan-xyber768d00-03, we send both a hybrid
+		// 	// and a standard X25519 key share, since most servers will only
+		// 	// support the latter. We reuse the same X25519 ephemeral key for
+		// 	// both, as allowed by draft-ietf-tls-hybrid-design-09, Section 3.2.
+		// 	hello.keyShares = []keyShare{
+		// 		{group: x25519Kyber768Draft00, data: append(keyShareKeys.ecdhe.PublicKey().Bytes(),
+		// 			keyShareKeys.kyber.EncapsulationKey()...)},
+		// 		{group: X25519, data: keyShareKeys.ecdhe.PublicKey().Bytes()},
+		// 	}
+		// } else {
+		// 	if _, ok := curveForCurveID(curveID); !ok {
+		// 		return nil, nil, nil, errors.New("tls: CurvePreferences includes unsupported curve")
+		// 	}
+		// 	keyShareKeys.ecdhe, err = generateECDHEKey(config.rand(), curveID)
+		// 	if err != nil {
+		// 		return nil, nil, nil, err
+		// 	}
+		// 	hello.keyShares = []keyShare{{group: curveID, data: keyShareKeys.ecdhe.PublicKey().Bytes()}}
+		// }
 	}
 
 	// [UTLS] We don't need this, since it is not ready yet

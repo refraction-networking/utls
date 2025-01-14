@@ -2633,6 +2633,8 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 	uconn.HandshakeState.Hello = privateHello.getPublicPtr()
 	if clientKeySharePrivate != nil {
 		uconn.HandshakeState.State13.KeyShareKeys = clientKeySharePrivate.ToPublic()
+	} else {
+		uconn.HandshakeState.State13.KeyShareKeys = &KeySharePrivateKeys{}
 	}
 	uconn.HandshakeState.State13.KeySharesParams = NewKeySharesParameters()
 	hello := uconn.HandshakeState.Hello
