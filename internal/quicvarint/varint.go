@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/jiwu-moz/utls/internal/quicvarint/protocol"
+	"github.com/mozilla-fakespot/utls/internal/quicvarint/protocol"
 )
 
 // taken from the QUIC draft

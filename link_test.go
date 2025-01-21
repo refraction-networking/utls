@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/jiwu-moz/utls/testenv"
+	"github.com/mozilla-fakespot/utls/testenv"
 )
 
 // Tests that the linker is able to remove references to the Client or Server if unused.

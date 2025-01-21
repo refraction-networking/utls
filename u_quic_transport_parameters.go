@@ -6,7 +6,7 @@ import (
 	"math"
 	"math/big"
 
-	"github.com/jiwu-moz/utls/internal/quicvarint"
+	"github.com/mozilla-fakespot/utls/internal/quicvarint"
 )
 
 const (

@@ -11,7 +11,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/jiwu-moz/utls/dicttls"
+	"github.com/mozilla-fakespot/utls/dicttls"
 	"golang.org/x/crypto/cryptobyte"
 )
 
@@ -1352,7 +1352,7 @@ func (e *PSKKeyExchangeModesExtension) Write(b []byte) (int, error) {
 	// RFC 8446, Section 4.2.9
 	// TODO: PSK Modes have their own form of GREASE-ing which is not currently implemented
 	// the current functionality will NOT re-GREASE/re-randomize these values when using a fingerprinted spec
-	// https://github.com/jiwu-moz/utls/pull/58#discussion_r522354105
+	// https://github.com/mozilla-fakespot/utls/pull/58#discussion_r522354105
 	// https://tools.ietf.org/html/draft-ietf-tls-grease-01#section-2
 	pskModes := []uint8{}
 	if !readUint8LengthPrefixed(&extData, &pskModes) {

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	tls "github.com/jiwu-moz/utls"
+	tls "github.com/mozilla-fakespot/utls"
 )
 
 type ClientSessionCache struct {

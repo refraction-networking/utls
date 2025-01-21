@@ -160,8 +160,8 @@ func checkUTLSExtensionsEquality(t *testing.T, expected, actual TLSExtension) {
 }
 
 // Conn.vers is sometimes left to zero which is unacceptable to uTLS' SetTLSVers
-// https://github.com/jiwu-moz/utls/blob/f7e7360167ed2903ef12898634512b66f8c3aad0/u_conn.go#L564-L566
-// https://github.com/jiwu-moz/utls/blob/f7e7360167ed2903ef12898634512b66f8c3aad0/conn.go#L945-L948
+// https://github.com/mozilla-fakespot/utls/blob/f7e7360167ed2903ef12898634512b66f8c3aad0/u_conn.go#L564-L566
+// https://github.com/mozilla-fakespot/utls/blob/f7e7360167ed2903ef12898634512b66f8c3aad0/conn.go#L945-L948
 func createMinTLSVersion(vers uint16) uint16 {
 	if vers == 0 {
 		return VersionTLS10

@@ -9,7 +9,7 @@ import (
 	"sync"
 
 	"github.com/cloudflare/circl/hpke"
-	"github.com/jiwu-moz/utls/dicttls"
+	"github.com/mozilla-fakespot/utls/dicttls"
 	"golang.org/x/crypto/cryptobyte"
 )
 

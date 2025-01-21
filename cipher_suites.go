@@ -19,7 +19,7 @@ import (
 	"hash"
 	"runtime"
 
-	"github.com/jiwu-moz/utls/internal/boring"
+	"github.com/mozilla-fakespot/utls/internal/boring"
 	"golang.org/x/sys/cpu"
 
 	"golang.org/x/crypto/chacha20poly1305"

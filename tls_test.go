@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jiwu-moz/utls/testenv"
+	"github.com/mozilla-fakespot/utls/testenv"
 )
 
 var rsaCertPEM = `-----BEGIN CERTIFICATE-----

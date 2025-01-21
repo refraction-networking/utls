@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/jiwu-moz/utls/dicttls"
+	"github.com/mozilla-fakespot/utls/dicttls"
 )
 
 var ErrUnknownExtension = errors.New("extension name is unknown to the dictionary")

@@ -1,5 +1,5 @@
-//module github.com/jiwu-moz/utls
-module github.com/jiwu-moz/utls
+//module github.com/mozilla-fakespot/utls
+module github.com/mozilla-fakespot/utls
 
 go 1.22.5
 

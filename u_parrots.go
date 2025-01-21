@@ -18,7 +18,7 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/jiwu-moz/utls/dicttls"
+	"github.com/mozilla-fakespot/utls/dicttls"
 )
 
 var ErrUnknownClientHelloID = errors.New("tls: unknown ClientHelloID")

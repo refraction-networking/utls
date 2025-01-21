@@ -13,7 +13,7 @@ import (
 	"hash"
 	"log"
 
-	"github.com/jiwu-moz/utls/internal/helper"
+	"github.com/mozilla-fakespot/utls/internal/helper"
 	"golang.org/x/crypto/cryptobyte"
 )
 
