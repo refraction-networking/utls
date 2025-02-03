@@ -2,6 +2,9 @@ package main
 
 import (
 	"bufio"
+	// "crypto/tls"
+	"encoding/base64"
+
 	"errors"
 	"fmt"
 	"io"
@@ -24,13 +27,13 @@ var (
 // var requestAddr = "crypto.cloudflare.com:443"
 // var requestPath = "/cdn-cgi/trace"
 
-// var requestHostname = "tls-ech.dev" // speaks http2 and TLS 1.3 and ECH and PQ
-// var requestAddr = "tls-ech.dev:443"
-// var requestPath = "/"
+var requestHostname = "tls-ech.dev" // speaks http2 and TLS 1.3 and ECH and PQ
+var requestAddr = "tls-ech.dev:443"
+var requestPath = "/"
 
-var requestHostname = "defo.ie" // speaks http2 and TLS 1.3 and ECH and PQ
-var requestAddr = "defo.ie:443"
-var requestPath = "/ech-check.php"
+// var requestHostname = "defo.ie" // speaks http2 and TLS 1.3 and ECH and PQ
+// var requestAddr = "defo.ie:443"
+// var requestPath = "/ech-check.php"
 
 // var requestHostname = "client.tlsfingerprint.io" // speaks http2 and TLS 1.3 and ECH and PQ
 // var requestAddr = "client.tlsfingerprint.io:443"
@@ -41,29 +44,37 @@ func HttpGetCustom(hostname string, addr string) (*http.Response, error) {
 	if err != nil {
 		return nil, fmt.Errorf("os.OpenFile error: %+v", err)
 	}
+
+	echConf, err := base64.RawStdEncoding.DecodeString("AEn+DQBFKwAgACABWIHUGj4u+PIggYXcR5JF0gYk3dCRioBW8uJq9H4mKAAIAAEAAQABAANAEnB1YmxpYy50bHMtZWNoLmRldgAA")
+	if err != nil {
+		return nil, err
+	}
+
 	config := tls.Config{
-		ServerName:   hostname,
-		KeyLogWriter: klw,
+		ServerName:                     hostname,
+		KeyLogWriter:                   klw,
+		EncryptedClientHelloConfigList: echConf,
 	}
 	dialConn, err := net.DialTimeout("tcp", addr, dialTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("net.DialTimeout error: %+v", err)
 	}
-	uTlsConn := tls.UClient(dialConn, &config, tls.HelloCustom)
+	uTlsConn := tls.UClient(dialConn, &config, tls.HelloGolang)
+	// uTlsConn := tls.Client(dialConn, &config)
 	defer uTlsConn.Close()
 
 	// do not use this particular spec in production
 	// make sure to generate a separate copy of ClientHelloSpec for every connection
-	spec, err := tls.UTLSIdToSpec(tls.HelloChrome_120)
-	// spec, err := tls.UTLSIdToSpec(tls.HelloFirefox_120)
-	if err != nil {
-		return nil, fmt.Errorf("tls.UTLSIdToSpec error: %+v", err)
-	}
+	// spec, err := tls.UTLSIdToSpec(tls.HelloChrome_120)
+	// // spec, err := tls.UTLSIdToSpec(tls.HelloFirefox_120)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("tls.UTLSIdToSpec error: %+v", err)
+	// }
 
-	err = uTlsConn.ApplyPreset(&spec)
-	if err != nil {
-		return nil, fmt.Errorf("uTlsConn.Handshake() error: %+v", err)
-	}
+	// err = uTlsConn.ApplyPreset(&spec)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("uTlsConn.Handshake() error: %+v", err)
+	// }
 
 	err = uTlsConn.Handshake()
 	if err != nil {

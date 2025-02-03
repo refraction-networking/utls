@@ -51,6 +51,9 @@ type UConn struct {
 
 	// ech extension is a shortcut to the ECH extension in the Extensions slice if there is one.
 	ech ECHExtension
+
+	// echCtx is the echContex returned by makeClientHello()
+	echCtx *echContext
 }
 
 // UClient returns a new uTLS client, with behavior depending on clientHelloID.
@@ -107,7 +110,7 @@ func (uconn *UConn) buildHandshakeState(loadSession bool) error {
 		uAssert(uconn.clientHelloBuildStatus == NotBuilt, "BuildHandshakeState failed: invalid call, client hello has already been built by utls")
 
 		// use default Golang ClientHello.
-		hello, keySharePrivate, _, err := uconn.makeClientHello()
+		hello, keySharePrivate, ech, err := uconn.makeClientHello()
 		if err != nil {
 			return err
 		}
@@ -115,6 +118,7 @@ func (uconn *UConn) buildHandshakeState(loadSession bool) error {
 		uconn.HandshakeState.Hello = hello.getPublicPtr()
 		uconn.HandshakeState.State13.KeyShareKeys = keySharePrivate.ToPublic()
 		uconn.HandshakeState.C = uconn.Conn
+		uconn.echCtx = ech
 		uconn.clientHelloBuildStatus = BuildByGoTLS
 	} else {
 		uAssert(uconn.clientHelloBuildStatus == BuildByUtls || uconn.clientHelloBuildStatus == NotBuilt, "BuildHandshakeState failed: invalid call, client hello has already been built by go-tls")
@@ -471,153 +475,6 @@ func (c *UConn) Write(b []byte) (int, error) {
 
 	n, err := c.writeRecordLocked(recordTypeApplicationData, b)
 	return n + m, c.out.setErrorLocked(err)
-}
-
-// clientHandshakeWithOneState checks that exactly one expected state is set (1.2 or 1.3)
-// and performs client TLS handshake with that state
-func (c *UConn) clientHandshake(ctx context.Context) (err error) {
-	// [uTLS section begins]
-	hello := c.HandshakeState.Hello.getPrivatePtr()
-	defer func() { c.HandshakeState.Hello = hello.getPublicPtr() }()
-
-	sessionIsLocked := c.utls.sessionController.isSessionLocked()
-
-	// after this point exactly 1 out of 2 HandshakeState pointers is non-nil,
-	// useTLS13 variable tells which pointer
-	// [uTLS section ends]
-
-	if c.config == nil {
-		c.config = defaultConfig()
-	}
-
-	// This may be a renegotiation handshake, in which case some fields
-	// need to be reset.
-	c.didResume = false
-
-	// [uTLS section begins]
-	// don't make new ClientHello, use hs.hello
-	// preserve the checks from beginning and end of makeClientHello()
-	if len(c.config.ServerName) == 0 && !c.config.InsecureSkipVerify && len(c.config.InsecureServerNameToVerify) == 0 {
-		return errors.New("tls: at least one of ServerName, InsecureSkipVerify or InsecureServerNameToVerify must be specified in the tls.Config")
-	}
-
-	nextProtosLength := 0
-	for _, proto := range c.config.NextProtos {
-		if l := len(proto); l == 0 || l > 255 {
-			return errors.New("tls: invalid NextProtos value")
-		} else {
-			nextProtosLength += 1 + l
-		}
-	}
-
-	if nextProtosLength > 0xffff {
-		return errors.New("tls: NextProtos values too large")
-	}
-
-	if c.handshakes > 0 {
-		hello.secureRenegotiation = c.clientFinished[:]
-	}
-
-	var (
-		session     *SessionState
-		earlySecret []byte
-		binderKey   []byte
-	)
-	if !sessionIsLocked {
-		// [uTLS section ends]
-
-		session, earlySecret, binderKey, err = c.loadSession(hello)
-
-		// [uTLS section start]
-	} else {
-		session = c.HandshakeState.Session
-		earlySecret = c.HandshakeState.State13.EarlySecret
-		binderKey = c.HandshakeState.State13.BinderKey
-	}
-	// [uTLS section ends]
-	if err != nil {
-		return err
-	}
-	if session != nil {
-		defer func() {
-			// If we got a handshake failure when resuming a session, throw away
-			// the session ticket. See RFC 5077, Section 3.2.
-			//
-			// RFC 8446 makes no mention of dropping tickets on failure, but it
-			// does require servers to abort on invalid binders, so we need to
-			// delete tickets to recover from a corrupted PSK.
-			if err != nil {
-				if cacheKey := c.clientSessionCacheKey(); cacheKey != "" {
-					c.config.ClientSessionCache.Put(cacheKey, nil)
-				}
-			}
-		}()
-	}
-
-	if _, err := c.writeHandshakeRecord(hello, nil); err != nil {
-		return err
-	}
-
-	if hello.earlyData {
-		suite := cipherSuiteTLS13ByID(session.cipherSuite)
-		transcript := suite.hash.New()
-		if err := transcriptMsg(hello, transcript); err != nil {
-			return err
-		}
-		earlyTrafficSecret := suite.deriveSecret(earlySecret, clientEarlyTrafficLabel, transcript)
-		c.quicSetWriteSecret(QUICEncryptionLevelEarly, suite.id, earlyTrafficSecret)
-	}
-
-	msg, err := c.readHandshake(nil)
-	if err != nil {
-		return err
-	}
-
-	serverHello, ok := msg.(*serverHelloMsg)
-	if !ok {
-		c.sendAlert(alertUnexpectedMessage)
-		return unexpectedMessageError(serverHello, msg)
-	}
-
-	if err := c.pickTLSVersion(serverHello); err != nil {
-		return err
-	}
-
-	// uTLS: do not create new handshakeState, use existing one
-	if c.vers == VersionTLS13 {
-		hs13 := c.HandshakeState.toPrivate13()
-		hs13.serverHello = serverHello
-		hs13.hello = hello
-		if hs13.keySharesParams == nil {
-			hs13.keySharesParams = NewKeySharesParameters()
-		}
-		if !sessionIsLocked {
-			hs13.earlySecret = earlySecret
-			hs13.binderKey = binderKey
-			hs13.session = session
-		}
-		hs13.ctx = ctx
-		// In TLS 1.3, session tickets are delivered after the handshake.
-		err = hs13.handshake()
-		if handshakeState := hs13.toPublic13(); handshakeState != nil {
-			c.HandshakeState = *handshakeState
-		}
-		return err
-	}
-
-	hs12 := c.HandshakeState.toPrivate12()
-	hs12.serverHello = serverHello
-	hs12.hello = hello
-	hs12.ctx = ctx
-	hs12.session = session
-	err = hs12.handshake()
-	if handshakeState := hs12.toPublic12(); handshakeState != nil {
-		c.HandshakeState = *handshakeState
-	}
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 func (uconn *UConn) ApplyConfig() error {

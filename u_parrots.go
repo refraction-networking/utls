@@ -2626,7 +2626,7 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 		return err
 	}
 
-	privateHello, clientKeySharePrivate, _, err := uconn.makeClientHelloForApplyPreset()
+	privateHello, clientKeySharePrivate, ech, err := uconn.makeClientHelloForApplyPreset()
 	if err != nil {
 		return err
 	}
@@ -2637,6 +2637,7 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 		uconn.HandshakeState.State13.KeyShareKeys = &KeySharePrivateKeys{}
 	}
 	uconn.HandshakeState.State13.KeySharesParams = NewKeySharesParameters()
+	uconn.echCtx = ech
 	hello := uconn.HandshakeState.Hello
 
 	switch len(hello.Random) {
