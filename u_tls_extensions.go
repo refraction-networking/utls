@@ -97,6 +97,24 @@ type TLSExtension interface {
 	Read(p []byte) (n int, err error) // implements io.Reader
 }
 
+type echStatus int
+
+const (
+	inClientHelloInner echStatus = iota
+	inOuterExtensions
+	notInClientHelloInner
+)
+
+// echTLSExtension is a TLS Extension that can be used when ECH is enabled.
+type echTLSExtension interface {
+	TLSExtension
+
+	// echStatus returns whether the extension should be in Client Hello Inner or in outer extensions list or neither
+	inClientHelloInner() echStatus
+
+	id() uint16
+}
+
 // TLSExtensionWriter is an interface allowing a TLS extension to be
 // auto-constucted/recovered by reading in a byte stream.
 type TLSExtensionWriter interface {
@@ -120,6 +138,14 @@ type TLSExtensionJSON interface {
 // SNIExtension implements server_name (0)
 type SNIExtension struct {
 	ServerName string // not an array because go crypto/tls doesn't support multiple SNIs
+}
+
+func (*SNIExtension) inClientHelloInner() echStatus {
+	return inClientHelloInner
+}
+
+func (*SNIExtension) id() uint16 {
+	return extensionServerName
 }
 
 func (e *SNIExtension) Len() int {
@@ -212,6 +238,14 @@ func (e *StatusRequestExtension) Len() int {
 	return 9
 }
 
+func (*StatusRequestExtension) inClientHelloInner() echStatus {
+	return inOuterExtensions
+}
+
+func (*StatusRequestExtension) id() uint16 {
+	return extensionStatusRequest
+}
+
 func (e *StatusRequestExtension) Read(b []byte) (int, error) {
 	if len(b) < e.Len() {
 		return 0, io.ErrShortBuffer
@@ -262,6 +296,14 @@ type SupportedCurvesExtension struct {
 
 func (e *SupportedCurvesExtension) Len() int {
 	return 6 + 2*len(e.Curves)
+}
+
+func (*SupportedCurvesExtension) inClientHelloInner() echStatus {
+	return inOuterExtensions
+}
+
+func (*SupportedCurvesExtension) id() uint16 {
+	return extensionSupportedCurves
 }
 
 func (e *SupportedCurvesExtension) Read(b []byte) (int, error) {
@@ -340,6 +382,14 @@ func (e *SupportedPointsExtension) Len() int {
 	return 5 + len(e.SupportedPoints)
 }
 
+func (*SupportedPointsExtension) inClientHelloInner() echStatus {
+	return notInClientHelloInner
+}
+
+func (*SupportedPointsExtension) id() uint16 {
+	return extensionSupportedPoints
+}
+
 func (e *SupportedPointsExtension) Read(b []byte) (int, error) {
 	if len(b) < e.Len() {
 		return 0, io.ErrShortBuffer
@@ -399,6 +449,14 @@ type SignatureAlgorithmsExtension struct {
 
 func (e *SignatureAlgorithmsExtension) Len() int {
 	return 6 + 2*len(e.SupportedSignatureAlgorithms)
+}
+
+func (*SignatureAlgorithmsExtension) inClientHelloInner() echStatus {
+	return inOuterExtensions
+}
+
+func (*SignatureAlgorithmsExtension) id() uint16 {
+	return extensionSignatureAlgorithms
 }
 
 func (e *SignatureAlgorithmsExtension) Read(b []byte) (int, error) {
@@ -481,6 +539,14 @@ func (e *StatusRequestV2Extension) Len() int {
 	return 13
 }
 
+func (*StatusRequestV2Extension) inClientHelloInner() echStatus {
+	return inOuterExtensions
+}
+
+func (*StatusRequestV2Extension) id() uint16 {
+	return extensionStatusRequestV2
+}
+
 func (e *StatusRequestV2Extension) Read(b []byte) (int, error) {
 	if len(b) < e.Len() {
 		return 0, io.ErrShortBuffer
@@ -528,6 +594,14 @@ type SignatureAlgorithmsCertExtension struct {
 
 func (e *SignatureAlgorithmsCertExtension) Len() int {
 	return 6 + 2*len(e.SupportedSignatureAlgorithms)
+}
+
+func (*SignatureAlgorithmsCertExtension) inClientHelloInner() echStatus {
+	return inOuterExtensions
+}
+
+func (*SignatureAlgorithmsCertExtension) id() uint16 {
+	return extensionSignatureAlgorithmsCert
 }
 
 func (e *SignatureAlgorithmsCertExtension) Read(b []byte) (int, error) {
@@ -620,6 +694,14 @@ func (e *ALPNExtension) Len() int {
 	return bLen
 }
 
+func (*ALPNExtension) inClientHelloInner() echStatus {
+	return inOuterExtensions
+}
+
+func (*ALPNExtension) id() uint16 {
+	return extensionALPN
+}
+
 func (e *ALPNExtension) Read(b []byte) (int, error) {
 	if len(b) < e.Len() {
 		return 0, io.ErrShortBuffer
@@ -701,6 +783,14 @@ func (e *ApplicationSettingsExtension) Len() int {
 	return bLen
 }
 
+func (*ApplicationSettingsExtension) inClientHelloInner() echStatus {
+	return inOuterExtensions
+}
+
+func (*ApplicationSettingsExtension) id() uint16 {
+	return utlsExtensionApplicationSettings
+}
+
 func (e *ApplicationSettingsExtension) Read(b []byte) (int, error) {
 	if len(b) < e.Len() {
 		return 0, io.ErrShortBuffer
@@ -777,6 +867,14 @@ func (e *SCTExtension) writeToUConn(uc *UConn) error {
 
 func (e *SCTExtension) Len() int {
 	return 4
+}
+
+func (*SCTExtension) inClientHelloInner() echStatus {
+	return inClientHelloInner
+}
+
+func (*SCTExtension) id() uint16 {
+	return extensionSCT
 }
 
 func (e *SCTExtension) Read(b []byte) (int, error) {
@@ -864,6 +962,14 @@ func (e *ExtendedMasterSecretExtension) writeToUConn(uc *UConn) error {
 
 func (e *ExtendedMasterSecretExtension) Len() int {
 	return 4
+}
+
+func (*ExtendedMasterSecretExtension) inClientHelloInner() echStatus {
+	return notInClientHelloInner
+}
+
+func (*ExtendedMasterSecretExtension) id() uint16 {
+	return extensionExtendedMasterSecret
 }
 
 func (e *ExtendedMasterSecretExtension) Read(b []byte) (int, error) {
@@ -1174,6 +1280,14 @@ func (e *KeyShareExtension) Len() int {
 	return 4 + 2 + e.keySharesLen()
 }
 
+func (*KeyShareExtension) inClientHelloInner() echStatus {
+	return inOuterExtensions
+}
+
+func (*KeyShareExtension) id() uint16 {
+	return extensionKeyShare
+}
+
 func (e *KeyShareExtension) keySharesLen() int {
 	extLen := 0
 	for _, ks := range e.KeyShares {
@@ -1293,6 +1407,14 @@ func (e *QUICTransportParametersExtension) Len() int {
 	return 4 + len(e.marshalResult)
 }
 
+func (*QUICTransportParametersExtension) inClientHelloInner() echStatus {
+	return inClientHelloInner
+}
+
+func (*QUICTransportParametersExtension) id() uint16 {
+	return extensionQUICTransportParameters
+}
+
 func (e *QUICTransportParametersExtension) Read(b []byte) (int, error) {
 	if len(b) < e.Len() {
 		return 0, io.ErrShortBuffer
@@ -1320,6 +1442,14 @@ type PSKKeyExchangeModesExtension struct {
 
 func (e *PSKKeyExchangeModesExtension) Len() int {
 	return 4 + 1 + len(e.Modes)
+}
+
+func (*PSKKeyExchangeModesExtension) inClientHelloInner() echStatus {
+	return inOuterExtensions
+}
+
+func (*PSKKeyExchangeModesExtension) id() uint16 {
+	return extensionPSKModes
 }
 
 func (e *PSKKeyExchangeModesExtension) Read(b []byte) (int, error) {
@@ -1397,6 +1527,14 @@ func (e *SupportedVersionsExtension) writeToUConn(uc *UConn) error {
 
 func (e *SupportedVersionsExtension) Len() int {
 	return 4 + 1 + (2 * len(e.Versions))
+}
+
+func (*SupportedVersionsExtension) inClientHelloInner() echStatus {
+	return inOuterExtensions
+}
+
+func (*SupportedVersionsExtension) id() uint16 {
+	return extensionSupportedVersions
 }
 
 func (e *SupportedVersionsExtension) Read(b []byte) (int, error) {
@@ -1487,6 +1625,14 @@ func (e *CookieExtension) Len() int {
 	return 4 + len(e.Cookie)
 }
 
+func (*CookieExtension) inClientHelloInner() echStatus {
+	return inOuterExtensions
+}
+
+func (*CookieExtension) id() uint16 {
+	return extensionCookie
+}
+
 func (e *CookieExtension) Read(b []byte) (int, error) {
 	if len(b) < e.Len() {
 		return 0, io.ErrShortBuffer
@@ -1568,6 +1714,14 @@ type RenegotiationInfoExtension struct {
 
 func (e *RenegotiationInfoExtension) Len() int {
 	return 5 + len(e.RenegotiatedConnection)
+}
+
+func (*RenegotiationInfoExtension) inClientHelloInner() echStatus {
+	return notInClientHelloInner
+}
+
+func (*RenegotiationInfoExtension) id() uint16 {
+	return extensionRenegotiationInfo
 }
 
 func (e *RenegotiationInfoExtension) Read(b []byte) (int, error) {
@@ -1677,6 +1831,14 @@ func (e *FakeRecordSizeLimitExtension) writeToUConn(uc *UConn) error {
 
 func (e *FakeRecordSizeLimitExtension) Len() int {
 	return 6
+}
+
+func (*FakeRecordSizeLimitExtension) inClientHelloInner() echStatus {
+	return inOuterExtensions
+}
+
+func (*FakeRecordSizeLimitExtension) id() uint16 {
+	return
 }
 
 func (e *FakeRecordSizeLimitExtension) Read(b []byte) (int, error) {
@@ -1805,6 +1967,14 @@ func (e *FakeDelegatedCredentialsExtension) writeToUConn(uc *UConn) error {
 
 func (e *FakeDelegatedCredentialsExtension) Len() int {
 	return 6 + 2*len(e.SupportedSignatureAlgorithms)
+}
+
+func (*FakeDelegatedCredentialsExtension) inClientHelloInner() echStatus {
+	return notInClientHelloInner
+}
+
+func (*FakeDelegatedCredentialsExtension) id() uint16 {
+	return extensionDelegatedCredentials
 }
 
 func (e *FakeDelegatedCredentialsExtension) Read(b []byte) (int, error) {
