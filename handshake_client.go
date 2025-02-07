@@ -204,9 +204,9 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, *keySharePrivateKeys, *echCon
 
 	var ech *echContext
 	if c.config.EncryptedClientHelloConfigList != nil {
-		if c.config.MinVersion != 0 && c.config.MinVersion < VersionTLS13 {
-			return nil, nil, nil, errors.New("tls: MinVersion must be >= VersionTLS13 if EncryptedClientHelloConfigList is populated")
-		}
+		// if c.config.MinVersion != 0 && c.config.MinVersion < VersionTLS13 {
+		// 	return nil, nil, nil, errors.New("tls: MinVersion must be >= VersionTLS13 if EncryptedClientHelloConfigList is populated")
+		// }
 		if c.config.MaxVersion != 0 && c.config.MaxVersion <= VersionTLS12 {
 			return nil, nil, nil, errors.New("tls: MaxVersion must be >= VersionTLS13 if EncryptedClientHelloConfigList is populated")
 		}
