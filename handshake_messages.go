@@ -105,7 +105,15 @@ type clientHelloMsg struct {
 	nextProtoNeg bool
 }
 
+// [uTLS SECTION BEGIN]
 func (m *clientHelloMsg) marshalMsg(echInner bool) ([]byte, error) {
+	return m.marshalMsgReorderOuterExts(echInner, nil)
+}
+
+// [uTLS SECTION END]
+
+// func (m *clientHelloMsg) marshalMsg(echInner bool) ([]byte, error) {
+func (m *clientHelloMsg) marshalMsgReorderOuterExts(echInner bool, outerExts []uint16) ([]byte, error) { // uTLS
 	var exts cryptobyte.Builder
 	if len(m.serverName) > 0 {
 		// RFC 6066, Section 3
@@ -254,18 +262,14 @@ func (m *clientHelloMsg) marshalMsg(echInner bool) ([]byte, error) {
 	}
 	if len(m.supportedVersions) > 0 {
 		// RFC 8446, Section 4.2.1
-		if echInner {
-			echOuterExts = append(echOuterExts, extensionSupportedVersions)
-		} else {
-			exts.AddUint16(extensionSupportedVersions)
-			exts.AddUint16LengthPrefixed(func(exts *cryptobyte.Builder) {
-				exts.AddUint8LengthPrefixed(func(exts *cryptobyte.Builder) {
-					for _, vers := range m.supportedVersions {
-						exts.AddUint16(vers)
-					}
-				})
+		exts.AddUint16(extensionSupportedVersions)
+		exts.AddUint16LengthPrefixed(func(exts *cryptobyte.Builder) {
+			exts.AddUint8LengthPrefixed(func(exts *cryptobyte.Builder) {
+				for _, vers := range m.supportedVersions {
+					exts.AddUint16(vers)
+				}
 			})
-		}
+		})
 	}
 	if len(m.cookie) > 0 {
 		// RFC 8446, Section 4.2.2
@@ -311,6 +315,20 @@ func (m *clientHelloMsg) marshalMsg(echInner bool) ([]byte, error) {
 			})
 		}
 	}
+	// [uTLS SECTION BEGIN]
+	if echInner && outerExts != nil {
+		echOuterExtsReordered := slices.Collect(func(yield func(uint16) bool) {
+			for _, ext := range outerExts {
+				if slices.Contains(echOuterExts, ext) {
+					if !yield(ext) {
+						return
+					}
+				}
+			}
+		})
+		echOuterExts = echOuterExtsReordered
+	}
+	// [uTLS SECTION END]
 	if len(echOuterExts) > 0 && echInner {
 		exts.AddUint16(extensionECHOuterExtensions)
 		exts.AddUint16LengthPrefixed(func(exts *cryptobyte.Builder) {

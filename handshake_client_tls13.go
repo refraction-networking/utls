@@ -75,9 +75,21 @@ func (hs *clientHandshakeStateTLS13) handshake() error {
 
 	if hs.echContext != nil {
 		hs.echContext.innerTranscript = hs.suite.hash.New()
-		if err := transcriptMsg(hs.echContext.innerHello, hs.echContext.innerTranscript); err != nil {
+		// [uTLS SECTION BEGIN]
+		encodedInner, err := encodeInnerClientHelloReorderOuterExts(hs.echContext.innerHello, int(hs.echContext.config.MaxNameLength), hs.uconn.extensionsList())
+		if err != nil {
 			return err
 		}
+
+		decodedInner, err := decodeInnerClientHello(hs.hello, encodedInner)
+		if err != nil {
+			return err
+		}
+
+		if err := transcriptMsg(decodedInner, hs.echContext.innerTranscript); err != nil {
+			return err
+		}
+		// [uTLS SECTION END]
 	}
 
 	if bytes.Equal(hs.serverHello.random, helloRetryRequestRandom) {
