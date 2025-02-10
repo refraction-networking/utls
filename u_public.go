@@ -41,7 +41,8 @@ type PubClientHandshakeState struct {
 
 // TLS 1.3 only
 type TLS13OnlyState struct {
-	// Deprecated: Use KeyShareKeys instead.
+	// Deprecated: Use KeyShareKeys instead. KeyShareKeys will take precedence if both are set.
+	// Support may be removed in the future.
 	EcdheKey        *ecdh.PrivateKey
 	KeySharesParams *KeySharesParameters
 	KEMKey          *KemPrivateKey
@@ -116,19 +117,6 @@ func kyberGoToCircl(kyberKey *mlkem768.DecapsulationKey, ecdhKey *ecdh.PrivateKe
 	return hybrid.Kyber768X25519().UnmarshalBinaryPrivateKey(append(ecdhKey.Bytes(), kyberKey.Bytes()...))
 }
 
-func (ksp *keySharePrivateKeys) publicKEMKey() *KemPrivateKey {
-	if ksp.kyber != nil && ksp.ecdhe != nil && ksp.curveID == x25519Kyber768Draft00 {
-		key := append(ksp.ecdhe.Bytes(), ksp.kyber.Bytes()...)
-		if privkey, err := hybrid.Kyber768X25519().UnmarshalBinaryPrivateKey(key); err == nil {
-			return &KemPrivateKey{
-				SecretKey: privkey,
-			}
-		}
-	}
-
-	return nil
-}
-
 func (chs *PubClientHandshakeState) toPrivate13() *clientHandshakeStateTLS13 {
 	if chs == nil {
 		return nil
@@ -163,8 +151,6 @@ func (chs13 *clientHandshakeStateTLS13) toPublic13() *PubClientHandshakeState {
 	} else {
 		tls13State := TLS13OnlyState{
 			KeySharesParams: chs13.keySharesParams,
-			EcdheKey:        chs13.keyShareKeys.ecdhe,
-			KEMKey:          chs13.keyShareKeys.publicKEMKey(),
 			KeyShareKeys:    chs13.keyShareKeys.ToPublic(),
 			EarlySecret:     chs13.earlySecret,
 			BinderKey:       chs13.binderKey,
@@ -240,7 +226,8 @@ func (chs12 *clientHandshakeState) toPublic12() *PubClientHandshakeState {
 // }
 
 type CertificateRequestMsgTLS13 struct {
-	// Deprecated: crypto/tls no longer use this variable
+	// Deprecated: crypto/tls no longer use this variable. This field won't be read or used by utls, but will still be populated.
+	// Support may be removed in the future.
 	Raw []byte
 
 	OcspStapling                     bool
@@ -255,7 +242,7 @@ func (crm *certificateRequestMsgTLS13) toPublic() *CertificateRequestMsgTLS13 {
 		return nil
 	} else {
 		rawBytes := []byte{}
-		if raw, err := crm.marshal(); err != nil {
+		if raw, err := crm.marshal(); err == nil {
 			rawBytes = raw
 		}
 
@@ -405,7 +392,7 @@ func (shm *serverHelloMsg) getPublicPtr() *PubServerHelloMsg {
 }
 
 type PubClientHelloMsg struct {
-	Raw                          []byte // renamed to serverHelloMsg.original in crypto/tls
+	Raw                          []byte // renamed to clientHelloMsg.original in crypto/tls
 	Vers                         uint16
 	Random                       []byte
 	SessionId                    []byte
