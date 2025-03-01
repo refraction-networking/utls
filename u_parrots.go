@@ -618,7 +618,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&RenegotiationInfoExtension{Renegotiation: RenegotiateOnceAsClient},
 				&SupportedCurvesExtension{[]CurveID{
 					GREASE_PLACEHOLDER,
-					X25519MLKEM768,
+					X25519Kyber768Draft00,
 					X25519,
 					CurveP256,
 					CurveP384,
@@ -642,7 +642,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&SCTExtension{},
 				&KeyShareExtension{[]KeyShare{
 					{Group: CurveID(GREASE_PLACEHOLDER), Data: []byte{0}},
-					{Group: X25519MLKEM768},
+					{Group: X25519Kyber768Draft00},
 					{Group: X25519},
 				}},
 				&PSKKeyExchangeModesExtension{[]uint8{
@@ -764,7 +764,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&RenegotiationInfoExtension{Renegotiation: RenegotiateOnceAsClient},
 				&SupportedCurvesExtension{[]CurveID{
 					GREASE_PLACEHOLDER,
-					X25519MLKEM768,
+					X25519Kyber768Draft00,
 					X25519,
 					CurveP256,
 					CurveP384,
@@ -788,7 +788,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&SCTExtension{},
 				&KeyShareExtension{[]KeyShare{
 					{Group: CurveID(GREASE_PLACEHOLDER), Data: []byte{0}},
-					{Group: X25519MLKEM768},
+					{Group: X25519Kyber768Draft00},
 					{Group: X25519},
 				}},
 				&PSKKeyExchangeModesExtension{[]uint8{
@@ -2495,7 +2495,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&RenegotiationInfoExtension{Renegotiation: RenegotiateOnceAsClient},
 				&SupportedCurvesExtension{[]CurveID{
 					GREASE_PLACEHOLDER,
-					X25519MLKEM768,
+					X25519Kyber768Draft00,
 					X25519,
 					CurveP256,
 					CurveP384,
@@ -2519,7 +2519,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&SCTExtension{},
 				&KeyShareExtension{[]KeyShare{
 					{Group: CurveID(GREASE_PLACEHOLDER), Data: []byte{0}},
-					{Group: X25519MLKEM768},
+					{Group: X25519Kyber768Draft00},
 					{Group: X25519},
 				}},
 				&PSKKeyExchangeModesExtension{[]uint8{
@@ -2736,7 +2736,7 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 					continue
 				}
 
-				if curveID == X25519MLKEM768 {
+				if curveID == X25519MLKEM768 || curveID == X25519Kyber768Draft00 {
 					ecdheKey, err := generateECDHEKey(uconn.config.rand(), X25519)
 					if err != nil {
 						return err
@@ -2756,7 +2756,11 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 					// }
 					// uconn.HandshakeState.State13.KeySharesParams.AddKemKeypair(curveID, circlKyberKey, circlKyberKey.Public())
 
-					ext.KeyShares[i].Data = append(mlkemKey.EncapsulationKey().Bytes(), ecdheKey.PublicKey().Bytes()...)
+					if curveID == X25519Kyber768Draft00 {
+						ext.KeyShares[i].Data = append(ecdheKey.PublicKey().Bytes(), mlkemKey.EncapsulationKey().Bytes()...)
+					} else {
+						ext.KeyShares[i].Data = append(mlkemKey.EncapsulationKey().Bytes(), ecdheKey.PublicKey().Bytes()...)
+					}
 					if !preferredCurveIsSet {
 						// only do this once for the first non-grease curve
 						uconn.HandshakeState.State13.KeyShareKeys.mlkem = mlkemKey

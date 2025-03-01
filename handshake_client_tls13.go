@@ -629,6 +629,15 @@ func (hs *clientHandshakeStateTLS13) establishHandshakeKeys() error {
 		}
 		ecdhePeerData = hs.serverHello.serverShare.data[mlkem.CiphertextSize768:]
 	}
+	// [uTLS] SECTION BEGIN
+	if hs.serverHello.serverShare.group == X25519Kyber768Draft00 {
+		if len(ecdhePeerData) != x25519PublicKeySize+mlkem.CiphertextSize768 {
+			c.sendAlert(alertIllegalParameter)
+			return errors.New("tls: invalid server X25519Kyber768Draft00 key share")
+		}
+		ecdhePeerData = hs.serverHello.serverShare.data[:x25519PublicKeySize]
+	}
+	// [uTLS] SECTION END
 	peerKey, err := hs.keyShareKeys.ecdhe.Curve().NewPublicKey(ecdhePeerData)
 	if err != nil {
 		c.sendAlert(alertIllegalParameter)
@@ -651,6 +660,20 @@ func (hs *clientHandshakeStateTLS13) establishHandshakeKeys() error {
 		}
 		sharedKey = append(mlkemShared, sharedKey...)
 	}
+	// [uTLS] SECTION BEGIN
+	if hs.serverHello.serverShare.group == X25519Kyber768Draft00 {
+		if hs.keyShareKeys.mlkem == nil {
+			return c.sendAlert(alertInternalError)
+		}
+		ciphertext := hs.serverHello.serverShare.data[x25519PublicKeySize:]
+		kyberShared, err := kyberDecapsulate(hs.keyShareKeys.mlkem, ciphertext)
+		if err != nil {
+			c.sendAlert(alertIllegalParameter)
+			return errors.New("tls: invalid X25519Kyber768Draft00 server key share")
+		}
+		sharedKey = append(sharedKey, kyberShared...)
+	}
+	// [uTLS] SECTION END
 	c.curveID = hs.serverHello.serverShare.group
 
 	earlySecret := hs.earlySecret
