@@ -886,16 +886,6 @@ func (e *ExtendedMasterSecretExtension) Write(_ []byte) (int, error) {
 	return 0, nil
 }
 
-// var extendedMasterSecretLabel = []byte("extended master secret")
-
-// extendedMasterFromPreMasterSecret generates the master secret from the pre-master
-// secret and session hash. See https://tools.ietf.org/html/rfc7627#section-4
-func extendedMasterFromPreMasterSecret(version uint16, suite *cipherSuite, preMasterSecret []byte, sessionHash []byte) []byte {
-	masterSecret := make([]byte, masterSecretLength)
-	prfForVersion(version, suite)(masterSecret, preMasterSecret, extendedMasterSecretLabel, sessionHash)
-	return masterSecret
-}
-
 // GREASE stinks with dead parrots, have to be super careful, and, if possible, not include GREASE
 // https://github.com/google/boringssl/blob/1c68fa2350936ca5897a66b430ebaf333a0e43f5/ssl/internal.h
 const (

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	circlPki "github.com/cloudflare/circl/pki"
+	"github.com/refraction-networking/utls/internal/fips140tls"
 )
 
 func TestSignatureSelection(t *testing.T) {
@@ -59,6 +60,11 @@ func TestSignatureSelection(t *testing.T) {
 	}
 
 	for testNo, test := range tests {
+		if fips140tls.Required() && (test.expectedHash == crypto.SHA1 || test.expectedSigAlg == Ed25519) {
+			t.Logf("skipping test[%d] - not compatible with TLS FIPS mode", testNo)
+			continue
+		}
+
 		sigAlg, err := selectSignatureScheme(test.tlsVersion, test.cert, test.peerSigAlgs)
 		if err != nil {
 			t.Errorf("test[%d]: unexpected selectSignatureScheme error: %v", testNo, err)

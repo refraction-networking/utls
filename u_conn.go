@@ -53,7 +53,7 @@ type UConn struct {
 	ech ECHExtension
 
 	// echCtx is the echContex returned by makeClientHello()
-	echCtx *echContext
+	echCtx *echClientContext
 }
 
 // UClient returns a new uTLS client, with behavior depending on clientHelloID.

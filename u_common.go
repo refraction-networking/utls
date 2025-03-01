@@ -88,7 +88,7 @@ const (
 )
 
 const (
-	X25519Kyber768Draft00 CurveID = x25519Kyber768Draft00
+	// X25519Kyber768Draft00 CurveID = x25519Kyber768Draft00
 
 	FakeCurveX25519Kyber512Draft00    CurveID = 0xfe30
 	FakeCurveX25519Kyber768Draft00Old CurveID = 0xfe31

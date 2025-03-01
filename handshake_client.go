@@ -10,6 +10,7 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/mlkem"
 	"crypto/rsa"
 	"crypto/subtle"
 	"crypto/x509"
@@ -18,14 +19,14 @@ import (
 	"hash"
 	"io"
 	"net"
+	"slices"
 	"strings"
 	"time"
 
-	"github.com/refraction-networking/utls/internal/hpke"
-
 	"github.com/refraction-networking/utls/internal/byteorder"
-
-	"github.com/refraction-networking/utls/internal/mlkem768"
+	"github.com/refraction-networking/utls/internal/fips140tls"
+	"github.com/refraction-networking/utls/internal/hpke"
+	"github.com/refraction-networking/utls/internal/tls13"
 
 	circlSign "github.com/cloudflare/circl/sign"
 )
@@ -46,7 +47,7 @@ type clientHandshakeState struct {
 
 var testingOnlyForceClientHelloSignatureAlgorithms []SignatureScheme
 
-func (c *Conn) makeClientHello() (*clientHelloMsg, *keySharePrivateKeys, *echContext, error) {
+func (c *Conn) makeClientHello() (*clientHelloMsg, *keySharePrivateKeys, *echClientContext, error) {
 	config := c.config
 
 	// [UTLS SECTION START]
@@ -149,35 +150,44 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, *keySharePrivateKeys, *echCon
 		if len(hello.supportedVersions) == 1 {
 			hello.cipherSuites = nil
 		}
-		if hasAESGCMHardwareSupport {
+		if fips140tls.Required() {
+			hello.cipherSuites = append(hello.cipherSuites, defaultCipherSuitesTLS13FIPS...)
+		} else if hasAESGCMHardwareSupport {
 			hello.cipherSuites = append(hello.cipherSuites, defaultCipherSuitesTLS13...)
 		} else {
 			hello.cipherSuites = append(hello.cipherSuites, defaultCipherSuitesTLS13NoAES...)
 		}
 
-		curveID := config.curvePreferences(maxVersion)[0]
+		if len(hello.supportedCurves) == 0 {
+			return nil, nil, nil, errors.New("tls: no supported elliptic curves for ECDHE")
+		}
+		curveID := hello.supportedCurves[0]
 		keyShareKeys = &keySharePrivateKeys{curveID: curveID}
-		if curveID == x25519Kyber768Draft00 {
+		// Note that if X25519MLKEM768 is supported, it will be first because
+		// the preference order is fixed.
+		if curveID == X25519MLKEM768 {
 			keyShareKeys.ecdhe, err = generateECDHEKey(config.rand(), X25519)
 			if err != nil {
 				return nil, nil, nil, err
 			}
-			seed := make([]byte, mlkem768.SeedSize)
+			seed := make([]byte, mlkem.SeedSize)
 			if _, err := io.ReadFull(config.rand(), seed); err != nil {
 				return nil, nil, nil, err
 			}
-			keyShareKeys.kyber, err = mlkem768.NewKeyFromSeed(seed)
+			keyShareKeys.mlkem, err = mlkem.NewDecapsulationKey768(seed)
 			if err != nil {
 				return nil, nil, nil, err
 			}
-			// For draft-tls-westerbaan-xyber768d00-03, we send both a hybrid
-			// and a standard X25519 key share, since most servers will only
-			// support the latter. We reuse the same X25519 ephemeral key for
-			// both, as allowed by draft-ietf-tls-hybrid-design-09, Section 3.2.
+			mlkemEncapsulationKey := keyShareKeys.mlkem.EncapsulationKey().Bytes()
+			x25519EphemeralKey := keyShareKeys.ecdhe.PublicKey().Bytes()
 			hello.keyShares = []keyShare{
-				{group: x25519Kyber768Draft00, data: append(keyShareKeys.ecdhe.PublicKey().Bytes(),
-					keyShareKeys.kyber.EncapsulationKey()...)},
-				{group: X25519, data: keyShareKeys.ecdhe.PublicKey().Bytes()},
+				{group: X25519MLKEM768, data: append(mlkemEncapsulationKey, x25519EphemeralKey...)},
+			}
+			// If both X25519MLKEM768 and X25519 are supported, we send both key
+			// shares (as a fallback) and we reuse the same X25519 ephemeral
+			// key, as allowed by draft-ietf-tls-hybrid-design-09, Section 3.2.
+			if slices.Contains(hello.supportedCurves, X25519) {
+				hello.keyShares = append(hello.keyShares, keyShare{group: X25519, data: x25519EphemeralKey})
 			}
 		} else {
 			if _, ok := curveForCurveID(curveID); !ok {
@@ -202,7 +212,7 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, *keySharePrivateKeys, *echCon
 		hello.quicTransportParameters = p
 	}
 
-	var ech *echContext
+	var ech *echClientContext
 	if c.config.EncryptedClientHelloConfigList != nil {
 		if c.config.MinVersion != 0 && c.config.MinVersion < VersionTLS13 {
 			return nil, nil, nil, errors.New("tls: MinVersion must be >= VersionTLS13 if EncryptedClientHelloConfigList is populated")
@@ -218,7 +228,7 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, *keySharePrivateKeys, *echCon
 		if echConfig == nil {
 			return nil, nil, nil, errors.New("tls: EncryptedClientHelloConfigList contains no valid configs")
 		}
-		ech = &echContext{config: echConfig}
+		ech = &echClientContext{config: echConfig}
 		hello.encryptedClientHello = []byte{1} // indicate inner hello
 		// We need to explicitly set these 1.2 fields to nil, as we do not
 		// marshal them when encoding the inner hello, otherwise transcripts
@@ -247,7 +257,7 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, *keySharePrivateKeys, *echCon
 	return hello, keyShareKeys, ech, nil
 }
 
-type echContext struct {
+type echClientContext struct {
 	config          *echConfig
 	hpkeContext     *hpke.Sender
 	encapsulatedKey []byte
@@ -256,6 +266,7 @@ type echContext struct {
 	kdfID           uint16
 	aeadID          uint16
 	echRejected     bool
+	retryConfigs    []byte
 }
 
 func (c *Conn) clientHandshake(ctx context.Context) (err error) {
@@ -327,7 +338,7 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 		if err := transcriptMsg(hello, transcript); err != nil {
 			return err
 		}
-		earlyTrafficSecret := suite.deriveSecret(earlySecret, clientEarlyTrafficLabel, transcript)
+		earlyTrafficSecret := earlySecret.ClientEarlyTrafficSecret(transcript)
 		c.quicSetWriteSecret(QUICEncryptionLevelEarly, suite.id, earlyTrafficSecret)
 	}
 
@@ -387,7 +398,7 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 }
 
 func (c *Conn) loadSession(hello *clientHelloMsg) (
-	session *SessionState, earlySecret, binderKey []byte, err error) {
+	session *SessionState, earlySecret *tls13.EarlySecret, binderKey []byte, err error) {
 	// [UTLS SECTION START]
 	if c.utls.sessionController != nil {
 		c.utls.sessionController.onEnterLoadSessionCheck()
@@ -534,8 +545,8 @@ func (c *Conn) loadSession(hello *clientHelloMsg) (
 	hello.pskBinders = [][]byte{make([]byte, cipherSuite.hash.Size())}
 
 	// Compute the PSK binders. See RFC 8446, Section 4.2.11.2.
-	earlySecret = cipherSuite.extract(session.secret, nil)
-	binderKey = cipherSuite.deriveSecret(earlySecret, resumptionBinderLabel, nil)
+	earlySecret = tls13.NewEarlySecret(cipherSuite.hash.New, session.secret)
+	binderKey = earlySecret.ResumptionBinderKey()
 	// [UTLS SECTION START]
 	if c.utls.sessionController != nil && !c.utls.sessionController.shouldLoadSessionWriteBinders() {
 		return
@@ -662,11 +673,11 @@ func (hs *clientHandshakeState) pickCipherSuite() error {
 	}
 
 	// [UTLS SECTION START]
-	// if hs.c.config.CipherSuites == nil && !needFIPS() && rsaKexCiphers[hs.suite.id] {
+	// if hs.c.config.CipherSuites == nil && !fips140tls.Required() && rsaKexCiphers[hs.suite.id] {
 	// 	tlsrsakex.Value() // ensure godebug is initialized
 	// 	tlsrsakex.IncNonDefault()
 	// }
-	// if hs.c.config.CipherSuites == nil && !needFIPS() && tdesCiphers[hs.suite.id] {
+	// if hs.c.config.CipherSuites == nil && !fips140tls.Required() && tdesCiphers[hs.suite.id] {
 	// 	tls3des.Value() // ensure godebug is initialized
 	// 	tls3des.IncNonDefault()
 	// }
@@ -741,11 +752,11 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 	if ok {
 		err = keyAgreement.processServerKeyExchange(c.config, hs.hello, hs.serverHello, c.peerCertificates[0], skx)
 		if err != nil {
-			c.sendAlert(alertUnexpectedMessage)
+			c.sendAlert(alertIllegalParameter)
 			return err
 		}
 		if len(skx.key) >= 3 && skx.key[0] == 3 /* named curve */ {
-			c.curveID = CurveID(byteorder.BeUint16(skx.key[1:]))
+			c.curveID = CurveID(byteorder.BEUint16(skx.key[1:]))
 		}
 
 		msg, err = c.readHandshake(&hs.finishedHash)
@@ -969,7 +980,7 @@ func (hs *clientHandshakeState) processServerHello() (bool, error) {
 }
 
 // checkALPN ensure that the server's choice of ALPN protocol is compatible with
-// the protocols that we advertised in the Client Hello.
+// the protocols that we advertised in the ClientHello.
 func checkALPN(clientProtos []string, serverProto string, quic bool) error {
 	if serverProto == "" {
 		if quic && len(clientProtos) > 0 {
@@ -1162,8 +1173,13 @@ func (c *Conn) verifyServerCertificate(certificates [][]byte) error {
 			for _, cert := range certs[1:] {
 				opts.Intermediates.AddCert(cert)
 			}
-			var err error
-			c.verifiedChains, err = certs[0].Verify(opts)
+			chains, err := certs[0].Verify(opts)
+			if err != nil {
+				c.sendAlert(alertBadCertificate)
+				return &CertificateVerificationError{UnverifiedCertificates: certs, Err: err}
+			}
+
+			c.verifiedChains, err = fipsAllowedChains(chains)
 			if err != nil {
 				c.sendAlert(alertBadCertificate)
 				return &CertificateVerificationError{UnverifiedCertificates: certs, Err: err}
@@ -1192,8 +1208,13 @@ func (c *Conn) verifyServerCertificate(certificates [][]byte) error {
 		for _, cert := range certs[1:] {
 			opts.Intermediates.AddCert(cert)
 		}
-		var err error
-		c.verifiedChains, err = certs[0].Verify(opts)
+		chains, err := certs[0].Verify(opts)
+		if err != nil {
+			c.sendAlert(alertBadCertificate)
+			return &CertificateVerificationError{UnverifiedCertificates: certs, Err: err}
+		}
+
+		c.verifiedChains, err = fipsAllowedChains(chains)
 		if err != nil {
 			c.sendAlert(alertBadCertificate)
 			return &CertificateVerificationError{UnverifiedCertificates: certs, Err: err}

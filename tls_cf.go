@@ -47,10 +47,6 @@ var supportedSignatureAlgorithmsWithCircl []SignatureScheme
 // schemes are only included when tls.Config#PQSignatureSchemesEnabled is set
 // and FIPS-only mode is not enabled.
 func (c *Config) supportedSignatureAlgorithms() []SignatureScheme {
-	// If FIPS-only mode is requested, do not add other algos.
-	if needFIPS() {
-		return supportedSignatureAlgorithms()
-	}
 	if c != nil && c.PQSignatureSchemesEnabled {
 		return supportedSignatureAlgorithmsWithCircl
 	}

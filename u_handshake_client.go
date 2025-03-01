@@ -14,7 +14,9 @@ import (
 
 	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/zstd"
+	"github.com/refraction-networking/utls/internal/fips140tls"
 	"github.com/refraction-networking/utls/internal/hpke"
+	"github.com/refraction-networking/utls/internal/tls13"
 )
 
 // This function is called by (*clientHandshakeStateTLS13).readServerCertificate()
@@ -183,7 +185,7 @@ func (hs *clientHandshakeStateTLS13) utlsReadServerParameters(encryptedExtension
 	return nil
 }
 
-func (c *Conn) makeClientHelloForApplyPreset() (*clientHelloMsg, *keySharePrivateKeys, *echContext, error) {
+func (c *Conn) makeClientHelloForApplyPreset() (*clientHelloMsg, *keySharePrivateKeys, *echClientContext, error) {
 	config := c.config
 
 	// [UTLS SECTION START]
@@ -286,35 +288,44 @@ func (c *Conn) makeClientHelloForApplyPreset() (*clientHelloMsg, *keySharePrivat
 		if len(hello.supportedVersions) == 1 {
 			hello.cipherSuites = nil
 		}
-		if hasAESGCMHardwareSupport {
+		if fips140tls.Required() {
+			hello.cipherSuites = append(hello.cipherSuites, defaultCipherSuitesTLS13FIPS...)
+		} else if hasAESGCMHardwareSupport {
 			hello.cipherSuites = append(hello.cipherSuites, defaultCipherSuitesTLS13...)
 		} else {
 			hello.cipherSuites = append(hello.cipherSuites, defaultCipherSuitesTLS13NoAES...)
 		}
 
-		// curveID := config.curvePreferences(maxVersion)[0]
+		if len(hello.supportedCurves) == 0 {
+			return nil, nil, nil, errors.New("tls: no supported elliptic curves for ECDHE")
+		}
+		// curveID := hello.supportedCurves[0]
 		// keyShareKeys = &keySharePrivateKeys{curveID: curveID}
-		// if curveID == x25519Kyber768Draft00 {
+		// // Note that if X25519MLKEM768 is supported, it will be first because
+		// // the preference order is fixed.
+		// if curveID == X25519MLKEM768 {
 		// 	keyShareKeys.ecdhe, err = generateECDHEKey(config.rand(), X25519)
 		// 	if err != nil {
 		// 		return nil, nil, nil, err
 		// 	}
-		// 	seed := make([]byte, mlkem768.SeedSize)
+		// 	seed := make([]byte, mlkem.SeedSize)
 		// 	if _, err := io.ReadFull(config.rand(), seed); err != nil {
 		// 		return nil, nil, nil, err
 		// 	}
-		// 	keyShareKeys.kyber, err = mlkem768.NewKeyFromSeed(seed)
+		// 	keyShareKeys.mlkem, err = mlkem.NewDecapsulationKey768(seed)
 		// 	if err != nil {
 		// 		return nil, nil, nil, err
 		// 	}
-		// 	// For draft-tls-westerbaan-xyber768d00-03, we send both a hybrid
-		// 	// and a standard X25519 key share, since most servers will only
-		// 	// support the latter. We reuse the same X25519 ephemeral key for
-		// 	// both, as allowed by draft-ietf-tls-hybrid-design-09, Section 3.2.
+		// 	mlkemEncapsulationKey := keyShareKeys.mlkem.EncapsulationKey().Bytes()
+		// 	x25519EphemeralKey := keyShareKeys.ecdhe.PublicKey().Bytes()
 		// 	hello.keyShares = []keyShare{
-		// 		{group: x25519Kyber768Draft00, data: append(keyShareKeys.ecdhe.PublicKey().Bytes(),
-		// 			keyShareKeys.kyber.EncapsulationKey()...)},
-		// 		{group: X25519, data: keyShareKeys.ecdhe.PublicKey().Bytes()},
+		// 		{group: X25519MLKEM768, data: append(mlkemEncapsulationKey, x25519EphemeralKey...)},
+		// 	}
+		// 	// If both X25519MLKEM768 and X25519 are supported, we send both key
+		// 	// shares (as a fallback) and we reuse the same X25519 ephemeral
+		// 	// key, as allowed by draft-ietf-tls-hybrid-design-09, Section 3.2.
+		// 	if slices.Contains(hello.supportedCurves, X25519) {
+		// 		hello.keyShares = append(hello.keyShares, keyShare{group: X25519, data: x25519EphemeralKey})
 		// 	}
 		// } else {
 		// 	if _, ok := curveForCurveID(curveID); !ok {
@@ -340,7 +351,7 @@ func (c *Conn) makeClientHelloForApplyPreset() (*clientHelloMsg, *keySharePrivat
 	// 	hello.quicTransportParameters = p
 	// }
 
-	var ech *echContext
+	var ech *echClientContext
 	if c.config.EncryptedClientHelloConfigList != nil {
 		if c.config.MinVersion != 0 && c.config.MinVersion < VersionTLS13 {
 			return nil, nil, nil, errors.New("tls: MinVersion must be >= VersionTLS13 if EncryptedClientHelloConfigList is populated")
@@ -356,7 +367,7 @@ func (c *Conn) makeClientHelloForApplyPreset() (*clientHelloMsg, *keySharePrivat
 		if echConfig == nil {
 			return nil, nil, nil, errors.New("tls: EncryptedClientHelloConfigList contains no valid configs")
 		}
-		ech = &echContext{config: echConfig}
+		ech = &echClientContext{config: echConfig}
 		hello.encryptedClientHello = []byte{1} // indicate inner hello
 		// We need to explicitly set these 1.2 fields to nil, as we do not
 		// marshal them when encoding the inner hello, otherwise transcripts
@@ -433,7 +444,7 @@ func (c *UConn) clientHandshake(ctx context.Context) (err error) {
 
 	var (
 		session     *SessionState
-		earlySecret []byte
+		earlySecret *tls13.EarlySecret
 		binderKey   []byte
 	)
 	if !sessionIsLocked {
@@ -444,7 +455,12 @@ func (c *UConn) clientHandshake(ctx context.Context) (err error) {
 		// [uTLS section start]
 	} else {
 		session = c.HandshakeState.Session
-		earlySecret = c.HandshakeState.State13.EarlySecret
+
+		if c.HandshakeState.State13.EarlySecret != nil && session != nil {
+			cipherSuite := cipherSuiteTLS13ByID(session.cipherSuite)
+			earlySecret = tls13.NewEarlySecretFromSecret(cipherSuite.hash.New, c.HandshakeState.State13.EarlySecret)
+		}
+
 		binderKey = c.HandshakeState.State13.BinderKey
 	}
 	// [uTLS section ends]
@@ -502,7 +518,7 @@ func (c *UConn) clientHandshake(ctx context.Context) (err error) {
 		if err := transcriptMsg(hello, transcript); err != nil {
 			return err
 		}
-		earlyTrafficSecret := suite.deriveSecret(earlySecret, clientEarlyTrafficLabel, transcript)
+		earlyTrafficSecret := earlySecret.ClientEarlyTrafficSecret(transcript)
 		c.quicSetWriteSecret(QUICEncryptionLevelEarly, suite.id, earlyTrafficSecret)
 	}
 
@@ -528,6 +544,12 @@ func (c *UConn) clientHandshake(ctx context.Context) (err error) {
 		hs13.serverHello = serverHello
 		hs13.hello = hello
 		hs13.echContext = ech
+		if c.HandshakeState.State13.EarlySecret != nil && session.cipherSuite != 0 {
+			hs13.earlySecret = tls13.NewEarlySecretFromSecret(cipherSuiteTLS13ByID(session.cipherSuite).hash.New, c.HandshakeState.State13.EarlySecret)
+		}
+		if c.HandshakeState.MasterSecret != nil && session.cipherSuite != 0 {
+			hs13.masterSecret = tls13.NewMasterSecretFromSecret(cipherSuiteTLS13ByID(session.cipherSuite).hash.New, c.HandshakeState.MasterSecret)
+		}
 		if !sessionIsLocked {
 			hs13.earlySecret = earlySecret
 			hs13.binderKey = binderKey

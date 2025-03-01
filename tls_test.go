@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"crypto"
+	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -28,6 +29,10 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/crypto/cryptobyte"
+
+	"github.com/refraction-networking/utls/internal/fips140tls"
+	"github.com/refraction-networking/utls/internal/hpke"
 	"github.com/refraction-networking/utls/testenv"
 )
 
@@ -163,6 +168,7 @@ func TestX509MixedKeyPair(t *testing.T) {
 }
 
 func newLocalListener(t testing.TB) net.Listener {
+	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		ln, err = net.Listen("tcp6", "[::1]:0")
@@ -171,6 +177,12 @@ func newLocalListener(t testing.TB) net.Listener {
 		t.Fatal(err)
 	}
 	return ln
+}
+
+func skipFIPS(t *testing.T) {
+	if fips140tls.Required() {
+		t.Skip("skipping test in FIPS mode")
+	}
 }
 
 func TestDialTimeout(t *testing.T) {
@@ -883,6 +895,10 @@ func TestCloneNonFuncFields(t *testing.T) {
 			f.Set(reflect.ValueOf(RenegotiateOnceAsClient))
 		case "EncryptedClientHelloConfigList":
 			f.Set(reflect.ValueOf([]byte{'x'}))
+		case "EncryptedClientHelloKeys":
+			f.Set(reflect.ValueOf([]EncryptedClientHelloKey{
+				{Config: []byte{1}, PrivateKey: []byte{1}},
+			}))
 		case "mutex", "autoSessionTicketKeys", "sessionTicketKeys":
 			continue // these are unexported fields that are handled separately
 		case "ApplicationSettings": // [UTLS] ALPS (Application Settings)
@@ -1113,14 +1129,14 @@ func TestConnectionStateMarshal(t *testing.T) {
 }
 
 func TestConnectionState(t *testing.T) {
+	skipFIPS(t) // Test certificates not FIPS compatible.
+
 	issuer, err := x509.ParseCertificate(testRSACertificateIssuer)
 	if err != nil {
 		panic(err)
 	}
 	rootCAs := x509.NewCertPool()
 	rootCAs.AddCert(issuer)
-
-	now := func() time.Time { return time.Unix(1476984729, 0) }
 
 	const alpnProtocol = "golang"
 	const serverName = "example.golang"
@@ -1137,7 +1153,7 @@ func TestConnectionState(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			config := &Config{
-				Time:         now,
+				Time:         testTime,
 				Rand:         zeroSource{},
 				Certificates: make([]Certificate, 1),
 				MaxVersion:   v,
@@ -1253,6 +1269,8 @@ func TestBuildNameToCertificate_doesntModifyCertificates(t *testing.T) {
 func testingKey(s string) string { return strings.ReplaceAll(s, "TESTING KEY", "PRIVATE KEY") }
 
 func TestClientHelloInfo_SupportsCertificate(t *testing.T) {
+	skipFIPS(t) // Test certificates not FIPS compatible.
+
 	rsaCert := &Certificate{
 		Certificate: [][]byte{testRSACertificate},
 		PrivateKey:  testRSAPrivateKey,
@@ -1702,6 +1720,8 @@ func TestPKCS1OnlyCert(t *testing.T) {
 }
 
 func TestVerifyCertificates(t *testing.T) {
+	skipFIPS(t) // Test certificates not FIPS compatible.
+
 	// See https://go.dev/issue/31641.
 	t.Run("TLSv12", func(t *testing.T) { testVerifyCertificates(t, VersionTLS12) })
 	t.Run("TLSv13", func(t *testing.T) { testVerifyCertificates(t, VersionTLS13) })
@@ -1768,7 +1788,7 @@ func testVerifyCertificates(t *testing.T, version uint16) {
 			var serverVerifyPeerCertificates, clientVerifyPeerCertificates bool
 
 			clientConfig := testConfig.Clone()
-			clientConfig.Time = func() time.Time { return time.Unix(1476984729, 0) }
+			clientConfig.Time = testTime
 			clientConfig.MaxVersion = version
 			clientConfig.MinVersion = version
 			clientConfig.RootCAs = rootCAs
@@ -1845,24 +1865,21 @@ func testVerifyCertificates(t *testing.T, version uint16) {
 	}
 }
 
-func TestHandshakeKyber(t *testing.T) {
-	if x25519Kyber768Draft00.String() != "X25519Kyber768Draft00" {
-		t.Fatalf("unexpected CurveID string: %v", x25519Kyber768Draft00.String())
-	}
-
+func TestHandshakeMLKEM(t *testing.T) {
+	skipFIPS(t) // No X25519MLKEM768 in FIPS
 	var tests = []struct {
 		name                string
 		clientConfig        func(*Config)
 		serverConfig        func(*Config)
 		preparation         func(*testing.T)
 		expectClientSupport bool
-		expectKyber         bool
+		expectMLKEM         bool
 		expectHRR           bool
 	}{
 		{
 			name:                "Default",
 			expectClientSupport: true,
-			expectKyber:         true,
+			expectMLKEM:         true,
 			expectHRR:           false,
 		},
 		{
@@ -1878,7 +1895,7 @@ func TestHandshakeKyber(t *testing.T) {
 				config.CurvePreferences = []CurveID{X25519}
 			},
 			expectClientSupport: true,
-			expectKyber:         false,
+			expectMLKEM:         false,
 			expectHRR:           false,
 		},
 		{
@@ -1887,8 +1904,24 @@ func TestHandshakeKyber(t *testing.T) {
 				config.CurvePreferences = []CurveID{CurveP256}
 			},
 			expectClientSupport: true,
-			expectKyber:         false,
+			expectMLKEM:         false,
 			expectHRR:           true,
+		},
+		{
+			name: "ClientMLKEMOnly",
+			clientConfig: func(config *Config) {
+				config.CurvePreferences = []CurveID{X25519MLKEM768}
+			},
+			expectClientSupport: true,
+			expectMLKEM:         true,
+		},
+		{
+			name: "ClientSortedCurvePreferences",
+			clientConfig: func(config *Config) {
+				config.CurvePreferences = []CurveID{CurveP256, X25519MLKEM768}
+			},
+			expectClientSupport: true,
+			expectMLKEM:         true,
 		},
 		{
 			name: "ClientTLSv12",
@@ -1903,8 +1936,17 @@ func TestHandshakeKyber(t *testing.T) {
 				config.MaxVersion = VersionTLS12
 			},
 			expectClientSupport: true,
-			expectKyber:         false,
+			expectMLKEM:         false,
 		},
+		// [uTLS] SECTION BEGIN
+		// {
+		// 	name: "GODEBUG",
+		// 	preparation: func(t *testing.T) {
+		// 		t.Setenv("GODEBUG", "tlsmlkem=0")
+		// 	},
+		// 	expectClientSupport: false,
+		// },
+		// [uTLS] SECTION END
 	}
 
 	baseConfig := testConfig.Clone()
@@ -1921,10 +1963,10 @@ func TestHandshakeKyber(t *testing.T) {
 				test.serverConfig(serverConfig)
 			}
 			serverConfig.GetConfigForClient = func(hello *ClientHelloInfo) (*Config, error) {
-				if !test.expectClientSupport && slices.Contains(hello.SupportedCurves, x25519Kyber768Draft00) {
-					return nil, errors.New("client supports Kyber768Draft00")
-				} else if test.expectClientSupport && !slices.Contains(hello.SupportedCurves, x25519Kyber768Draft00) {
-					return nil, errors.New("client does not support Kyber768Draft00")
+				if !test.expectClientSupport && slices.Contains(hello.SupportedCurves, X25519MLKEM768) {
+					return nil, errors.New("client supports X25519MLKEM768")
+				} else if test.expectClientSupport && !slices.Contains(hello.SupportedCurves, X25519MLKEM768) {
+					return nil, errors.New("client does not support X25519MLKEM768")
 				}
 				return nil, nil
 			}
@@ -1936,19 +1978,19 @@ func TestHandshakeKyber(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if test.expectKyber {
-				if ss.testingOnlyCurveID != x25519Kyber768Draft00 {
-					t.Errorf("got CurveID %v (server), expected %v", ss.testingOnlyCurveID, x25519Kyber768Draft00)
+			if test.expectMLKEM {
+				if ss.testingOnlyCurveID != X25519MLKEM768 {
+					t.Errorf("got CurveID %v (server), expected %v", ss.testingOnlyCurveID, X25519MLKEM768)
 				}
-				if cs.testingOnlyCurveID != x25519Kyber768Draft00 {
-					t.Errorf("got CurveID %v (client), expected %v", cs.testingOnlyCurveID, x25519Kyber768Draft00)
+				if cs.testingOnlyCurveID != X25519MLKEM768 {
+					t.Errorf("got CurveID %v (client), expected %v", cs.testingOnlyCurveID, X25519MLKEM768)
 				}
 			} else {
-				if ss.testingOnlyCurveID == x25519Kyber768Draft00 {
-					t.Errorf("got CurveID %v (server), expected not Kyber", ss.testingOnlyCurveID)
+				if ss.testingOnlyCurveID == X25519MLKEM768 {
+					t.Errorf("got CurveID %v (server), expected not X25519MLKEM768", ss.testingOnlyCurveID)
 				}
-				if cs.testingOnlyCurveID == x25519Kyber768Draft00 {
-					t.Errorf("got CurveID %v (client), expected not Kyber", cs.testingOnlyCurveID)
+				if cs.testingOnlyCurveID == X25519MLKEM768 {
+					t.Errorf("got CurveID %v (client), expected not X25519MLKEM768", cs.testingOnlyCurveID)
 				}
 			}
 			if test.expectHRR {
@@ -2021,6 +2063,120 @@ func TestLargeCertMsg(t *testing.T) {
 		},
 	}
 	if _, _, err := testHandshake(t, clientConfig, serverConfig); err != nil {
-		t.Fatalf("unexpected failure :%s", err)
+		t.Fatalf("unexpected failure: %s", err)
+	}
+}
+
+func TestECH(t *testing.T) {
+	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		DNSNames:     []string{"public.example"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+	}
+	publicCertDER, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, k.Public(), k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicCert, err := x509.ParseCertificate(publicCertDER)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl.DNSNames[0] = "secret.example"
+	secretCertDER, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, k.Public(), k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secretCert, err := x509.ParseCertificate(secretCertDER)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	marshalECHConfig := func(id uint8, pubKey []byte, publicName string, maxNameLen uint8) []byte {
+		builder := cryptobyte.NewBuilder(nil)
+		builder.AddUint16(extensionEncryptedClientHello)
+		builder.AddUint16LengthPrefixed(func(builder *cryptobyte.Builder) {
+			builder.AddUint8(id)
+			builder.AddUint16(hpke.DHKEM_X25519_HKDF_SHA256) // The only DHKEM we support
+			builder.AddUint16LengthPrefixed(func(builder *cryptobyte.Builder) {
+				builder.AddBytes(pubKey)
+			})
+			builder.AddUint16LengthPrefixed(func(builder *cryptobyte.Builder) {
+				for _, aeadID := range sortedSupportedAEADs {
+					builder.AddUint16(hpke.KDF_HKDF_SHA256) // The only KDF we support
+					builder.AddUint16(aeadID)
+				}
+			})
+			builder.AddUint8(maxNameLen)
+			builder.AddUint8LengthPrefixed(func(builder *cryptobyte.Builder) {
+				builder.AddBytes([]byte(publicName))
+			})
+			builder.AddUint16(0) // extensions
+		})
+
+		return builder.BytesOrPanic()
+	}
+
+	echKey, err := ecdh.X25519().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	echConfig := marshalECHConfig(123, echKey.PublicKey().Bytes(), "public.example", 32)
+
+	builder := cryptobyte.NewBuilder(nil)
+	builder.AddUint16LengthPrefixed(func(builder *cryptobyte.Builder) {
+		builder.AddBytes(echConfig)
+	})
+	echConfigList := builder.BytesOrPanic()
+
+	clientConfig, serverConfig := testConfig.Clone(), testConfig.Clone()
+	clientConfig.InsecureSkipVerify = false
+	clientConfig.Rand = rand.Reader
+	clientConfig.Time = nil
+	clientConfig.MinVersion = VersionTLS13
+	clientConfig.ServerName = "secret.example"
+	clientConfig.RootCAs = x509.NewCertPool()
+	clientConfig.RootCAs.AddCert(secretCert)
+	clientConfig.RootCAs.AddCert(publicCert)
+	clientConfig.EncryptedClientHelloConfigList = echConfigList
+	serverConfig.InsecureSkipVerify = false
+	serverConfig.Rand = rand.Reader
+	serverConfig.Time = nil
+	serverConfig.MinVersion = VersionTLS13
+	serverConfig.ServerName = "public.example"
+	serverConfig.Certificates = []Certificate{
+		{Certificate: [][]byte{publicCertDER}, PrivateKey: k},
+		{Certificate: [][]byte{secretCertDER}, PrivateKey: k},
+	}
+	serverConfig.EncryptedClientHelloKeys = []EncryptedClientHelloKey{
+		{Config: echConfig, PrivateKey: echKey.Bytes(), SendAsRetry: true},
+	}
+
+	ss, cs, err := testHandshake(t, clientConfig, serverConfig)
+	if err != nil {
+		t.Fatalf("unexpected failure: %s", err)
+	}
+	if !ss.ECHAccepted {
+		t.Fatal("server ConnectionState shows ECH not accepted")
+	}
+	if !cs.ECHAccepted {
+		t.Fatal("client ConnectionState shows ECH not accepted")
+	}
+	if cs.ServerName != "secret.example" || ss.ServerName != "secret.example" {
+		t.Fatalf("unexpected ConnectionState.ServerName, want %q, got server:%q, client: %q", "secret.example", ss.ServerName, cs.ServerName)
+	}
+	if len(cs.VerifiedChains) != 1 {
+		t.Fatal("unexpect number of certificate chains")
+	}
+	if len(cs.VerifiedChains[0]) != 1 {
+		t.Fatal("unexpect number of certificates")
+	}
+	if !cs.VerifiedChains[0][0].Equal(secretCert) {
+		t.Fatal("unexpected certificate")
 	}
 }

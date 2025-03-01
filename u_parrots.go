@@ -5,6 +5,7 @@
 package tls
 
 import (
+	"crypto/mlkem"
 	crand "crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
@@ -18,7 +19,6 @@ import (
 	"strconv"
 
 	"github.com/refraction-networking/utls/dicttls"
-	"github.com/refraction-networking/utls/internal/mlkem768"
 )
 
 var ErrUnknownClientHelloID = errors.New("tls: unknown ClientHelloID")
@@ -618,7 +618,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&RenegotiationInfoExtension{Renegotiation: RenegotiateOnceAsClient},
 				&SupportedCurvesExtension{[]CurveID{
 					GREASE_PLACEHOLDER,
-					X25519Kyber768Draft00,
+					X25519MLKEM768,
 					X25519,
 					CurveP256,
 					CurveP384,
@@ -642,7 +642,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&SCTExtension{},
 				&KeyShareExtension{[]KeyShare{
 					{Group: CurveID(GREASE_PLACEHOLDER), Data: []byte{0}},
-					{Group: X25519Kyber768Draft00},
+					{Group: X25519MLKEM768},
 					{Group: X25519},
 				}},
 				&PSKKeyExchangeModesExtension{[]uint8{
@@ -764,7 +764,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&RenegotiationInfoExtension{Renegotiation: RenegotiateOnceAsClient},
 				&SupportedCurvesExtension{[]CurveID{
 					GREASE_PLACEHOLDER,
-					X25519Kyber768Draft00,
+					X25519MLKEM768,
 					X25519,
 					CurveP256,
 					CurveP384,
@@ -788,7 +788,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&SCTExtension{},
 				&KeyShareExtension{[]KeyShare{
 					{Group: CurveID(GREASE_PLACEHOLDER), Data: []byte{0}},
-					{Group: X25519Kyber768Draft00},
+					{Group: X25519MLKEM768},
 					{Group: X25519},
 				}},
 				&PSKKeyExchangeModesExtension{[]uint8{
@@ -2495,7 +2495,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&RenegotiationInfoExtension{Renegotiation: RenegotiateOnceAsClient},
 				&SupportedCurvesExtension{[]CurveID{
 					GREASE_PLACEHOLDER,
-					X25519Kyber768Draft00,
+					X25519MLKEM768,
 					X25519,
 					CurveP256,
 					CurveP384,
@@ -2519,7 +2519,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&SCTExtension{},
 				&KeyShareExtension{[]KeyShare{
 					{Group: CurveID(GREASE_PLACEHOLDER), Data: []byte{0}},
-					{Group: X25519Kyber768Draft00},
+					{Group: X25519MLKEM768},
 					{Group: X25519},
 				}},
 				&PSKKeyExchangeModesExtension{[]uint8{
@@ -2736,37 +2736,37 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 					continue
 				}
 
-				if curveID == x25519Kyber768Draft00 {
+				if curveID == X25519MLKEM768 {
 					ecdheKey, err := generateECDHEKey(uconn.config.rand(), X25519)
 					if err != nil {
 						return err
 					}
-					seed := make([]byte, mlkem768.SeedSize)
+					seed := make([]byte, mlkem.SeedSize)
 					if _, err := io.ReadFull(uconn.config.rand(), seed); err != nil {
 						return err
 					}
-					kyberKey, err := mlkem768.NewKeyFromSeed(seed)
+					mlkemKey, err := mlkem.NewDecapsulationKey768(seed)
 					if err != nil {
 						return err
 					}
 
-					circlKyberKey, err := kyberGoToCircl(kyberKey, ecdheKey)
-					if err != nil {
-						return err
-					}
-					uconn.HandshakeState.State13.KeySharesParams.AddKemKeypair(curveID, circlKyberKey, circlKyberKey.Public())
+					// circlKyberKey, err := kyberGoToCircl(kyberKey, ecdheKey)
+					// if err != nil {
+					// 	return err
+					// }
+					// uconn.HandshakeState.State13.KeySharesParams.AddKemKeypair(curveID, circlKyberKey, circlKyberKey.Public())
 
-					ext.KeyShares[i].Data = append(ecdheKey.PublicKey().Bytes(), kyberKey.EncapsulationKey()...)
+					ext.KeyShares[i].Data = append(mlkemKey.EncapsulationKey().Bytes(), ecdheKey.PublicKey().Bytes()...)
 					if !preferredCurveIsSet {
 						// only do this once for the first non-grease curve
-						uconn.HandshakeState.State13.KeyShareKeys.kyber = kyberKey
+						uconn.HandshakeState.State13.KeyShareKeys.mlkem = mlkemKey
 						preferredCurveIsSet = true
 					}
 
 					if len(ext.KeyShares) > i+1 && ext.KeyShares[i+1].Group == X25519 {
 						// Reuse the same X25519 ephemeral key for both keyshares, as allowed by draft-ietf-tls-hybrid-design-09, Section 3.2.
 						uconn.HandshakeState.State13.KeyShareKeys.Ecdhe = ecdheKey
-						uconn.HandshakeState.State13.KeySharesParams.AddEcdheKeypair(curveID, ecdheKey, ecdheKey.PublicKey())
+						// uconn.HandshakeState.State13.KeySharesParams.AddEcdheKeypair(curveID, ecdheKey, ecdheKey.PublicKey())
 						ext.KeyShares[i+1].Data = ecdheKey.PublicKey().Bytes()
 					}
 				} else {
@@ -2776,7 +2776,7 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 							"To mimic it, fill the Data(key) field manually", curveID)
 					}
 
-					uconn.HandshakeState.State13.KeySharesParams.AddEcdheKeypair(curveID, ecdheKey, ecdheKey.PublicKey())
+					// uconn.HandshakeState.State13.KeySharesParams.AddEcdheKeypair(curveID, ecdheKey, ecdheKey.PublicKey())
 
 					ext.KeyShares[i].Data = ecdheKey.PublicKey().Bytes()
 					if !preferredCurveIsSet {

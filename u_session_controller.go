@@ -3,6 +3,8 @@ package tls
 import (
 	"errors"
 	"fmt"
+
+	"github.com/refraction-networking/utls/internal/tls13"
 )
 
 // Tracking the state of calling conn.loadSession
@@ -161,7 +163,7 @@ func (s *sessionController) initSessionTicketExt(session *SessionState, ticket [
 // initPSK initializes the PSK extension using a valid session. The PSK extension
 // should not be initialized previously, and the parameters must not be nil;
 // otherwise, this function will trigger a panic.
-func (s *sessionController) initPskExt(session *SessionState, earlySecret []byte, binderKey []byte, pskIdentities []pskIdentity) {
+func (s *sessionController) initPskExt(session *SessionState, earlySecret *tls13.EarlySecret, binderKey []byte, pskIdentities []pskIdentity) {
 	s.assertNotLocked("initPskExt")
 	s.assertHelloNotBuilt("initPskExt")
 	s.assertControllerState("initPskExt", NoSession)
@@ -177,7 +179,7 @@ func (s *sessionController) initPskExt(session *SessionState, earlySecret []byte
 				ObfuscatedTicketAge: private.obfuscatedTicketAge,
 			}
 		})
-		e.InitializeByUtls(session, earlySecret, binderKey, publicPskIdentities)
+		e.InitializeByUtls(session, earlySecret.Secret(), binderKey, publicPskIdentities)
 	})
 
 	s.state = PskExtInitialized

@@ -76,6 +76,18 @@ func TestMarshalUnmarshal(t *testing.T) {
 					m.activeCertHandles = nil
 				}
 
+				if ch, ok := m.(*clientHelloMsg); ok {
+					// extensions is special cased, as it is only populated by the
+					// server-side of a handshake and is not expected to roundtrip
+					// through marshal + unmarshal.  m ends up with the list of
+					// extensions necessary to serialize the other fields of
+					// clientHelloMsg, so check that it is non-empty, then clear it.
+					if len(ch.extensions) == 0 {
+						t.Errorf("expected ch.extensions to be populated on unmarshal")
+					}
+					ch.extensions = nil
+				}
+
 				// clientHelloMsg and serverHelloMsg, when unmarshalled, store
 				// their original representation, for later use in the handshake
 				// transcript. In order to prevent DeepEqual from failing since
@@ -219,6 +231,9 @@ func (*clientHelloMsg) Generate(rand *rand.Rand, size int) reflect.Value {
 	}
 	if rand.Intn(10) > 5 {
 		m.earlyData = true
+	}
+	if rand.Intn(10) > 5 {
+		m.encryptedClientHello = randomBytes(rand.Intn(50)+1, rand)
 	}
 
 	return reflect.ValueOf(m)
