@@ -5,25 +5,25 @@ name: "Go"
 
 on:
   push:
-    branches: [ "master" ]
+    branches: ["master"]
   pull_request:
-    branches: [ "master" ]
+    branches: ["master"]
 
 jobs:
   build:
     strategy:
       fail-fast: false
       matrix:
-        os: [ "ubuntu-latest", "windows-latest", "macos-latest" ]
-        go: [ "1.21.x", "1.22.x" ]
+        os: ["ubuntu-latest", "windows-latest", "macos-latest"]
+        go: ["1.24.x"]
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v3
-    - uses: actions/setup-go@v4
-      with:
-        go-version: ${{ matrix.go }}
-    - run: go version
-    - name: Build
-      run: go build -v ./...
-    - name: Test
-      run: go test -v ./...
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go }}
+      - run: go version
+      - name: Build
+        run: go build -v ./...
+      - name: Test
+        run: go test -v ./...
