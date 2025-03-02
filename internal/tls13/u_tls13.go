@@ -23,4 +23,9 @@ func NewMasterSecretFromSecret[H fips140.Hash](hash func() H, secret []byte) *Ma
 	}
 }
 
-func (s *MasterSecret) Secret() []byte { return s.secret }
+func (s *MasterSecret) Secret() []byte {
+	if s != nil {
+		return s.secret
+	}
+	return nil
+}
