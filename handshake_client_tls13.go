@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"crypto"
-	"crypto/ecdh"
 	"crypto/hmac"
 	"crypto/mlkem"
 	"crypto/rsa"
@@ -19,74 +18,16 @@ import (
 	"slices"
 	"time"
 
-	"github.com/cloudflare/circl/kem"
 	"github.com/refraction-networking/utls/internal/hkdf"
 	"github.com/refraction-networking/utls/internal/tls13"
 )
 
-// [uTLS SECTION START]
-// KeySharesParameters serves as a in-memory storage for generated keypairs by UTLS when generating
-// ClientHello. It is used to store both ecdhe and kem keypairs.
-type KeySharesParameters struct {
-	ecdhePrivKeymap map[CurveID]*ecdh.PrivateKey
-	ecdhePubKeymap  map[CurveID]*ecdh.PublicKey
-
-	// based on cloudflare/go
-	kemPrivKeymap map[CurveID]kem.PrivateKey
-	kemPubKeymap  map[CurveID]kem.PublicKey
-}
-
-func NewKeySharesParameters() *KeySharesParameters {
-	return &KeySharesParameters{
-		ecdhePrivKeymap: make(map[CurveID]*ecdh.PrivateKey),
-		ecdhePubKeymap:  make(map[CurveID]*ecdh.PublicKey),
-
-		kemPrivKeymap: make(map[CurveID]kem.PrivateKey),
-		kemPubKeymap:  make(map[CurveID]kem.PublicKey),
-	}
-}
-
-func (ksp *KeySharesParameters) AddEcdheKeypair(curveID CurveID, ecdheKey *ecdh.PrivateKey, ecdhePubKey *ecdh.PublicKey) {
-	ksp.ecdhePrivKeymap[curveID] = ecdheKey
-	ksp.ecdhePubKeymap[curveID] = ecdhePubKey
-}
-
-func (ksp *KeySharesParameters) GetEcdheKey(curveID CurveID) (ecdheKey *ecdh.PrivateKey, ok bool) {
-	ecdheKey, ok = ksp.ecdhePrivKeymap[curveID]
-	return
-}
-
-func (ksp *KeySharesParameters) GetEcdhePubkey(curveID CurveID) (params *ecdh.PublicKey, ok bool) {
-	params, ok = ksp.ecdhePubKeymap[curveID]
-	return
-}
-
-func (ksp *KeySharesParameters) AddKemKeypair(curveID CurveID, kemKey kem.PrivateKey, kemPubKey kem.PublicKey) {
-	// if curveID == x25519Kyber768Draft00 { // only store for x25519Kyber768Draft00
-	// 	ksp.kemPrivKeymap[curveID] = kemKey
-	// 	ksp.kemPubKeymap[curveID] = kemPubKey
-	// }
-}
-
-func (ksp *KeySharesParameters) GetKemKey(curveID CurveID) (kemKey kem.PrivateKey, ok bool) {
-	kemKey, ok = ksp.kemPrivKeymap[curveID]
-	return
-}
-
-func (ksp *KeySharesParameters) GetKemPubkey(curveID CurveID) (params kem.PublicKey, ok bool) {
-	params, ok = ksp.kemPubKeymap[curveID]
-	return
-}
-
-// [uTLS SECTION END]
-
 type clientHandshakeStateTLS13 struct {
-	c               *Conn
-	ctx             context.Context
-	serverHello     *serverHelloMsg
-	hello           *clientHelloMsg
-	keyShareKeys    *keySharePrivateKeys
-	keySharesParams *KeySharesParameters // [uTLS] support both ecdhe and kem
+	c            *Conn
+	ctx          context.Context
+	serverHello  *serverHelloMsg
+	hello        *clientHelloMsg
+	keyShareKeys *keySharePrivateKeys
 
 	session     *SessionState
 	earlySecret *tls13.EarlySecret
@@ -116,24 +57,6 @@ func (hs *clientHandshakeStateTLS13) handshake() error {
 		c.sendAlert(alertProtocolVersion)
 		return errors.New("tls: server selected TLS 1.3 in a renegotiation")
 	}
-
-	// [uTLS SECTION START]
-	// if hs.keyShareKeys == nil {
-	// 	// set echdheParams to what we received from server
-	// 	if ecdheKey, ok := hs.keySharesParams.GetEcdheKey(hs.serverHello.serverShare.group); ok {
-	// 		hs.keyShareKeys.ecdhe = ecdheKey
-	// 		hs.keyShareKeys.curveID = hs.serverHello.serverShare.group
-	// 	}
-	// 	// set kemParams to what we received from server
-	// 	if kemKey, ok := hs.keySharesParams.GetKemKey(hs.serverHello.serverShare.group); ok {
-	// 		if kyberKey, ecdhKey, err := mlkemCirclToGo(kemKey); err == nil {
-	// 			hs.keyShareKeys.kyber = kyberKey
-	// 			hs.keyShareKeys.ecdhe = ecdhKey
-	// 			hs.keyShareKeys.curveID = hs.serverHello.serverShare.group
-	// 		}
-	// 	}
-	// }
-	// [uTLS SECTION END]
 
 	// Consistency check on the presence of a keyShare and its parameters.
 	if hs.keyShareKeys == nil || hs.keyShareKeys.ecdhe == nil || len(hs.hello.keyShares) == 0 {

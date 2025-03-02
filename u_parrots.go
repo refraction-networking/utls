@@ -2636,7 +2636,6 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 	} else {
 		uconn.HandshakeState.State13.KeyShareKeys = &KeySharePrivateKeys{}
 	}
-	uconn.HandshakeState.State13.KeySharesParams = NewKeySharesParameters()
 	uconn.echCtx = ech
 	hello := uconn.HandshakeState.Hello
 
@@ -2750,12 +2749,6 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 						return err
 					}
 
-					// circlKyberKey, err := kyberGoToCircl(kyberKey, ecdheKey)
-					// if err != nil {
-					// 	return err
-					// }
-					// uconn.HandshakeState.State13.KeySharesParams.AddKemKeypair(curveID, circlKyberKey, circlKyberKey.Public())
-
 					if curveID == X25519Kyber768Draft00 {
 						ext.KeyShares[i].Data = append(ecdheKey.PublicKey().Bytes(), mlkemKey.EncapsulationKey().Bytes()...)
 					} else {
@@ -2770,7 +2763,6 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 					if len(ext.KeyShares) > i+1 && ext.KeyShares[i+1].Group == X25519 {
 						// Reuse the same X25519 ephemeral key for both keyshares, as allowed by draft-ietf-tls-hybrid-design-09, Section 3.2.
 						uconn.HandshakeState.State13.KeyShareKeys.Ecdhe = ecdheKey
-						// uconn.HandshakeState.State13.KeySharesParams.AddEcdheKeypair(curveID, ecdheKey, ecdheKey.PublicKey())
 						ext.KeyShares[i+1].Data = ecdheKey.PublicKey().Bytes()
 					}
 				} else {
@@ -2779,8 +2771,6 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 						return fmt.Errorf("unsupported Curve in KeyShareExtension: %v."+
 							"To mimic it, fill the Data(key) field manually", curveID)
 					}
-
-					// uconn.HandshakeState.State13.KeySharesParams.AddEcdheKeypair(curveID, ecdheKey, ecdheKey.PublicKey())
 
 					ext.KeyShares[i].Data = ecdheKey.PublicKey().Bytes()
 					if !preferredCurveIsSet {

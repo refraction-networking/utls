@@ -381,8 +381,6 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 			earlySecret:  earlySecret,
 			binderKey:    binderKey,
 			echContext:   ech,
-
-			keySharesParams: NewKeySharesParameters(), // [uTLS]
 		}
 		return hs.handshake()
 	}

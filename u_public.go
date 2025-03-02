@@ -41,9 +41,13 @@ type PubClientHandshakeState struct {
 type TLS13OnlyState struct {
 	// Deprecated: Use KeyShareKeys instead. KeyShareKeys will take precedence if both are set.
 	// Support may be removed in the future.
-	EcdheKey        *ecdh.PrivateKey
+	EcdheKey *ecdh.PrivateKey
+	// Deprecated: Use KeyShareKeys instead. This variable is no longer used.
+	// Will be removed in the future.
 	KeySharesParams *KeySharesParameters
-	KEMKey          *KemPrivateKey
+	// Deprecated: Use KeyShareKeys instead. This variable is no longer used.
+	// Will be removed in the future.
+	KEMKey *KemPrivateKey
 
 	KeyShareKeys  *KeySharePrivateKeys
 	Suite         *PubCipherSuiteTLS13
@@ -62,45 +66,10 @@ type TLS12OnlyState struct {
 	Suite        PubCipherSuite
 }
 
-// func mlkemCirclToGo(circlKey kem.PrivateKey) (*mlkem768.DecapsulationKey, *ecdh.PrivateKey, error) {
-// 	if circlKey.Scheme().Name() != "Kyber768-X25519" {
-// 		return nil, nil, fmt.Errorf("circl key is not Kyber768-X25519")
-// 	}
-
-// 	encodedKey, err := circlKey.MarshalBinary()
-// 	if err != nil {
-// 		return nil, nil, err
-// 	}
-
-// 	ecdhKey := encodedKey[:x25519PublicKeySize]
-// 	kyberKey := encodedKey[x25519PublicKeySize:]
-
-// 	goKyberkey, err := mlkem768.NewKeyFromExtendedEncoding(kyberKey)
-// 	if err != nil {
-// 		return nil, nil, err
-// 	}
-
-// 	goEcdhKey, err := ecdh.X25519().NewPrivateKey(ecdhKey)
-// 	if err != nil {
-// 		return nil, nil, err
-// 	}
-
-// 	return goKyberkey, goEcdhKey, nil
-// }
-
 func (chs *TLS13OnlyState) private13KeyShareKeys() *keySharePrivateKeys {
 	if chs.KeyShareKeys != nil {
 		return chs.KeyShareKeys.ToPrivate()
 	}
-
-	// if chs.KEMKey != nil {
-	// 	if kyberKey, ecdhKey, err := mlkemCirclToGo(chs.KEMKey.SecretKey); err == nil {
-	// 		return &keySharePrivateKeys{
-	// 			kyber: kyberKey,
-	// 			ecdhe: ecdhKey,
-	// 		}
-	// 	}
-	// }
 
 	if chs.EcdheKey != nil {
 		return &keySharePrivateKeys{
@@ -120,11 +89,10 @@ func (chs *PubClientHandshakeState) toPrivate13() *clientHandshakeStateTLS13 {
 		return nil
 	} else {
 		return &clientHandshakeStateTLS13{
-			c:               chs.C,
-			serverHello:     chs.ServerHello.getPrivatePtr(),
-			hello:           chs.Hello.getPrivatePtr(),
-			keyShareKeys:    chs.State13.private13KeyShareKeys(),
-			keySharesParams: chs.State13.KeySharesParams,
+			c:            chs.C,
+			serverHello:  chs.ServerHello.getPrivatePtr(),
+			hello:        chs.Hello.getPrivatePtr(),
+			keyShareKeys: chs.State13.private13KeyShareKeys(),
 
 			session:   chs.Session,
 			binderKey: chs.State13.BinderKey,
@@ -146,16 +114,15 @@ func (chs13 *clientHandshakeStateTLS13) toPublic13() *PubClientHandshakeState {
 		return nil
 	} else {
 		tls13State := TLS13OnlyState{
-			KeySharesParams: chs13.keySharesParams,
-			KeyShareKeys:    chs13.keyShareKeys.ToPublic(),
-			EarlySecret:     chs13.earlySecret.Secret(),
-			BinderKey:       chs13.binderKey,
-			CertReq:         chs13.certReq.toPublic(),
-			UsingPSK:        chs13.usingPSK,
-			SentDummyCCS:    chs13.sentDummyCCS,
-			Suite:           chs13.suite.toPublic(),
-			TrafficSecret:   chs13.trafficSecret,
-			Transcript:      chs13.transcript,
+			KeyShareKeys:  chs13.keyShareKeys.ToPublic(),
+			EarlySecret:   chs13.earlySecret.Secret(),
+			BinderKey:     chs13.binderKey,
+			CertReq:       chs13.certReq.toPublic(),
+			UsingPSK:      chs13.usingPSK,
+			SentDummyCCS:  chs13.sentDummyCCS,
+			Suite:         chs13.suite.toPublic(),
+			TrafficSecret: chs13.trafficSecret,
+			Transcript:    chs13.transcript,
 		}
 		return &PubClientHandshakeState{
 			C:           chs13.c,
@@ -891,6 +858,8 @@ type kemPrivateKey struct {
 	curveID   CurveID
 }
 
+// Deprecated: Use KeySharePrivateKeys instead. This type is no longer used.
+// Will be removed in the future.
 type KemPrivateKey struct {
 	SecretKey kem.PrivateKey
 	CurveID   CurveID
