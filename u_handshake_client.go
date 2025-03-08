@@ -483,7 +483,7 @@ func (c *UConn) clientHandshake(ctx context.Context) (err error) {
 		}()
 	}
 
-	if ech != nil {
+	if ech != nil && c.clientHelloBuildStatus == BuildByGoTLS {
 		// Split hello into inner and outer
 		ech.innerHello = hello.clone()
 
