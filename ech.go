@@ -207,8 +207,16 @@ func pickECHCipherSuite(suites []echCipher) (echCipher, error) {
 	return echCipher{}, errors.New("tls: no supported symmetric ciphersuites for ECH")
 }
 
+// [uTLS SECTION BEGIN]
 func encodeInnerClientHello(inner *clientHelloMsg, maxNameLength int) ([]byte, error) {
-	h, err := inner.marshalMsg(true)
+	return encodeInnerClientHelloReorderOuterExts(inner, maxNameLength, nil)
+}
+
+// [uTLS SECTION END]
+
+// func encodeInnerClientHello(inner *clientHelloMsg, maxNameLength int) ([]byte, error) {
+func encodeInnerClientHelloReorderOuterExts(inner *clientHelloMsg, maxNameLength int, outerExts []uint16) ([]byte, error) { // uTLS
+	h, err := inner.marshalMsgReorderOuterExts(true, outerExts)
 	if err != nil {
 		return nil, err
 	}

@@ -14,7 +14,10 @@ import (
 	"fmt"
 	"hash"
 	"net"
+	"slices"
 	"strconv"
+
+	"golang.org/x/crypto/cryptobyte"
 )
 
 type ClientHelloBuildStatus int
@@ -487,15 +490,106 @@ func (uconn *UConn) ApplyConfig() error {
 	return nil
 }
 
+func (uconn *UConn) extensionsList() []uint16 {
+
+	outerExts := []uint16{}
+	for _, ext := range uconn.Extensions {
+		buffer := cryptobyte.String(make([]byte, 2000))
+		ext.Read(buffer)
+		var extension uint16
+		buffer.ReadUint16(&extension)
+		outerExts = append(outerExts, extension)
+	}
+	return outerExts
+}
+
 func (uconn *UConn) MarshalClientHello() error {
-	if len(uconn.config.ECHConfigs) > 0 && uconn.ech != nil {
-		if err := uconn.ech.Configure(uconn.config.ECHConfigs); err != nil {
+	if len(uconn.config.EncryptedClientHelloConfigList) > 0 {
+		inner, _, ech, err := uconn.makeClientHello()
+		if err != nil {
 			return err
 		}
-		return uconn.ech.MarshalClientHello(uconn)
+
+		inner.keyShares = KeyShares(uconn.HandshakeState.Hello.KeyShares).ToPrivate()
+		inner.supportedSignatureAlgorithms = uconn.HandshakeState.Hello.SupportedSignatureAlgorithms
+		inner.sessionId = uconn.HandshakeState.Hello.SessionId
+		inner.supportedCurves = uconn.HandshakeState.Hello.SupportedCurves
+		inner.supportedVersions = []uint16{VersionTLS13}
+
+		ech.innerHello = inner
+
+		encapKey := ech.encapsulatedKey
+
+		encodedInner, err := encodeInnerClientHelloReorderOuterExts(inner, int(ech.config.MaxNameLength), uconn.extensionsList())
+		if err != nil {
+			return err
+		}
+
+		// NOTE: the tag lengths for all of the supported AEADs are the same (16
+		// bytes), so we have hardcoded it here. If we add support for another AEAD
+		// with a different tag length, we will need to change this.
+		encryptedLen := len(encodedInner) + 16 // AEAD tag length
+		outerECHExt, err := generateOuterECHExt(ech.config.ConfigID, ech.kdfID, ech.aeadID, encapKey, make([]byte, encryptedLen))
+		if err != nil {
+			return err
+		}
+
+		sniExtIdex := slices.IndexFunc(uconn.Extensions, func(ext TLSExtension) bool {
+			_, ok := ext.(*SNIExtension)
+			return ok
+		})
+		uconn.Extensions[sniExtIdex] = &SNIExtension{
+			ServerName: string(ech.config.PublicName),
+		}
+
+		echExtIdx := slices.IndexFunc(uconn.Extensions, func(ext TLSExtension) bool {
+			_, ok := ext.(EncryptedClientHelloExtension)
+			return ok
+		})
+		uconn.Extensions[echExtIdx] = &GenericExtension{
+			Id:   extensionEncryptedClientHello,
+			Data: outerECHExt,
+		}
+
+		// uconn.HandshakeState.Hello.Random = make([]byte, 32)
+		// _, err = io.ReadFull(uconn.config.rand(), uconn.HandshakeState.Hello.Random)
+		// if err != nil {
+		// 	return errors.New("tls: short read from Rand: " + err.Error())
+		// }
+
+		if err := uconn.MarshalClientHelloNoECH(); err != nil {
+			return err
+		}
+
+		serializedOuter := uconn.HandshakeState.Hello.Raw
+		serializedOuter = serializedOuter[4:] // strip the four byte prefix
+		encryptedInner, err := ech.hpkeContext.Seal(serializedOuter, encodedInner)
+		if err != nil {
+			return err
+		}
+		outerECHExt, err = generateOuterECHExt(ech.config.ConfigID, ech.kdfID, ech.aeadID, encapKey, encryptedInner)
+		if err != nil {
+			return err
+		}
+		uconn.Extensions[echExtIdx] = &GenericExtension{
+			Id:   extensionEncryptedClientHello,
+			Data: outerECHExt,
+		}
+
+		if err := uconn.MarshalClientHelloNoECH(); err != nil {
+			return err
+		}
+
+		uconn.echCtx = ech
+		return nil
 	}
 
-	return uconn.MarshalClientHelloNoECH() // if no ECH pointer, just marshal normally
+	if err := uconn.MarshalClientHelloNoECH(); err != nil {
+		return err
+	}
+
+	return nil
+
 }
 
 // MarshalClientHelloNoECH marshals ClientHello as if there was no

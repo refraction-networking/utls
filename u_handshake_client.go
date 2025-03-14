@@ -353,9 +353,9 @@ func (c *Conn) makeClientHelloForApplyPreset() (*clientHelloMsg, *keySharePrivat
 
 	var ech *echClientContext
 	if c.config.EncryptedClientHelloConfigList != nil {
-		if c.config.MinVersion != 0 && c.config.MinVersion < VersionTLS13 {
-			return nil, nil, nil, errors.New("tls: MinVersion must be >= VersionTLS13 if EncryptedClientHelloConfigList is populated")
-		}
+		// if c.config.MinVersion != 0 && c.config.MinVersion < VersionTLS13 {
+		// 	return nil, nil, nil, errors.New("tls: MinVersion must be >= VersionTLS13 if EncryptedClientHelloConfigList is populated")
+		// }
 		if c.config.MaxVersion != 0 && c.config.MaxVersion <= VersionTLS12 {
 			return nil, nil, nil, errors.New("tls: MaxVersion must be >= VersionTLS13 if EncryptedClientHelloConfigList is populated")
 		}
@@ -483,7 +483,7 @@ func (c *UConn) clientHandshake(ctx context.Context) (err error) {
 		}()
 	}
 
-	if ech != nil {
+	if ech != nil && c.clientHelloBuildStatus == BuildByGoTLS {
 		// Split hello into inner and outer
 		ech.innerHello = hello.clone()
 
