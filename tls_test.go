@@ -2068,6 +2068,10 @@ func TestLargeCertMsg(t *testing.T) {
 }
 
 func TestECH(t *testing.T) {
+	testECHSpec(t, nil, true)
+}
+
+func testECHSpec(t *testing.T, spec *ClientHelloSpec, expectSuccess bool) {
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
@@ -2157,26 +2161,34 @@ func TestECH(t *testing.T) {
 		{Config: echConfig, PrivateKey: echKey.Bytes(), SendAsRetry: true},
 	}
 
-	ss, cs, err := testHandshake(t, clientConfig, serverConfig)
-	if err != nil {
-		t.Fatalf("unexpected failure: %s", err)
+	// [uTLS SECTION BEGIN]
+	ss, cs, err := testUtlsHandshake(t, clientConfig, serverConfig, spec)
+	if expectSuccess {
+		if err != nil {
+			t.Fatalf("unexpected failure: %s", err)
+		}
+		if !ss.ECHAccepted {
+			t.Fatal("server ConnectionState shows ECH not accepted")
+		}
+		if !cs.ECHAccepted {
+			t.Fatal("client ConnectionState shows ECH not accepted")
+		}
+		if cs.ServerName != "secret.example" || ss.ServerName != "secret.example" {
+			t.Fatalf("unexpected ConnectionState.ServerName, want %q, got server:%q, client: %q", "secret.example", ss.ServerName, cs.ServerName)
+		}
+		if len(cs.VerifiedChains) != 1 {
+			t.Fatal("unexpect number of certificate chains")
+		}
+		if len(cs.VerifiedChains[0]) != 1 {
+			t.Fatal("unexpect number of certificates")
+		}
+		if !cs.VerifiedChains[0][0].Equal(secretCert) {
+			t.Fatal("unexpected certificate")
+		}
+	} else {
+		if err == nil {
+			t.Fatalf("unexpected handshake success, expected failure")
+		}
 	}
-	if !ss.ECHAccepted {
-		t.Fatal("server ConnectionState shows ECH not accepted")
-	}
-	if !cs.ECHAccepted {
-		t.Fatal("client ConnectionState shows ECH not accepted")
-	}
-	if cs.ServerName != "secret.example" || ss.ServerName != "secret.example" {
-		t.Fatalf("unexpected ConnectionState.ServerName, want %q, got server:%q, client: %q", "secret.example", ss.ServerName, cs.ServerName)
-	}
-	if len(cs.VerifiedChains) != 1 {
-		t.Fatal("unexpect number of certificate chains")
-	}
-	if len(cs.VerifiedChains[0]) != 1 {
-		t.Fatal("unexpect number of certificates")
-	}
-	if !cs.VerifiedChains[0][0].Equal(secretCert) {
-		t.Fatal("unexpected certificate")
-	}
+	// [uTLS SECTION END]
 }

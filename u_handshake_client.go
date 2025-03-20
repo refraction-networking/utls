@@ -353,9 +353,9 @@ func (c *Conn) makeClientHelloForApplyPreset() (*clientHelloMsg, *keySharePrivat
 
 	var ech *echClientContext
 	if c.config.EncryptedClientHelloConfigList != nil {
-		// if c.config.MinVersion != 0 && c.config.MinVersion < VersionTLS13 {
-		// 	return nil, nil, nil, errors.New("tls: MinVersion must be >= VersionTLS13 if EncryptedClientHelloConfigList is populated")
-		// }
+		if c.config.MinVersion != 0 && c.config.MinVersion < VersionTLS13 {
+			return nil, nil, nil, errors.New("tls: MinVersion must be >= VersionTLS13 if EncryptedClientHelloConfigList is populated")
+		}
 		if c.config.MaxVersion != 0 && c.config.MaxVersion <= VersionTLS12 {
 			return nil, nil, nil, errors.New("tls: MaxVersion must be >= VersionTLS13 if EncryptedClientHelloConfigList is populated")
 		}
@@ -483,7 +483,7 @@ func (c *UConn) clientHandshake(ctx context.Context) (err error) {
 		}()
 	}
 
-	if ech != nil && c.clientHelloBuildStatus == BuildByGoTLS {
+	if ech != nil && c.clientHelloBuildStatus != BuildByUtls {
 		// Split hello into inner and outer
 		ech.innerHello = hello.clone()
 
@@ -576,5 +576,25 @@ func (c *UConn) clientHandshake(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+func (c *UConn) echTranscriptMsg(outer *clientHelloMsg, echCtx *echClientContext) (err error) {
+	// Recreate the inner ClientHello from its compressed form using server's decodeInnerClientHello function.
+	// See https://github.com/refraction-networking/utls/blob/e430876b1d82fdf582efc57f3992d448e7ab3d8a/ech.go#L276-L283
+	encodedInner, err := encodeInnerClientHelloReorderOuterExts(echCtx.innerHello, int(echCtx.config.MaxNameLength), c.extensionsList())
+	if err != nil {
+		return err
+	}
+
+	decodedInner, err := decodeInnerClientHello(outer, encodedInner)
+	if err != nil {
+		return err
+	}
+
+	if err := transcriptMsg(decodedInner, echCtx.innerTranscript); err != nil {
+		return err
+	}
+
 	return nil
 }
