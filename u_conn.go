@@ -576,7 +576,6 @@ func (uconn *UConn) MarshalClientHello() error {
 		inner.supportedSignatureAlgorithms = uconn.HandshakeState.Hello.SupportedSignatureAlgorithms
 		inner.sessionId = uconn.HandshakeState.Hello.SessionId
 		inner.supportedCurves = uconn.HandshakeState.Hello.SupportedCurves
-		inner.supportedVersions = []uint16{VersionTLS13} // hardcode tls 1.3 as it is the only supported version currently
 
 		ech.innerHello = inner
 
@@ -588,14 +587,12 @@ func (uconn *UConn) MarshalClientHello() error {
 			return fmt.Errorf("sni extension missing while attempting ECH")
 		}
 
-		oldSNI := uconn.Extensions[sniExtIdex]
 		uconn.Extensions[sniExtIdex] = &SNIExtension{
 			ServerName: string(ech.config.PublicName),
 		}
 
 		uconn.computeAndUpdateOuterECHExtension(inner, ech, true)
 
-		uconn.Extensions[sniExtIdex] = oldSNI
 		uconn.echCtx = ech
 		return nil
 	}
@@ -761,6 +758,10 @@ func (uconn *UConn) SetTLSVers(minTLSVers, maxTLSVers uint16, specExtensions []T
 	}
 
 	uconn.HandshakeState.Hello.SupportedVersions = makeSupportedVersions(minTLSVers, maxTLSVers)
+	if uconn.config.EncryptedClientHelloConfigList == nil {
+		uconn.config.MinVersion = minTLSVers
+		uconn.config.MaxVersion = maxTLSVers
+	}
 
 	return nil
 }
