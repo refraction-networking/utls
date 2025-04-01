@@ -766,6 +766,9 @@ func (e *ApplicationSettingsExtension) Write(b []byte) (int, error) {
 	return fullLen, nil
 }
 
+// ApplicationSettingsExtensionNew represents the TLS ALPS codepoint extension introduced by Chrome 133.
+// More information can be found here: https://chromestatus.com/feature/5149147365900288
+// TODO: This probably should be implemented differently
 type ApplicationSettingsExtensionNew struct {
 	*ApplicationSettingsExtension
 }
