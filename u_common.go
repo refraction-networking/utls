@@ -609,7 +609,7 @@ var (
 	HelloFirefox_105  = ClientHelloID{helloFirefox, "105", nil, nil}
 	HelloFirefox_120  = ClientHelloID{helloFirefox, "120", nil, nil}
 
-	HelloChrome_Auto        = HelloChrome_131
+	HelloChrome_Auto        = HelloChrome_133
 	HelloChrome_58          = ClientHelloID{helloChrome, "58", nil, nil}
 	HelloChrome_62          = ClientHelloID{helloChrome, "62", nil, nil}
 	HelloChrome_70          = ClientHelloID{helloChrome, "70", nil, nil}
@@ -639,6 +639,8 @@ var (
 	HelloChrome_120_PQ = ClientHelloID{helloChrome, "120_PQ", nil, nil}
 	// Chrome w/ ML-KEM curve
 	HelloChrome_131 = ClientHelloID{helloChrome, "131", nil, nil}
+	// Chrome w/ New ALPS codepoint
+	HelloChrome_133 = ClientHelloID{helloChrome, "133", nil, nil}
 
 	HelloIOS_Auto = HelloIOS_14
 	HelloIOS_11_1 = ClientHelloID{helloIOS, "111", nil, nil} // legacy "111" means 11.1
