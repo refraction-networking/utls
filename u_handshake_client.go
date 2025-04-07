@@ -131,8 +131,8 @@ func (hs *clientHandshakeStateTLS13) serverFinishedReceived() error {
 func (hs *clientHandshakeStateTLS13) sendClientEncryptedExtensions() error {
 	c := hs.c
 	clientEncryptedExtensions := new(utlsClientEncryptedExtensionsMsg)
-	if c.utls.hasApplicationSettings {
-		clientEncryptedExtensions.hasApplicationSettings = true
+	if c.utls.applicationSettingsCodepoint != 0 {
+		clientEncryptedExtensions.applicationSettingsCodepoint = c.utls.applicationSettingsCodepoint
 		clientEncryptedExtensions.applicationSettings = c.utls.localApplicationSettings
 		if _, err := c.writeHandshakeRecord(clientEncryptedExtensions, hs.transcript); err != nil {
 			return err
@@ -143,11 +143,11 @@ func (hs *clientHandshakeStateTLS13) sendClientEncryptedExtensions() error {
 }
 
 func (hs *clientHandshakeStateTLS13) utlsReadServerParameters(encryptedExtensions *encryptedExtensionsMsg) error {
-	hs.c.utls.hasApplicationSettings = encryptedExtensions.utls.hasApplicationSettings
 	hs.c.utls.peerApplicationSettings = encryptedExtensions.utls.applicationSettings
+	hs.c.utls.applicationSettingsCodepoint = encryptedExtensions.utls.applicationSettingsCodepoint
 	hs.c.utls.echRetryConfigs = encryptedExtensions.utls.echRetryConfigs
 
-	if hs.c.utls.hasApplicationSettings {
+	if hs.c.utls.applicationSettingsCodepoint != 0 {
 		if hs.uconn.vers < VersionTLS13 {
 			return errors.New("tls: server sent application settings at invalid version")
 		}

@@ -948,8 +948,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&UtlsCompressCertExtension{[]CertCompressionAlgo{
 					CertCompressionBrotli,
 				}},
-				&ApplicationSettingsExtensionNew{&ApplicationSettingsExtension{SupportedProtocols: []string{"h2"}}},
-				// &ApplicationSettingsExtension{SupportedProtocols: []string{"h2"}},
+				&ApplicationSettingsExtensionNew{SupportedProtocols: []string{"h2"}},
 				BoringGREASEECH(),
 				&UtlsGREASEExtension{},
 			}),
