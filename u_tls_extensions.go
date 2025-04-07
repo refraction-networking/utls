@@ -71,6 +71,8 @@ func ExtensionFromID(id uint16) TLSExtension {
 		return &NPNExtension{}
 	case utlsExtensionApplicationSettings:
 		return &ApplicationSettingsExtension{}
+	case utlsExtensionApplicationSettingsNew:
+		return &ApplicationSettingsExtensionNew{ApplicationSettingsExtension: &ApplicationSettingsExtension{}}
 	case fakeOldExtensionChannelID:
 		return &FakeChannelIDExtension{true}
 	case fakeExtensionChannelID:
@@ -787,8 +789,8 @@ func (e *ApplicationSettingsExtensionNew) Read(b []byte) (int, error) {
 	}
 
 	// Read Type.
-	b[0] = byte(17613 >> 8)   // hex: 44 dec: 68
-	b[1] = byte(17613 & 0xff) // hex: 69 dec: 105
+	b[0] = byte(utlsExtensionApplicationSettingsNew >> 8)   // hex: 44 dec: 68
+	b[1] = byte(utlsExtensionApplicationSettingsNew & 0xff) // hex: 69 dec: 105
 
 	lengths := b[2:] // get the remaining buffer without Type
 	b = b[6:]        // set the buffer to the buffer without Type, Length and ALPS Extension Length (so only the Supported ALPN list remains)
