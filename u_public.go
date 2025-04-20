@@ -894,6 +894,9 @@ type KeySharePrivateKeys struct {
 }
 
 func (ksp *KeySharePrivateKeys) ToPrivate() *keySharePrivateKeys {
+	if ksp == nil {
+		return nil
+	}
 	return &keySharePrivateKeys{
 		curveID: ksp.CurveID,
 		ecdhe:   ksp.Ecdhe,
@@ -902,6 +905,9 @@ func (ksp *KeySharePrivateKeys) ToPrivate() *keySharePrivateKeys {
 }
 
 func (ksp *keySharePrivateKeys) ToPublic() *KeySharePrivateKeys {
+	if ksp == nil {
+		return nil
+	}
 	return &KeySharePrivateKeys{
 		CurveID: ksp.curveID,
 		Ecdhe:   ksp.ecdhe,
