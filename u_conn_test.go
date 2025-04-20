@@ -851,3 +851,59 @@ func TestUTLSECH(t *testing.T) {
 		})
 	}
 }
+
+var spec *ClientHelloSpec = nil
+
+func TestDowngradeCanaryUTLS(t *testing.T) {
+
+	chromeLatest, err := utlsIdToSpec(HelloChrome_Auto)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	firefoxLatest, err := utlsIdToSpec(HelloFirefox_Auto)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, test := range []struct {
+		name          string
+		spec          *ClientHelloSpec
+		expectSuccess bool
+	}{
+		{
+			name:          "latest chrome",
+			spec:          &chromeLatest,
+			expectSuccess: true,
+		},
+		{
+			name:          "latest firefox",
+			spec:          &firefoxLatest,
+			expectSuccess: true,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			spec = test.spec
+			if err := testDowngradeCanary(t, VersionTLS13, VersionTLS12); err == nil {
+				t.Errorf("downgrade from TLS 1.3 to TLS 1.2 was not detected")
+			}
+			if testing.Short() {
+				t.Skip("skipping the rest of the checks in short mode")
+			}
+			if err := testDowngradeCanary(t, VersionTLS13, VersionTLS11); err == nil {
+				t.Errorf("downgrade from TLS 1.3 to TLS 1.1 was not detected")
+			}
+			if err := testDowngradeCanary(t, VersionTLS13, VersionTLS10); err == nil {
+				t.Errorf("downgrade from TLS 1.3 to TLS 1.0 was not detected")
+			}
+			if err := testDowngradeCanary(t, VersionTLS12, VersionTLS11); err == nil {
+				t.Errorf("downgrade from TLS 1.2 to TLS 1.1 was not detected")
+			}
+			if err := testDowngradeCanary(t, VersionTLS12, VersionTLS10); err == nil {
+				t.Errorf("downgrade from TLS 1.2 to TLS 1.0 was not detected")
+			}
+			spec = nil
+		})
+
+	}
+}

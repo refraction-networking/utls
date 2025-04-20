@@ -477,7 +477,7 @@ func runMain(m *testing.M) int {
 
 func testHandshake(t *testing.T, clientConfig, serverConfig *Config) (serverState, clientState ConnectionState, err error) {
 	// [uTLS SECTION BEGIN]
-	return testUtlsHandshake(t, clientConfig, serverConfig, nil)
+	return testUtlsHandshake(t, clientConfig, serverConfig, spec)
 }
 func testUtlsHandshake(t *testing.T, clientConfig, serverConfig *Config, spec *ClientHelloSpec) (serverState, clientState ConnectionState, err error) {
 	// [uTLS SECTION END]
