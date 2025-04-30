@@ -2993,7 +2993,9 @@ func generateRandomizedSpec(
 	}
 
 	if r.FlipWeightedCoin(id.Weights.TLSVersMax_Set_VersionTLS13) {
-		p.TLSVersMin = VersionTLS12
+		// randomize min TLS version
+		minTLSVersCandidates := []uint16{VersionTLS10, VersionTLS12}
+		p.TLSVersMin = minTLSVersCandidates[r.Intn(len(minTLSVersCandidates))]
 		p.TLSVersMax = VersionTLS13
 		tls13ciphers := make([]uint16, len(defaultCipherSuitesTLS13))
 		copy(tls13ciphers, defaultCipherSuitesTLS13)
