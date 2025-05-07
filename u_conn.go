@@ -579,18 +579,6 @@ func (uconn *UConn) MarshalClientHello() error {
 
 		ech.innerHello = inner
 
-		sniExtIdex := slices.IndexFunc(uconn.Extensions, func(ext TLSExtension) bool {
-			_, ok := ext.(*SNIExtension)
-			return ok
-		})
-		if sniExtIdex < 0 {
-			return fmt.Errorf("sni extension missing while attempting ECH")
-		}
-
-		uconn.Extensions[sniExtIdex] = &SNIExtension{
-			ServerName: string(ech.config.PublicName),
-		}
-
 		uconn.computeAndUpdateOuterECHExtension(inner, ech, true)
 
 		uconn.echCtx = ech

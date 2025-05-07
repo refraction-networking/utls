@@ -197,7 +197,9 @@ func (e *SNIExtension) Write(b []byte) (int, error) {
 }
 
 func (e *SNIExtension) writeToUConn(uc *UConn) error {
-	uc.config.ServerName = e.ServerName
+	if uc.config.EncryptedClientHelloConfigList == nil { // with ech, e.ServerName is the outer public name and should not be copied
+		uc.config.ServerName = e.ServerName
+	}
 	hostName := hostnameInSNI(e.ServerName)
 	uc.HandshakeState.Hello.ServerName = hostName
 
