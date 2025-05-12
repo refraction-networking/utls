@@ -2856,6 +2856,9 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 			if ext.ServerName == "" {
 				ext.ServerName = uconn.config.ServerName
 			}
+			if uconn.config.EncryptedClientHelloConfigList != nil {
+				ext.ServerName = string(ech.config.PublicName)
+			}
 		case *UtlsGREASEExtension:
 			switch grease_extensions_seen {
 			case 0:

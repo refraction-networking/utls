@@ -483,7 +483,7 @@ func (c *UConn) clientHandshake(ctx context.Context) (err error) {
 		}()
 	}
 
-	if ech != nil {
+	if ech != nil && c.clientHelloBuildStatus != BuildByUtls {
 		// Split hello into inner and outer
 		ech.innerHello = hello.clone()
 
@@ -538,6 +538,18 @@ func (c *UConn) clientHandshake(ctx context.Context) (err error) {
 		return err
 	}
 
+	// If we are negotiating a protocol version that's lower than what we
+	// support, check for the server downgrade canaries.
+	// See RFC 8446, Section 4.1.3.
+	maxVers := c.config.maxSupportedVersion(roleClient)
+	tls12Downgrade := string(serverHello.random[24:]) == downgradeCanaryTLS12
+	tls11Downgrade := string(serverHello.random[24:]) == downgradeCanaryTLS11
+	if maxVers == VersionTLS13 && c.vers <= VersionTLS12 && (tls12Downgrade || tls11Downgrade) ||
+		maxVers == VersionTLS12 && c.vers <= VersionTLS11 && tls11Downgrade {
+		c.sendAlert(alertIllegalParameter)
+		return errors.New("tls: downgrade attempt detected, possibly due to a MitM attack or a broken middlebox")
+	}
+
 	// uTLS: do not create new handshakeState, use existing one
 	if c.vers == VersionTLS13 {
 		hs13 := c.HandshakeState.toPrivate13()
@@ -576,5 +588,25 @@ func (c *UConn) clientHandshake(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+func (c *UConn) echTranscriptMsg(outer *clientHelloMsg, echCtx *echClientContext) (err error) {
+	// Recreate the inner ClientHello from its compressed form using server's decodeInnerClientHello function.
+	// See https://github.com/refraction-networking/utls/blob/e430876b1d82fdf582efc57f3992d448e7ab3d8a/ech.go#L276-L283
+	encodedInner, err := encodeInnerClientHelloReorderOuterExts(echCtx.innerHello, int(echCtx.config.MaxNameLength), c.extensionsList())
+	if err != nil {
+		return err
+	}
+
+	decodedInner, err := decodeInnerClientHello(outer, encodedInner)
+	if err != nil {
+		return err
+	}
+
+	if err := transcriptMsg(decodedInner, echCtx.innerTranscript); err != nil {
+		return err
+	}
+
 	return nil
 }
