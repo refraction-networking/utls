@@ -449,7 +449,7 @@ func (chs *ClientHelloSpec) ImportTLSClientHello(data map[string][]byte) error {
 				// TODO: tlsfingerprint.io should record/provide application settings data
 				extWriter.(*ApplicationSettingsExtension).SupportedProtocols = []string{"h2"}
 			case utlsExtensionApplicationSettingsNew:
-				extWriter.(*ApplicationSettingsExtensionNew).ApplicationSettingsExtension.SupportedProtocols = []string{"h2"}
+				extWriter.(*ApplicationSettingsExtensionNew).SupportedProtocols = []string{"h2"}
 			case extensionPreSharedKey:
 				log.Printf("[Warning] PSK extension added without data")
 			default:
