@@ -839,7 +839,7 @@ func TestUTLSECH(t *testing.T) {
 					&UtlsCompressCertExtension{[]CertCompressionAlgo{
 						CertCompressionBrotli,
 					}},
-					&ApplicationSettingsExtension{SupportedProtocols: []string{"h2"}},
+					&ApplicationSettingsExtension{applicationSettingsExtension: applicationSettingsExtension{SupportedProtocols: []string{"h2"}}},
 					&UtlsGREASEExtension{},
 				}),
 			},
