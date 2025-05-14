@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"crypto"
+	"crypto/ecdh"
 	"crypto/hmac"
 	"crypto/mlkem"
 	"crypto/rsa"
@@ -562,6 +563,22 @@ func (hs *clientHandshakeStateTLS13) processServerHello() error {
 	return nil
 }
 
+// [uTLS] SECTION BEGIN
+func getSharedKey(peerData []byte, key *ecdh.PrivateKey) ([]byte, error) {
+	peerKey, err := key.Curve().NewPublicKey(peerData)
+	if err != nil {
+		return nil, errors.New("tls: invalid server key share")
+	}
+	sharedKey, err := key.ECDH(peerKey)
+	if err != nil {
+		return nil, errors.New("tls: invalid server key share")
+	}
+
+	return sharedKey, nil
+}
+
+// [uTLS] SECTION END
+
 func (hs *clientHandshakeStateTLS13) establishHandshakeKeys() error {
 	c := hs.c
 
@@ -581,13 +598,8 @@ func (hs *clientHandshakeStateTLS13) establishHandshakeKeys() error {
 		}
 		ecdhePeerData = hs.serverHello.serverShare.data[:x25519PublicKeySize]
 	}
+	sharedKey, err := getSharedKey(ecdhePeerData, hs.keyShareKeys.ecdhe)
 	// [uTLS] SECTION END
-	peerKey, err := hs.keyShareKeys.ecdhe.Curve().NewPublicKey(ecdhePeerData)
-	if err != nil {
-		c.sendAlert(alertIllegalParameter)
-		return errors.New("tls: invalid server key share")
-	}
-	sharedKey, err := hs.keyShareKeys.ecdhe.ECDH(peerKey)
 	if err != nil {
 		c.sendAlert(alertIllegalParameter)
 		return errors.New("tls: invalid server key share")
@@ -596,6 +608,14 @@ func (hs *clientHandshakeStateTLS13) establishHandshakeKeys() error {
 		if hs.keyShareKeys.mlkem == nil {
 			return c.sendAlert(alertInternalError)
 		}
+		// [uTLS] SECTION BEGIN
+		if hs.uconn != nil && hs.uconn.clientHelloBuildStatus == BuildByUtls {
+			if sharedKey, err = getSharedKey(ecdhePeerData, hs.keyShareKeys.mlkemEcdhe); err != nil {
+				c.sendAlert(alertIllegalParameter)
+				return errors.New("tls: invalid server key share")
+			}
+		}
+		// [uTLS] SECTION END
 		ciphertext := hs.serverHello.serverShare.data[:mlkem.CiphertextSize768]
 		mlkemShared, err := hs.keyShareKeys.mlkem.Decapsulate(ciphertext)
 		if err != nil {
@@ -608,6 +628,12 @@ func (hs *clientHandshakeStateTLS13) establishHandshakeKeys() error {
 	if hs.serverHello.serverShare.group == X25519Kyber768Draft00 {
 		if hs.keyShareKeys.mlkem == nil {
 			return c.sendAlert(alertInternalError)
+		}
+		if hs.uconn != nil && hs.uconn.clientHelloBuildStatus == BuildByUtls {
+			if sharedKey, err = getSharedKey(ecdhePeerData, hs.keyShareKeys.mlkemEcdhe); err != nil {
+				c.sendAlert(alertIllegalParameter)
+				return errors.New("tls: invalid server key share")
+			}
 		}
 		ciphertext := hs.serverHello.serverShare.data[x25519PublicKeySize:]
 		kyberShared, err := kyberDecapsulate(hs.keyShareKeys.mlkem, ciphertext)

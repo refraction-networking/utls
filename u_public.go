@@ -888,9 +888,10 @@ func (kpk *kemPrivateKey) ToPublic() *KemPrivateKey {
 }
 
 type KeySharePrivateKeys struct {
-	CurveID CurveID
-	Ecdhe   *ecdh.PrivateKey
-	mlkem   *mlkem.DecapsulationKey768
+	CurveID    CurveID
+	Ecdhe      *ecdh.PrivateKey
+	mlkem      *mlkem.DecapsulationKey768
+	mlkemEcdhe *ecdh.PrivateKey
 }
 
 func (ksp *KeySharePrivateKeys) ToPrivate() *keySharePrivateKeys {
@@ -898,9 +899,10 @@ func (ksp *KeySharePrivateKeys) ToPrivate() *keySharePrivateKeys {
 		return nil
 	}
 	return &keySharePrivateKeys{
-		curveID: ksp.CurveID,
-		ecdhe:   ksp.Ecdhe,
-		mlkem:   ksp.mlkem,
+		curveID:    ksp.CurveID,
+		ecdhe:      ksp.Ecdhe,
+		mlkem:      ksp.mlkem,
+		mlkemEcdhe: ksp.mlkemEcdhe,
 	}
 }
 
@@ -909,8 +911,9 @@ func (ksp *keySharePrivateKeys) ToPublic() *KeySharePrivateKeys {
 		return nil
 	}
 	return &KeySharePrivateKeys{
-		CurveID: ksp.curveID,
-		Ecdhe:   ksp.ecdhe,
-		mlkem:   ksp.mlkem,
+		CurveID:    ksp.curveID,
+		Ecdhe:      ksp.ecdhe,
+		mlkem:      ksp.mlkem,
+		mlkemEcdhe: ksp.mlkemEcdhe,
 	}
 }

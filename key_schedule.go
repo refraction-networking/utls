@@ -51,9 +51,10 @@ func (c *cipherSuiteTLS13) exportKeyingMaterial(s *tls13.MasterSecret, transcrip
 }
 
 type keySharePrivateKeys struct {
-	curveID CurveID
-	ecdhe   *ecdh.PrivateKey
-	mlkem   *mlkem.DecapsulationKey768
+	curveID    CurveID
+	ecdhe      *ecdh.PrivateKey
+	mlkem      *mlkem.DecapsulationKey768
+	mlkemEcdhe *ecdh.PrivateKey // [uTLS] seperate ecdhe key for pq keyshare in line with Chrome, instead of reusing ecdhe key like stdlib
 }
 
 const x25519PublicKeySize = 32
