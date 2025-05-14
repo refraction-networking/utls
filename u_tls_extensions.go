@@ -70,7 +70,9 @@ func ExtensionFromID(id uint16) TLSExtension {
 	case extensionNextProtoNeg:
 		return &NPNExtension{}
 	case utlsExtensionApplicationSettings:
-		return &ApplicationSettingsExtension{}
+		return &ApplicationSettingsExtension{applicationSettingsExtension: applicationSettingsExtension{}}
+	case utlsExtensionApplicationSettingsNew:
+		return &ApplicationSettingsExtensionNew{applicationSettingsExtension: applicationSettingsExtension{}}
 	case fakeOldExtensionChannelID:
 		return &FakeChannelIDExtension{true}
 	case fakeExtensionChannelID:
@@ -684,18 +686,19 @@ func (e *ALPNExtension) Write(b []byte) (int, error) {
 	return fullLen, nil
 }
 
-// ApplicationSettingsExtension represents the TLS ALPS extension.
+// applicationSettingsExtension represents the TLS ALPS extension.
 // At the time of this writing, this extension is currently a draft:
 // https://datatracker.ietf.org/doc/html/draft-vvv-tls-alps-01
-type ApplicationSettingsExtension struct {
+type applicationSettingsExtension struct {
 	SupportedProtocols []string
+	codePoint          uint16
 }
 
-func (e *ApplicationSettingsExtension) writeToUConn(uc *UConn) error {
+func (e *applicationSettingsExtension) writeToUConn(uc *UConn) error {
 	return nil
 }
 
-func (e *ApplicationSettingsExtension) Len() int {
+func (e *applicationSettingsExtension) Len() int {
 	bLen := 2 + 2 + 2 // Type + Length + ALPS Extension length
 	for _, s := range e.SupportedProtocols {
 		bLen += 1 + len(s) // Supported ALPN Length + actual length of protocol
@@ -703,14 +706,14 @@ func (e *ApplicationSettingsExtension) Len() int {
 	return bLen
 }
 
-func (e *ApplicationSettingsExtension) Read(b []byte) (int, error) {
+func (e *applicationSettingsExtension) Read(b []byte) (int, error) {
 	if len(b) < e.Len() {
 		return 0, io.ErrShortBuffer
 	}
 
 	// Read Type.
-	b[0] = byte(utlsExtensionApplicationSettings >> 8)   // hex: 44 dec: 68
-	b[1] = byte(utlsExtensionApplicationSettings & 0xff) // hex: 69 dec: 105
+	b[0] = byte(e.codePoint >> 8)   // hex: 44 dec: 68
+	b[1] = byte(e.codePoint & 0xff) // hex: 69 dec: 105
 
 	lengths := b[2:] // get the remaining buffer without Type
 	b = b[6:]        // set the buffer to the buffer without Type, Length and ALPS Extension Length (so only the Supported ALPN list remains)
@@ -733,7 +736,7 @@ func (e *ApplicationSettingsExtension) Read(b []byte) (int, error) {
 	return e.Len(), io.EOF
 }
 
-func (e *ApplicationSettingsExtension) UnmarshalJSON(b []byte) error {
+func (e *applicationSettingsExtension) UnmarshalJSON(b []byte) error {
 	var applicationSettingsSupport struct {
 		SupportedProtocols []string `json:"supported_protocols"`
 	}
@@ -747,7 +750,7 @@ func (e *ApplicationSettingsExtension) UnmarshalJSON(b []byte) error {
 }
 
 // Write implementation copied from ALPNExtension.Write
-func (e *ApplicationSettingsExtension) Write(b []byte) (int, error) {
+func (e *applicationSettingsExtension) Write(b []byte) (int, error) {
 	fullLen := len(b)
 	extData := cryptobyte.String(b)
 	// https://datatracker.ietf.org/doc/html/draft-vvv-tls-alps-01
@@ -766,6 +769,53 @@ func (e *ApplicationSettingsExtension) Write(b []byte) (int, error) {
 	}
 	e.SupportedProtocols = alpnProtocols
 	return fullLen, nil
+}
+
+// ApplicationSettingsExtension embeds applicationSettingsExtension to implement the TLS ALPS extension on codepoint 17513
+type ApplicationSettingsExtension struct {
+	applicationSettingsExtension
+}
+
+func (e *ApplicationSettingsExtension) Len() int {
+	return e.applicationSettingsExtension.Len()
+}
+
+func (e *ApplicationSettingsExtension) Read(b []byte) (int, error) {
+	e.applicationSettingsExtension.codePoint = utlsExtensionApplicationSettingsNew
+	return e.applicationSettingsExtension.Read(b)
+}
+
+func (e *ApplicationSettingsExtension) UnmarshalJSON(b []byte) error {
+	return e.applicationSettingsExtension.UnmarshalJSON(b)
+}
+
+// Write implementation copied from ALPNExtension.Write
+func (e *ApplicationSettingsExtension) Write(b []byte) (int, error) {
+	return e.applicationSettingsExtension.Write(b)
+}
+
+// ApplicationSettingsExtensionNew embeds applicationSettingsExtension to implement the TLS ALPS extension on codepoint 17613
+// More information can be found here: https://chromestatus.com/feature/5149147365900288
+type ApplicationSettingsExtensionNew struct {
+	applicationSettingsExtension
+}
+
+func (e *ApplicationSettingsExtensionNew) Len() int {
+	return e.applicationSettingsExtension.Len()
+}
+
+func (e *ApplicationSettingsExtensionNew) Read(b []byte) (int, error) {
+	e.applicationSettingsExtension.codePoint = utlsExtensionApplicationSettingsNew
+	return e.applicationSettingsExtension.Read(b)
+}
+
+func (e *ApplicationSettingsExtensionNew) UnmarshalJSON(b []byte) error {
+	return e.applicationSettingsExtension.UnmarshalJSON(b)
+}
+
+// Write implementation copied from ALPNExtension.Write
+func (e *ApplicationSettingsExtensionNew) Write(b []byte) (int, error) {
+	return e.applicationSettingsExtension.Write(b)
 }
 
 // SCTExtension implements signed_certificate_timestamp (18)
