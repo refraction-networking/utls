@@ -690,24 +690,23 @@ func (e *ALPNExtension) Write(b []byte) (int, error) {
 // At the time of this writing, this extension is currently a draft:
 // https://datatracker.ietf.org/doc/html/draft-vvv-tls-alps-01
 type applicationSettingsExtension struct {
-	SupportedProtocols []string
-	codePoint          uint16
+	codePoint uint16
 }
 
 func (e *applicationSettingsExtension) writeToUConn(uc *UConn) error {
 	return nil
 }
 
-func (e *applicationSettingsExtension) Len() int {
+func (e *applicationSettingsExtension) Len(supportedProtocols []string) int {
 	bLen := 2 + 2 + 2 // Type + Length + ALPS Extension length
-	for _, s := range e.SupportedProtocols {
+	for _, s := range supportedProtocols {
 		bLen += 1 + len(s) // Supported ALPN Length + actual length of protocol
 	}
 	return bLen
 }
 
-func (e *applicationSettingsExtension) Read(b []byte) (int, error) {
-	if len(b) < e.Len() {
+func (e *applicationSettingsExtension) Read(b []byte, supportedProtocols []string) (int, error) {
+	if len(b) < e.Len(supportedProtocols) {
 		return 0, io.ErrShortBuffer
 	}
 
@@ -719,7 +718,7 @@ func (e *applicationSettingsExtension) Read(b []byte) (int, error) {
 	b = b[6:]        // set the buffer to the buffer without Type, Length and ALPS Extension Length (so only the Supported ALPN list remains)
 
 	stringsLength := 0
-	for _, s := range e.SupportedProtocols {
+	for _, s := range supportedProtocols {
 		l := len(s)            // Supported ALPN Length
 		b[0] = byte(l)         // Supported ALPN Length in bytes hex: 02 dec: 2
 		copy(b[1:], s)         // copy the Supported ALPN as bytes to the buffer
@@ -733,10 +732,46 @@ func (e *applicationSettingsExtension) Read(b []byte) (int, error) {
 	lengths[0] = byte(stringsLength >> 8) // Length hex:00 dec: 0
 	lengths[1] = byte(stringsLength)      // Length hex: 05 dec: 5
 
-	return e.Len(), io.EOF
+	return e.Len(supportedProtocols), io.EOF
 }
 
-func (e *applicationSettingsExtension) UnmarshalJSON(b []byte) error {
+// Write implementation copied from ALPNExtension.Write
+func (e *applicationSettingsExtension) Write(b []byte) ([]string, int, error) {
+	fullLen := len(b)
+	extData := cryptobyte.String(b)
+	// https://datatracker.ietf.org/doc/html/draft-vvv-tls-alps-01
+	var protoList cryptobyte.String
+	if !extData.ReadUint16LengthPrefixed(&protoList) || protoList.Empty() {
+		return nil, 0, errors.New("unable to read ALPN extension data")
+	}
+	alpnProtocols := []string{}
+	for !protoList.Empty() {
+		var proto cryptobyte.String
+		if !protoList.ReadUint8LengthPrefixed(&proto) || proto.Empty() {
+			return nil, 0, errors.New("unable to read ALPN extension data")
+		}
+		alpnProtocols = append(alpnProtocols, string(proto))
+
+	}
+	return alpnProtocols, fullLen, nil
+}
+
+// ApplicationSettingsExtension embeds applicationSettingsExtension to implement the TLS ALPS extension on codepoint 17513
+type ApplicationSettingsExtension struct {
+	applicationSettingsExtension
+	SupportedProtocols []string
+}
+
+func (e *ApplicationSettingsExtension) Len() int {
+	return e.applicationSettingsExtension.Len(e.SupportedProtocols)
+}
+
+func (e *ApplicationSettingsExtension) Read(b []byte) (int, error) {
+	e.applicationSettingsExtension.codePoint = utlsExtensionApplicationSettings
+	return e.applicationSettingsExtension.Read(b, e.SupportedProtocols)
+}
+
+func (e *ApplicationSettingsExtension) UnmarshalJSON(b []byte) error {
 	var applicationSettingsSupport struct {
 		SupportedProtocols []string `json:"supported_protocols"`
 	}
@@ -750,72 +785,52 @@ func (e *applicationSettingsExtension) UnmarshalJSON(b []byte) error {
 }
 
 // Write implementation copied from ALPNExtension.Write
-func (e *applicationSettingsExtension) Write(b []byte) (int, error) {
-	fullLen := len(b)
-	extData := cryptobyte.String(b)
-	// https://datatracker.ietf.org/doc/html/draft-vvv-tls-alps-01
-	var protoList cryptobyte.String
-	if !extData.ReadUint16LengthPrefixed(&protoList) || protoList.Empty() {
-		return 0, errors.New("unable to read ALPN extension data")
-	}
-	alpnProtocols := []string{}
-	for !protoList.Empty() {
-		var proto cryptobyte.String
-		if !protoList.ReadUint8LengthPrefixed(&proto) || proto.Empty() {
-			return 0, errors.New("unable to read ALPN extension data")
-		}
-		alpnProtocols = append(alpnProtocols, string(proto))
-
-	}
-	e.SupportedProtocols = alpnProtocols
-	return fullLen, nil
-}
-
-// ApplicationSettingsExtension embeds applicationSettingsExtension to implement the TLS ALPS extension on codepoint 17513
-type ApplicationSettingsExtension struct {
-	applicationSettingsExtension
-}
-
-func (e *ApplicationSettingsExtension) Len() int {
-	return e.applicationSettingsExtension.Len()
-}
-
-func (e *ApplicationSettingsExtension) Read(b []byte) (int, error) {
-	e.applicationSettingsExtension.codePoint = utlsExtensionApplicationSettingsNew
-	return e.applicationSettingsExtension.Read(b)
-}
-
-func (e *ApplicationSettingsExtension) UnmarshalJSON(b []byte) error {
-	return e.applicationSettingsExtension.UnmarshalJSON(b)
-}
-
-// Write implementation copied from ALPNExtension.Write
 func (e *ApplicationSettingsExtension) Write(b []byte) (int, error) {
-	return e.applicationSettingsExtension.Write(b)
+	var (
+		fullLen int
+		err     error
+	)
+	e.SupportedProtocols, fullLen, err = e.applicationSettingsExtension.Write(b)
+	return fullLen, err
 }
 
 // ApplicationSettingsExtensionNew embeds applicationSettingsExtension to implement the TLS ALPS extension on codepoint 17613
 // More information can be found here: https://chromestatus.com/feature/5149147365900288
 type ApplicationSettingsExtensionNew struct {
 	applicationSettingsExtension
+	SupportedProtocols []string
 }
 
 func (e *ApplicationSettingsExtensionNew) Len() int {
-	return e.applicationSettingsExtension.Len()
+	return e.applicationSettingsExtension.Len(e.SupportedProtocols)
 }
 
 func (e *ApplicationSettingsExtensionNew) Read(b []byte) (int, error) {
 	e.applicationSettingsExtension.codePoint = utlsExtensionApplicationSettingsNew
-	return e.applicationSettingsExtension.Read(b)
+	return e.applicationSettingsExtension.Read(b, e.SupportedProtocols)
 }
 
 func (e *ApplicationSettingsExtensionNew) UnmarshalJSON(b []byte) error {
-	return e.applicationSettingsExtension.UnmarshalJSON(b)
+	var applicationSettingsSupport struct {
+		SupportedProtocols []string `json:"supported_protocols"`
+	}
+
+	if err := json.Unmarshal(b, &applicationSettingsSupport); err != nil {
+		return err
+	}
+
+	e.SupportedProtocols = applicationSettingsSupport.SupportedProtocols
+	return nil
 }
 
 // Write implementation copied from ALPNExtension.Write
 func (e *ApplicationSettingsExtensionNew) Write(b []byte) (int, error) {
-	return e.applicationSettingsExtension.Write(b)
+	var (
+		fullLen int
+		err     error
+	)
+	e.SupportedProtocols, fullLen, err = e.applicationSettingsExtension.Write(b)
+	return fullLen, err
 }
 
 // SCTExtension implements signed_certificate_timestamp (18)
