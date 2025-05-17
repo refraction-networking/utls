@@ -1541,12 +1541,17 @@ func (e *CookieExtension) writeToUConn(uc *UConn) error {
 }
 
 func (e *CookieExtension) Len() int {
+	// The total length of the Cookie extension is:
+	// 2 bytes for ExtensionType (extensionCookie)
+	// 2 bytes for OuterExtensionDataLength
+	// 2 bytes for InnerCookieLength (len(e.Cookie))
+	// N bytes for the Cookie data itself (e.Cookie)
+	// So, total = 6 + len(e.Cookie)
 	return 6 + len(e.Cookie)
 }
 
 func (e *CookieExtension) Read(b []byte) (int, error) {
 	cookieLen := len(e.Cookie)
-	extDataLen := 2 + cookieLen // 2 bytes for cookie length + cookie
 
 	if len(b) < e.Len() {
 		return 0, io.ErrShortBuffer
@@ -1556,7 +1561,9 @@ func (e *CookieExtension) Read(b []byte) (int, error) {
 	b[0] = byte(extensionCookie >> 8)
 	b[1] = byte(extensionCookie)
 
+	// Copied from BoringSSL https://boringssl.googlesource.com/boringssl.git/%2B/chromium-stable/ssl/extensions.cc#2465
 	// Total extension_data length
+	extDataLen := 2 + cookieLen // 2 bytes for cookie length + cookie
 	b[2] = byte(extDataLen >> 8)
 	b[3] = byte(extDataLen)
 
