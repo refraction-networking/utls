@@ -1541,21 +1541,32 @@ func (e *CookieExtension) writeToUConn(uc *UConn) error {
 }
 
 func (e *CookieExtension) Len() int {
-	return 4 + len(e.Cookie)
+	return 6 + len(e.Cookie)
 }
 
 func (e *CookieExtension) Read(b []byte) (int, error) {
+	cookieLen := len(e.Cookie)
+	extDataLen := 2 + cookieLen // 2 bytes for cookie length + cookie
+
 	if len(b) < e.Len() {
 		return 0, io.ErrShortBuffer
 	}
 
+	// Extension type
 	b[0] = byte(extensionCookie >> 8)
 	b[1] = byte(extensionCookie)
-	b[2] = byte(len(e.Cookie) >> 8)
-	b[3] = byte(len(e.Cookie))
-	if len(e.Cookie) > 0 {
-		copy(b[4:], e.Cookie)
-	}
+
+	// Total extension_data length
+	b[2] = byte(extDataLen >> 8)
+	b[3] = byte(extDataLen)
+
+	// Cookie length
+	b[4] = byte(cookieLen >> 8)
+	b[5] = byte(cookieLen)
+
+	// Cookie value
+	copy(b[6:], e.Cookie)
+
 	return e.Len(), io.EOF
 }
 
