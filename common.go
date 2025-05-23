@@ -930,6 +930,10 @@ type Config struct {
 	//
 	// If GREASE ECH extension is present, this field will be ignored.
 	ECHConfigs []ECHConfig // [uTLS]
+
+	// GetOscur0KeyShare gets the first keyshare, terminate the connection if
+	// non-nil err is returned. For use with Oscur0 only.
+	GetOscur0KeyShare func(*KeyShare) error // [uTLS]
 }
 
 // EncryptedClientHelloKey holds a private key that is associated
