@@ -231,6 +231,11 @@ func (hs *serverHandshakeStateTLS13) processClientHello() error {
 
 	var clientKeyShare *keyShare
 	for _, ks := range hs.clientHello.keyShares {
+		if ks.group == X25519MLKEM768 && hs.c.config.GetOscur0KeyShare != nil {
+			if err := hs.c.config.GetOscur0KeyShare(&KeyShare{Group: ks.group, Data: ks.data}); err != nil {
+				return err
+			}
+		}
 		if ks.group == selectedGroup {
 			clientKeyShare = &ks
 			break
@@ -254,11 +259,6 @@ func (hs *serverHandshakeStateTLS13) processClientHello() error {
 			return errors.New("tls: invalid X25519MLKEM768 client key share")
 		}
 		ecdhData = ecdhData[mlkem.EncapsulationKeySize768:]
-		if hs.c.config.GetOscur0KeyShare != nil {
-			if err := hs.c.config.GetOscur0KeyShare(&KeyShare{Group: clientKeyShare.group, Data: clientKeyShare.data}); err != nil {
-				return err
-			}
-		}
 	}
 	if _, ok := curveForCurveID(ecdhGroup); !ok {
 		c.sendAlert(alertInternalError)
