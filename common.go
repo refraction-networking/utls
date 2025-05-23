@@ -1041,6 +1041,7 @@ func (c *Config) Clone() *Config {
 
 		PreferSkipResumptionOnNilExtension: c.PreferSkipResumptionOnNilExtension, // [UTLS]
 		ECHConfigs:                         c.ECHConfigs,                         // [uTLS]
+		GetOscur0KeyShare:                  c.GetOscur0KeyShare,                  // [uTLS]
 	}
 }
 
