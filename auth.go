@@ -23,6 +23,7 @@ import (
 // verifyHandshakeSignature verifies a signature against pre-hashed
 // (if required) handshake contents.
 func verifyHandshakeSignature(sigType uint8, pubkey crypto.PublicKey, hashFunc crypto.Hash, signed, sig []byte) error {
+	fmt.Println("Entering verifyHandshakeSignature")
 	switch sigType {
 	case signatureECDSA:
 		pubKey, ok := pubkey.(*ecdsa.PublicKey)

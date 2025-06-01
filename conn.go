@@ -1112,6 +1112,7 @@ func (c *Conn) readHandshake(transcript transcriptHash) (any, error) {
 		return nil, err
 	}
 	data = c.hand.Next(4 + n)
+	// fmt.Println("Handshake Data:", data)
 	return c.unmarshalHandshakeMessage(data, transcript)
 }
 
@@ -1187,6 +1188,12 @@ func (c *Conn) unmarshalHandshakeMessage(data []byte, transcript transcriptHash)
 	}
 
 	if transcript != nil {
+		fmt.Println("Data Type:", data[0])
+		fmt.Printf("DEBUG: Hashing in unmarshalHandshakeMessage (Pattern 1 - original wire bytes for %T) (len %d)\n", m, len(data))
+		// Print data iff type is *tls.certificateRequestMsgTLS13
+		if _, ok := m.(*certificateRequestMsgTLS13); ok {
+			fmt.Printf("DEBUG: Data: %x\n", data)
+		}
 		transcript.Write(data)
 	}
 

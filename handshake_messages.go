@@ -1280,6 +1280,7 @@ type certificateRequestMsgTLS13 struct {
 	scts                             bool
 	supportedSignatureAlgorithms     []SignatureScheme
 	supportedSignatureAlgorithmsCert []SignatureScheme
+	certRequestCompressionAlgs       []CertCompressionAlgo
 	certificateAuthorities           [][]byte
 }
 
@@ -1311,6 +1312,16 @@ func (m *certificateRequestMsgTLS13) marshal() ([]byte, error) {
 					b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
 						for _, sigAlgo := range m.supportedSignatureAlgorithms {
 							b.AddUint16(uint16(sigAlgo))
+						}
+					})
+				})
+			}
+			if len(m.certRequestCompressionAlgs) > 0 {
+				b.AddUint16(extensionCompressCertificate)
+				b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
+					b.AddUint8LengthPrefixed(func(b *cryptobyte.Builder) {
+						for _, algo := range m.certRequestCompressionAlgs {
+							b.AddUint16(uint16(algo))
 						}
 					})
 				})
@@ -1381,6 +1392,24 @@ func (m *certificateRequestMsgTLS13) unmarshal(data []byte) bool {
 				m.supportedSignatureAlgorithms = append(
 					m.supportedSignatureAlgorithms, SignatureScheme(sigAndAlg))
 			}
+		case extensionCompressCertificate:
+			var algs cryptobyte.String
+			fmt.Println("extData:", extData)
+			if !extData.ReadUint8LengthPrefixed(&algs) || algs.Empty() {
+				fmt.Println("algs is empty in certificateRequestMsgTLS13:", algs.Empty())
+				fmt.Printf("DEBUG: Unmarshal error in certificateRequestMsgTLS13 (a): %v\n", extData)
+				return false
+			}
+			for !algs.Empty() {
+				var alg uint16
+				if !algs.ReadUint16(&alg) {
+					fmt.Printf("DEBUG: Unmarshal error in certificateRequestMsgTLS13 (b): %v\n", algs)
+					return false
+				}
+				m.certRequestCompressionAlgs = append(
+					m.certRequestCompressionAlgs, CertCompressionAlgo(alg))
+			}
+
 		case extensionSignatureAlgorithmsCert:
 			var sigAndAlgs cryptobyte.String
 			if !extData.ReadUint16LengthPrefixed(&sigAndAlgs) || sigAndAlgs.Empty() {
@@ -1982,6 +2011,10 @@ type transcriptHash interface {
 func transcriptMsg(msg handshakeMessage, h transcriptHash) error {
 	if msgWithOrig, ok := msg.(handshakeMessageWithOriginalBytes); ok {
 		if orig := msgWithOrig.originalBytes(); orig != nil {
+			fmt.Printf("DEBUG: Hashing in transcriptMsg (Pattern 2 - using originalBytes() for %T) (len %d)\n", msg, len(orig))
+			if _, ok := msg.(*certificateRequestMsgTLS13); ok {
+				fmt.Printf("DEBUG: Data: %x\n", orig)
+			}
 			h.Write(msgWithOrig.originalBytes())
 			return nil
 		}
@@ -1990,6 +2023,10 @@ func transcriptMsg(msg handshakeMessage, h transcriptHash) error {
 	data, err := msg.marshal()
 	if err != nil {
 		return err
+	}
+	fmt.Printf("DEBUG: Hashing in transcriptMsg (Pattern 2 - re-marshaled bytes for %T) (len %d):\n", msg, len(data))
+	if _, ok := msg.(*certificateRequestMsgTLS13); ok {
+		fmt.Printf("DEBUG: Data: %x\n", data)
 	}
 	h.Write(data)
 	return nil
