@@ -2008,3 +2008,26 @@ type transcriptHash interface {
 // use that for hashing, since unmarshal/marshal are not idempotent due to
 // extension ordering and other malleable fields, which may cause differences
 // between what was received and what we marshal.
+func transcriptMsg(msg handshakeMessage, h transcriptHash) error {
+	if msgWithOrig, ok := msg.(handshakeMessageWithOriginalBytes); ok {
+		if orig := msgWithOrig.originalBytes(); orig != nil {
+			fmt.Printf("DEBUG: Hashing in transcriptMsg (Pattern 2 - using originalBytes() for %T) (len %d)\n", msg, len(orig))
+			if _, ok := msg.(*certificateRequestMsgTLS13); ok {
+				fmt.Printf("DEBUG: Data: %x\n", orig)
+			}
+			h.Write(msgWithOrig.originalBytes())
+			return nil
+		}
+	}
+
+	data, err := msg.marshal()
+	if err != nil {
+		return err
+	}
+	fmt.Printf("DEBUG: Hashing in transcriptMsg (Pattern 2 - re-marshaled bytes for %T) (len %d):\n", msg, len(data))
+	if _, ok := msg.(*certificateRequestMsgTLS13); ok {
+		fmt.Printf("DEBUG: Data: %x\n", data)
+	}
+	h.Write(data)
+	return nil
+}
