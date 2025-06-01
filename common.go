@@ -116,6 +116,7 @@ const (
 	extensionStatusRequestV2         uint16 = 17
 	extensionSCT                     uint16 = 18
 	extensionExtendedMasterSecret    uint16 = 23
+	extensionCompressCertificate     uint16 = 27
 	extensionDelegatedCredentials    uint16 = 34
 	extensionSessionTicket           uint16 = 35
 	extensionPreSharedKey            uint16 = 41
