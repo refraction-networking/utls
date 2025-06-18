@@ -2,8 +2,6 @@ package tls
 
 import (
 	"crypto/ecdh"
-
-	"github.com/cloudflare/circl/kem"
 )
 
 // This file contains all the alias functions, symbols, names, etc. that
@@ -32,10 +30,10 @@ func (*KeySharesParameters) GetEcdheKey(curveID CurveID) (ecdheKey *ecdh.Private
 
 func (*KeySharesParameters) GetEcdhePubkey(curveID CurveID) (params *ecdh.PublicKey, ok bool) { return }
 
-func (*KeySharesParameters) AddKemKeypair(curveID CurveID, kemKey kem.PrivateKey, kemPubKey kem.PublicKey) {
+func (*KeySharesParameters) AddKemKeypair(curveID CurveID, kemKey any, kemPubKey any) {
 	return
 }
 
-func (ksp *KeySharesParameters) GetKemKey(curveID CurveID) (kemKey kem.PrivateKey, ok bool) { return }
+func (ksp *KeySharesParameters) GetKemKey(curveID CurveID) (kemKey any, ok bool) { return }
 
-func (ksp *KeySharesParameters) GetKemPubkey(curveID CurveID) (params kem.PublicKey, ok bool) { return }
+func (ksp *KeySharesParameters) GetKemPubkey(curveID CurveID) (params any, ok bool) { return }
