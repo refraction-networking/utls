@@ -11,8 +11,6 @@ import (
 	"crypto/x509"
 	"hash"
 	"time"
-
-	"github.com/cloudflare/circl/kem"
 )
 
 // ClientHandshakeState includes both TLS 1.3-only and TLS 1.2-only states,
@@ -854,14 +852,14 @@ func (TKS TicketKeys) ToPrivate() []ticketKey {
 }
 
 type kemPrivateKey struct {
-	secretKey kem.PrivateKey
+	secretKey any
 	curveID   CurveID
 }
 
 // Deprecated: Use KeySharePrivateKeys instead. This type is no longer used.
 // Will be removed in the future.
 type KemPrivateKey struct {
-	SecretKey kem.PrivateKey
+	SecretKey any
 	CurveID   CurveID
 }
 
