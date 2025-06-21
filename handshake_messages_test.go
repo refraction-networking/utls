@@ -98,6 +98,8 @@ func TestMarshalUnmarshal(t *testing.T) {
 					t.original = nil
 				case *serverHelloMsg:
 					t.original = nil
+				case *certificateRequestMsgTLS13: // [UTLS]
+					t.original = nil // [UTLS]
 				}
 
 				if !reflect.DeepEqual(m1, m) {
