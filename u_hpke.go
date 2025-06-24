@@ -1,11 +1,7 @@
 package tls
 
 import (
-	"errors"
-	"fmt"
-
-	"github.com/cloudflare/circl/hpke"
-	"github.com/cloudflare/circl/kem"
+	"github.com/refraction-networking/utls/internal/hpke"
 )
 
 type HPKERawPublicKey = []byte
@@ -18,45 +14,22 @@ type HPKESymmetricCipherSuite struct {
 	AeadId HPKE_AEAD_ID
 }
 
-type HPKEKeyConfig struct {
-	ConfigId     uint8
-	KemId        HPKE_KEM_ID
-	PublicKey    kem.PublicKey
-	rawPublicKey HPKERawPublicKey
-	CipherSuites []HPKESymmetricCipherSuite
-}
-
-var defaultHPKESuite hpke.Suite
-
-func init() {
-	var err error
-	defaultHPKESuite, err = hpkeAssembleSuite(
-		uint16(hpke.KEM_X25519_HKDF_SHA256),
-		uint16(hpke.KDF_HKDF_SHA256),
-		uint16(hpke.AEAD_AES128GCM),
-	)
-	if err != nil {
-		panic(fmt.Sprintf("hpke: mandatory-to-implement cipher suite not supported: %s", err))
-	}
-}
-
-func hpkeAssembleSuite(kemId, kdfId, aeadId uint16) (hpke.Suite, error) {
-	kem := hpke.KEM(kemId)
-	if !kem.IsValid() {
-		return hpke.Suite{}, errors.New("KEM is not supported")
-	}
-	kdf := hpke.KDF(kdfId)
-	if !kdf.IsValid() {
-		return hpke.Suite{}, errors.New("KDF is not supported")
-	}
-	aead := hpke.AEAD(aeadId)
-	if !aead.IsValid() {
-		return hpke.Suite{}, errors.New("AEAD is not supported")
-	}
-	return hpke.NewSuite(kem, kdf, aead), nil
-}
+const defaultHpkeKdf = hpke.KDF_HKDF_SHA256
+const defaultHpkeKem = hpke.DHKEM_X25519_HKDF_SHA256
+const defaultHpkeAead = hpke.AEAD_AES_128_GCM
 
 var dummyX25519PublicKey = []byte{
 	143, 38, 37, 36, 12, 6, 229, 30, 140, 27, 167, 73, 26, 100, 203, 107, 216,
 	81, 163, 222, 52, 211, 54, 210, 46, 37, 78, 216, 157, 97, 241, 244,
+}
+
+// cipherLen returns the length of a ciphertext corresponding to a message of
+// length mLen.
+func cipherLen(a uint16, mLen int) int {
+	switch a {
+	case hpke.AEAD_AES_128_GCM, hpke.AEAD_AES_256_GCM, hpke.AEAD_ChaCha20Poly1305:
+		return mLen + 16
+	default:
+		panic("hpke: invalid AEAD identifier")
+	}
 }

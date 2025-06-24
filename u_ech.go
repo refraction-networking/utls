@@ -8,8 +8,8 @@ import (
 	"math/big"
 	"sync"
 
-	"github.com/cloudflare/circl/hpke"
 	"github.com/refraction-networking/utls/dicttls"
+	"github.com/refraction-networking/utls/internal/hpke"
 	"golang.org/x/crypto/cryptobyte"
 )
 
@@ -25,9 +25,6 @@ const (
 type EncryptedClientHelloExtension interface {
 	// TLSExtension must be implemented by all EncryptedClientHelloExtension implementations.
 	TLSExtension
-
-	// Configure configures the EncryptedClientHelloExtension with the given slice of ECHConfig.
-	Configure([]ECHConfig) error
 
 	// MarshalClientHello is called by (*UConn).MarshalClientHello() when an ECH extension
 	// is present to allow the ECH extension to take control of the generation of the
@@ -96,8 +93,7 @@ func (g *GREASEEncryptedClientHelloExtension) init() error {
 		// but MAY be held constant for successive connections to the same server
 		// in the same session.
 		if len(g.CandidateCipherSuites) == 0 {
-			_, kdf, aead := defaultHPKESuite.Params()
-			g.cipherSuite = HPKESymmetricCipherSuite{uint16(kdf), uint16(aead)}
+			g.cipherSuite = HPKESymmetricCipherSuite{uint16(defaultHpkeKdf), uint16(defaultHpkeAead)}
 		} else {
 			// randomly pick one from the list
 			rndIndex, err := rand.Int(rand.Reader, big.NewInt(int64(len(g.CandidateCipherSuites))))
@@ -113,21 +109,18 @@ func (g *GREASEEncryptedClientHelloExtension) init() error {
 		}
 
 		if len(g.EncapsulatedKey) == 0 {
-			// use default random key from cloudflare/go
-			kem := hpke.KEM_X25519_HKDF_SHA256
+			kem := uint16(defaultHpkeKem)
 
-			pk, err := kem.Scheme().UnmarshalBinaryPublicKey(dummyX25519PublicKey)
+			echPK, err := hpke.ParseHPKEPublicKey(uint16(kem), dummyX25519PublicKey)
 			if err != nil {
 				initErr = fmt.Errorf("tls: grease ech: failed to parse dummy public key: %w", err)
 				return
 			}
-			sender, err := defaultHPKESuite.NewSender(pk, nil)
-			if err != nil {
-				initErr = fmt.Errorf("tls: grease ech: failed to create sender: %w", err)
-				return
+			suite := echCipher{
+				KDFID:  defaultHpkeKdf,
+				AEADID: defaultHpkeAead,
 			}
-
-			g.EncapsulatedKey, _, err = sender.Setup(rand.Reader)
+			g.EncapsulatedKey, _, err = hpke.SetupSender(kem, suite.KDFID, suite.AEADID, echPK, []byte{})
 			if err != nil {
 				initErr = fmt.Errorf("tls: grease ech: failed to setup encapsulated key: %w", err)
 				return
@@ -158,8 +151,7 @@ func (g *GREASEEncryptedClientHelloExtension) randomizePayload(encodedHelloInner
 		return errors.New("tls: grease ech: regenerating payload is forbidden")
 	}
 
-	aead := hpke.AEAD(g.cipherSuite.AeadId)
-	g.payload = make([]byte, int(aead.CipherLen(uint(encodedHelloInnerLen))))
+	g.payload = make([]byte, cipherLen(g.cipherSuite.AeadId, int(encodedHelloInnerLen)))
 	_, err := rand.Read(g.payload)
 	if err != nil {
 		return fmt.Errorf("tls: generating grease ech payload: %w", err)
@@ -205,11 +197,6 @@ func (g *GREASEEncryptedClientHelloExtension) Read(b []byte) (int, error) {
 	copy(b[12+len(g.EncapsulatedKey)+2:], g.payload)
 
 	return g.Len(), io.EOF
-}
-
-// Configure implements EncryptedClientHelloExtension.
-func (*GREASEEncryptedClientHelloExtension) Configure([]ECHConfig) error {
-	return nil // no-op, it is not possible to configure a GREASE extension for now
 }
 
 // MarshalClientHello implements EncryptedClientHelloExtension.
@@ -269,8 +256,7 @@ func (g *GREASEEncryptedClientHelloExtension) Write(b []byte) (int, error) {
 	if !extData.ReadUint16LengthPrefixed(&ignored) {
 		return fullLen, errors.New("bad payload")
 	}
-	aead := hpke.AEAD(g.cipherSuite.AeadId)
-	g.CandidatePayloadLens = []uint16{uint16(len(ignored) - int(aead.CipherLen(0)))}
+	g.CandidatePayloadLens = []uint16{uint16(len(ignored) - cipherLen(g.cipherSuite.AeadId, 0))}
 
 	return fullLen, nil
 }
@@ -293,11 +279,6 @@ func (*UnimplementedECHExtension) Len() int {
 // Read implements TLSExtension.
 func (*UnimplementedECHExtension) Read(_ []byte) (int, error) {
 	return 0, errors.New("tls: unimplemented ECHExtension")
-}
-
-// Configure implements EncryptedClientHelloExtension.
-func (*UnimplementedECHExtension) Configure([]ECHConfig) error {
-	return errors.New("tls: unimplemented ECHExtension")
 }
 
 // MarshalClientHello implements EncryptedClientHelloExtension.
