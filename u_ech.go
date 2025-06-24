@@ -26,9 +26,6 @@ type EncryptedClientHelloExtension interface {
 	// TLSExtension must be implemented by all EncryptedClientHelloExtension implementations.
 	TLSExtension
 
-	// Configure configures the EncryptedClientHelloExtension with the given slice of ECHConfig.
-	Configure([]ECHConfig) error
-
 	// MarshalClientHello is called by (*UConn).MarshalClientHello() when an ECH extension
 	// is present to allow the ECH extension to take control of the generation of the
 	// entire ClientHello message.
@@ -202,11 +199,6 @@ func (g *GREASEEncryptedClientHelloExtension) Read(b []byte) (int, error) {
 	return g.Len(), io.EOF
 }
 
-// Configure implements EncryptedClientHelloExtension.
-func (*GREASEEncryptedClientHelloExtension) Configure([]ECHConfig) error {
-	return nil // no-op, it is not possible to configure a GREASE extension for now
-}
-
 // MarshalClientHello implements EncryptedClientHelloExtension.
 func (*GREASEEncryptedClientHelloExtension) MarshalClientHello(*UConn) error {
 	return errors.New("tls: grease ech: MarshalClientHello() is not implemented, use (*UConn).MarshalClientHello() instead")
@@ -287,11 +279,6 @@ func (*UnimplementedECHExtension) Len() int {
 // Read implements TLSExtension.
 func (*UnimplementedECHExtension) Read(_ []byte) (int, error) {
 	return 0, errors.New("tls: unimplemented ECHExtension")
-}
-
-// Configure implements EncryptedClientHelloExtension.
-func (*UnimplementedECHExtension) Configure([]ECHConfig) error {
-	return errors.New("tls: unimplemented ECHExtension")
 }
 
 // MarshalClientHello implements EncryptedClientHelloExtension.

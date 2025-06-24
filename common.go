@@ -316,11 +316,6 @@ type ConnectionState struct {
 	// testingOnlyCurveID is the selected CurveID, or zero if an RSA exchanges
 	// is performed.
 	testingOnlyCurveID CurveID
-
-	// ECHRetryConfigs contains the ECH retry configurations sent by the server in
-	// EncryptedExtensions message. It is only populated if the server sent the
-	// ech extension in EncryptedExtensions message.
-	ECHRetryConfigs []ECHConfig // [uTLS]
 }
 
 // ExportKeyingMaterial returns length bytes of exported key material in a new
@@ -919,17 +914,6 @@ type Config struct {
 	// autoSessionTicketKeys is like sessionTicketKeys but is owned by the
 	// auto-rotation logic. See Config.ticketKeys.
 	autoSessionTicketKeys []ticketKey
-
-	// ECHConfigs contains the ECH configurations to be used by the ECH
-	// extension if any.
-	// It could either be distributed by the server in EncryptedExtensions
-	// message or out-of-band.
-	//
-	// If ECHConfigs is nil and an ECH extension is present, GREASEd ECH
-	// extension will be sent.
-	//
-	// If GREASE ECH extension is present, this field will be ignored.
-	ECHConfigs []ECHConfig // [uTLS]
 }
 
 // EncryptedClientHelloKey holds a private key that is associated
@@ -1036,7 +1020,6 @@ func (c *Config) Clone() *Config {
 		autoSessionTicketKeys:               c.autoSessionTicketKeys,
 
 		PreferSkipResumptionOnNilExtension: c.PreferSkipResumptionOnNilExtension, // [UTLS]
-		ECHConfigs:                         c.ECHConfigs,                         // [uTLS]
 	}
 }
 

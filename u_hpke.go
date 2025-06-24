@@ -1,7 +1,6 @@
 package tls
 
 import (
-	"github.com/cloudflare/circl/kem"
 	"github.com/refraction-networking/utls/internal/hpke"
 )
 
@@ -13,14 +12,6 @@ type HPKE_AEAD_ID = uint16 // RFC 9180
 type HPKESymmetricCipherSuite struct {
 	KdfId  HPKE_KDF_ID
 	AeadId HPKE_AEAD_ID
-}
-
-type HPKEKeyConfig struct {
-	ConfigId     uint8
-	KemId        HPKE_KEM_ID
-	PublicKey    kem.PublicKey
-	rawPublicKey HPKERawPublicKey
-	CipherSuites []HPKESymmetricCipherSuite
 }
 
 const defaultHpkeKdf = hpke.KDF_HKDF_SHA256

@@ -9,7 +9,6 @@ retract (
 
 require (
 	github.com/andybalholm/brotli v1.0.6
-	github.com/cloudflare/circl v1.5.0
 	github.com/klauspost/compress v1.17.4
 	golang.org/x/crypto v0.36.0
 	golang.org/x/net v0.38.0
