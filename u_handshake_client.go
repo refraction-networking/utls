@@ -568,6 +568,7 @@ func (c *UConn) clientHandshake(ctx context.Context) (err error) {
 			hs13.session = session
 		}
 		hs13.ctx = ctx
+		c.HandshakeState.ServerHello = serverHello.getPublicPtr()
 		// In TLS 1.3, session tickets are delivered after the handshake.
 		err = hs13.handshake()
 		if handshakeState := hs13.toPublic13(); handshakeState != nil {
