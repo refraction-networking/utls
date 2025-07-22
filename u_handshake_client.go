@@ -551,6 +551,7 @@ func (c *UConn) clientHandshake(ctx context.Context) (err error) {
 	}
 
 	// uTLS: do not create new handshakeState, use existing one
+	c.HandshakeState.ServerHello = serverHello.getPublicPtr()
 	if c.vers == VersionTLS13 {
 		hs13 := c.HandshakeState.toPrivate13()
 		hs13.serverHello = serverHello
