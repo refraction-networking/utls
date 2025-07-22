@@ -2902,8 +2902,8 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 					} else {
 						ext.KeyShares[i].Data = append(mlkemKey.EncapsulationKey().Bytes(), ecdheKey.PublicKey().Bytes()...)
 					}
-					uconn.HandshakeState.State13.KeyShareKeys.mlkem = mlkemKey
-					uconn.HandshakeState.State13.KeyShareKeys.mlkemEcdhe = ecdheKey
+					uconn.HandshakeState.State13.KeyShareKeys.Mlkem = mlkemKey
+					uconn.HandshakeState.State13.KeyShareKeys.MlkemEcdhe = ecdheKey
 				} else {
 					ecdheKey, err := generateECDHEKey(uconn.config.rand(), curveID)
 					if err != nil {
