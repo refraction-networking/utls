@@ -284,7 +284,7 @@ type PubServerHelloMsg struct {
 
 	// 1.3
 	SupportedVersion        uint16
-	ServerShare             keyShare
+	ServerShare             KeyShare
 	SelectedIdentityPresent bool
 	SelectedIdentity        uint16
 	Cookie                  []byte  // HelloRetryRequest extension
@@ -313,7 +313,7 @@ func (shm *PubServerHelloMsg) getPrivatePtr() *serverHelloMsg {
 			secureRenegotiationSupported: shm.SecureRenegotiationSupported,
 			alpnProtocol:                 shm.AlpnProtocol,
 			supportedVersion:             shm.SupportedVersion,
-			serverShare:                  shm.ServerShare,
+			serverShare:                  shm.ServerShare.ToPrivate(),
 			selectedIdentityPresent:      shm.SelectedIdentityPresent,
 			selectedIdentity:             shm.SelectedIdentity,
 			cookie:                       shm.Cookie,
@@ -343,7 +343,7 @@ func (shm *serverHelloMsg) getPublicPtr() *PubServerHelloMsg {
 			SecureRenegotiationSupported: shm.secureRenegotiationSupported,
 			AlpnProtocol:                 shm.alpnProtocol,
 			SupportedVersion:             shm.supportedVersion,
-			ServerShare:                  shm.serverShare,
+			ServerShare:                  shm.serverShare.ToPublic(),
 			SelectedIdentityPresent:      shm.selectedIdentityPresent,
 			SelectedIdentity:             shm.selectedIdentity,
 			Cookie:                       shm.cookie,
@@ -631,20 +631,28 @@ type KeyShare struct {
 	Data  []byte  `json:"key_exchange,omitempty"` // optional
 }
 
+func (ks KeyShare) ToPrivate() keyShare {
+	return keyShare{group: ks.Group, data: ks.Data}
+}
+
+func (ks keyShare) ToPublic() KeyShare {
+	return KeyShare{Group: ks.group, Data: ks.data}
+}
+
 type KeyShares []KeyShare
 type keyShares []keyShare
 
 func (kss keyShares) ToPublic() []KeyShare {
 	var KSS []KeyShare
 	for _, ks := range kss {
-		KSS = append(KSS, KeyShare{Data: ks.data, Group: ks.group})
+		KSS = append(KSS, ks.ToPublic())
 	}
 	return KSS
 }
 func (KSS KeyShares) ToPrivate() []keyShare {
 	var kss []keyShare
 	for _, KS := range KSS {
-		kss = append(kss, keyShare{data: KS.Data, group: KS.Group})
+		kss = append(kss, KS.ToPrivate())
 	}
 	return kss
 }
