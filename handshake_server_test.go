@@ -158,7 +158,7 @@ func TestRejectSNIWithTrailingDot(t *testing.T) {
 		vers:       VersionTLS12,
 		random:     make([]byte, 32),
 		serverName: "foo.com.",
-	}, "unexpected message")
+	}, "decoding message")
 }
 
 func TestDontSelectECDSAWithRSAKey(t *testing.T) {
