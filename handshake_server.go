@@ -237,7 +237,7 @@ func (hs *serverHandshakeState) processClientHello() error {
 	}
 
 	if !foundCompression {
-		c.sendAlert(alertHandshakeFailure)
+		c.sendAlert(alertIllegalParameter)
 		return errors.New("tls: client does not support uncompressed connections")
 	}
 
