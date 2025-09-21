@@ -1226,6 +1226,8 @@ const roleServer = false
 
 // var tls10server = godebug.New("tls10server") // [UTLS] unsupported
 
+// supportedVersions returns the list of supported TLS versions, sorted from
+// highest to lowest (and hence also in preference order).
 func (c *Config) supportedVersions(isClient bool) []uint16 {
 	versions := make([]uint16, 0, len(supportedVersions))
 	for _, v := range supportedVersions {
@@ -1755,14 +1757,35 @@ func unexpectedMessageError(wanted, got any) error {
 	return fmt.Errorf("tls: received unexpected handshake message of type %T when waiting for %T", got, wanted)
 }
 
-// supportedSignatureAlgorithms returns the supported signature algorithms.
-func supportedSignatureAlgorithms() []SignatureScheme {
-	// [uTLS] SECTION BEGIN
-	// if fips140tls.Required() {
-	//	  return allowedSupportedSignatureAlgorithmsFIPS
-	// }
-	// [uTLS] SECTION END
-	return defaultSupportedSignatureAlgorithms
+// supportedSignatureAlgorithms returns the supported signature algorithms for
+// the given minimum TLS version, to advertise in ClientHello and
+// CertificateRequest messages.
+func supportedSignatureAlgorithms(minVers uint16) []SignatureScheme {
+	sigAlgs := defaultSupportedSignatureAlgorithms()
+	if fips140tls.Required() {
+		sigAlgs = slices.DeleteFunc(sigAlgs, func(s SignatureScheme) bool {
+			return !slices.Contains(allowedSignatureAlgorithmsFIPS, s)
+		})
+	}
+	if minVers > VersionTLS12 {
+		sigAlgs = slices.DeleteFunc(sigAlgs, func(s SignatureScheme) bool {
+			sigType, sigHash, _ := typeAndHashFromSignatureScheme(s)
+			return sigType == signaturePKCS1v15 || sigHash == crypto.SHA1
+		})
+	}
+	return sigAlgs
+}
+
+// supportedSignatureAlgorithmsCert returns the supported algorithms for
+// signatures in certificates.
+func supportedSignatureAlgorithmsCert() []SignatureScheme {
+	sigAlgs := defaultSupportedSignatureAlgorithmsCert()
+	if fips140tls.Required() {
+		sigAlgs = slices.DeleteFunc(sigAlgs, func(s SignatureScheme) bool {
+			return !slices.Contains(allowedSignatureAlgorithmsFIPS, s)
+		})
+	}
+	return sigAlgs
 }
 
 func isSupportedSignatureAlgorithm(sigAlg SignatureScheme, supportedSignatureAlgorithms []SignatureScheme) bool {
