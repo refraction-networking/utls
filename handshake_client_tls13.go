@@ -871,6 +871,7 @@ func (hs *clientHandshakeStateTLS13) readServerCertificate() error {
 		c.sendAlert(alertDecryptError)
 		return errors.New("tls: invalid signature by the server certificate: " + err.Error())
 	}
+	c.peerSigAlg = certVerify.signatureAlgorithm
 
 	if err := transcriptMsg(certVerify, hs.transcript); err != nil {
 		return err
