@@ -19,7 +19,7 @@ import (
 	_ "unsafe" // for linkname
 
 	"github.com/refraction-networking/utls/internal/boring"
-	"golang.org/x/sys/cpu"
+	"github.com/refraction-networking/utls/internal/cpu"
 
 	"golang.org/x/crypto/chacha20poly1305"
 )
