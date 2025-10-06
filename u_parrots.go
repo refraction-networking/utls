@@ -907,7 +907,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&SupportedPointsExtension{SupportedPoints: []byte{
 					pointFormatUncompressed,
 				}},
-				&ApplicationSettingsExtension{
+				&ApplicationSettingsExtensionNew{
 					SupportedProtocols: []string{"h2"},
 				},
 				&KeyShareExtension{KeyShares: []KeyShare{
