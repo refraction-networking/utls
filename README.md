@@ -235,7 +235,7 @@ Then it can be used just like normal extension:
 ```
 
 # Client Hello IDs
-See full list of `clientHelloID` values [here](https://godoc.org/github.com/refraction-networking/utls#ClientHelloID).  
+See full list of `clientHelloID` values [here](https://godoc.org/github.com/refraction-networking/utls#pkg-variables).  
 There are different behaviors you can get, depending  on your `clientHelloID`:
 
 1. ```utls.HelloRandomized``` adds/reorders extensions, ciphersuites, etc. randomly.  
