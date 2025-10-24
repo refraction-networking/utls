@@ -352,6 +352,22 @@ func (shm *serverHelloMsg) getPublicPtr() *PubServerHelloMsg {
 	}
 }
 
+// UnmarshalServerHello allows external code to parse raw server hellos.
+// It returns nil on failure.
+func UnmarshalServerHello(data []byte) *PubServerHelloMsg {
+	m := &serverHelloMsg{}
+	if m.unmarshal(data) {
+		return m.getPublicPtr()
+	}
+	return nil
+}
+
+// Marshal allows external code to convert a ServerHello object back into
+// raw bytes.
+func (shm *PubServerHelloMsg) Marshal() ([]byte, error) {
+	return shm.getPrivatePtr().marshal()
+}
+
 type PubClientHelloMsg struct {
 	Raw                          []byte // renamed to clientHelloMsg.original in crypto/tls
 	Vers                         uint16
