@@ -976,7 +976,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 			CompressionMethods: []byte{
 				0x00, // compressionNone
 			},
-			Extensions: []TLSExtension{
+			Extensions: ShuffleChromeTLSExtensions([]TLSExtension{
 				&UtlsGREASEExtension{},
 				&StatusRequestExtension{},
 				&PSKKeyExchangeModesExtension{[]uint8{
@@ -993,6 +993,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 					PSSWithSHA512,
 					PKCS1WithSHA512,
 				}},
+				&SessionTicketExtension{},
 				&ALPNExtension{AlpnProtocols: []string{"h2", "http/1.1"}},
 				&ExtendedMasterSecretExtension{},
 				&SupportedVersionsExtension{[]uint16{
@@ -1023,7 +1024,8 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 					CertCompressionBrotli,
 				}},
 				&UtlsGREASEExtension{},
-			},
+				&UtlsPreSharedKeyExtension{},
+			}),
 		}, nil
 	case HelloFirefox_55, HelloFirefox_56:
 		return ClientHelloSpec{
