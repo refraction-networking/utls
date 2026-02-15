@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"reflect"
 	"strings"
 	"sync"
@@ -478,6 +479,37 @@ func TestQUICStartContextPropagation(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Errorf("GetConfigForClient called %v times, want 1", calls)
+	}
+}
+
+func TestQUICClientHelloInfoConn(t *testing.T) {
+	clientHelloInfoConn, peerConn := net.Pipe()
+	t.Cleanup(func() {
+		clientHelloInfoConn.Close()
+		peerConn.Close()
+	})
+	config := &QUICConfig{
+		TLSConfig:           testConfig.Clone(),
+		ClientHelloInfoConn: clientHelloInfoConn,
+	}
+	config.TLSConfig.MinVersion = VersionTLS13
+	var called bool
+	config.TLSConfig.GetConfigForClient = func(info *ClientHelloInfo) (*Config, error) {
+		called = true
+		if info.Conn != clientHelloInfoConn {
+			t.Errorf("ClientHelloInfo.Conn = %v, want %v", info.Conn, clientHelloInfoConn)
+		}
+		return nil, nil
+	}
+	cli := newTestQUICClient(t, config)
+	cli.conn.SetTransportParameters(nil)
+	srv := newTestQUICServer(t, config)
+	srv.conn.SetTransportParameters(nil)
+	if err := runTestQUICConnection(context.Background(), cli, srv, nil); err != nil {
+		t.Fatalf("error during connection handshake: %v", err)
+	}
+	if !called {
+		t.Fatal("GetConfigForClient was not called")
 	}
 }
 
