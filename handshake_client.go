@@ -435,6 +435,11 @@ func (c *Conn) loadSession(hello *clientHelloMsg) (
 	}
 	session = cs.session
 
+	// Shallow copy the session to prevent a race condition where
+	// SessionTicketExtension.InitializeByUtls mutates the shared cache entry.
+	sessionCopy := *session
+	session = &sessionCopy
+
 	// Check that version used for the previous session is still valid.
 	versOk := false
 	for _, v := range hello.supportedVersions {
