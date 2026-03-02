@@ -711,6 +711,12 @@ type Config struct {
 	// this behavior at their own discretion.
 	OmitEmptyPsk bool // [uTLS]
 
+	// AlwaysIncludePSK controls whether the PreSharedKey extension is always
+	// included in the ClientHello if there is a cached session, even if not specified
+	// in the selected ClientHelloSpec. If there are no cached sessions, OmitEmptyPsk
+	// controls whether the extension is omitted.
+	AlwaysIncludePSK bool // [uTLS]
+
 	// InsecureServerNameToVerify is used to verify the hostname on the returned
 	// certificates. It is intended to use with spoofed ServerName.
 	// If InsecureServerNameToVerify is "*", crypto/tls will do normal
@@ -999,6 +1005,7 @@ func (c *Config) Clone() *Config {
 		InsecureSkipTimeVerify:              c.InsecureSkipTimeVerify,
 		InsecureServerNameToVerify:          c.InsecureServerNameToVerify,
 		OmitEmptyPsk:                        c.OmitEmptyPsk,
+		AlwaysIncludePSK:                    c.AlwaysIncludePSK,
 		CipherSuites:                        c.CipherSuites,
 		PreferServerCipherSuites:            c.PreferServerCipherSuites,
 		SessionTicketsDisabled:              c.SessionTicketsDisabled,
