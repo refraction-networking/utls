@@ -3015,6 +3015,23 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 		return err
 	}
 
+	// Add PSK extension if not specified in the spec.
+	if uconn.config.AlwaysIncludePSK {
+		supportsPSK := uconn.config.MaxVersion >= VersionTLS13
+		if supportsPSK {
+			hasPskExt := false
+			for _, ext := range p.Extensions {
+				if _, ok := ext.(PreSharedKeyExtension); ok {
+					hasPskExt = true
+				}
+			}
+			if !hasPskExt {
+				// pre_shared_key must be the last extension (RFC 8446, Section 4.2.11).
+				p.Extensions = append(p.Extensions, &UtlsPreSharedKeyExtension{})
+			}
+		}
+	}
+
 	privateHello, clientKeySharePrivate, ech, err := uconn.makeClientHelloForApplyPreset()
 	if err != nil {
 		return err
