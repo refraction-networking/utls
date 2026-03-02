@@ -46,6 +46,7 @@ type Conn struct {
 	// zero or one.
 	handshakes       int
 	extMasterSecret  bool
+	clientSentTicket bool // whether the client sent a session ticket or a PSK in the Client Hello
 	didResume        bool // whether this connection was a session resumption
 	didHRR           bool // whether a HelloRetryRequest was sent/received
 	cipherSuite      uint16
@@ -1698,4 +1699,13 @@ func (c *Conn) VerifyHostname(host string) error {
 		return errors.New("tls: handshake did not verify certificate chain")
 	}
 	return c.peerCertificates[0].VerifyHostname(host)
+}
+
+// ConnectionMetrics returns basic metrics about the connection.
+func (c *Conn) ConnectionMetrics() ConnectionMetrics {
+	c.handshakeMutex.Lock()
+	defer c.handshakeMutex.Unlock()
+	var metrics ConnectionMetrics
+	metrics.ClientSentTicket = c.clientSentTicket
+	return metrics
 }
