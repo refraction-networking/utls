@@ -7,7 +7,9 @@ package tls
 import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/fips140"
 	"crypto/internal/boring"
+	"crypto/internal/cryptotest"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -96,6 +98,10 @@ func TestFIPSServerProtocolVersion(t *testing.T) {
 		test(t, "VersionTLS12", VersionTLS12, "")
 		test(t, "VersionTLS13", VersionTLS13, "")
 	})
+
+	if !fips140.Enforced() {
+		cryptotest.RerunWithFIPS140Enforced(t)
+	}
 }
 
 func isFIPSVersion(v uint16) bool {
@@ -216,6 +222,10 @@ func TestFIPSServerCipherSuites(t *testing.T) {
 			})
 		})
 	}
+
+	if !fips140.Enforced() {
+		cryptotest.RerunWithFIPS140Enforced(t)
+	}
 }
 
 func TestFIPSServerCurves(t *testing.T) {
@@ -240,6 +250,10 @@ func TestFIPSServerCurves(t *testing.T) {
 				}
 			})
 		})
+	}
+
+	if !fips140.Enforced() {
+		cryptotest.RerunWithFIPS140Enforced(t)
 	}
 }
 
@@ -293,6 +307,10 @@ func TestFIPSServerSignatureAndHash(t *testing.T) {
 				}
 			})
 		})
+	}
+
+	if !fips140.Enforced() {
+		cryptotest.RerunWithFIPS140Enforced(t)
 	}
 }
 
