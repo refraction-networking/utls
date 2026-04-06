@@ -53,6 +53,19 @@ var (
 	bogoReport = flag.String("bogo-html-report", "", "File path to render an HTML report with BoGo results")
 )
 
+var testConfigServer = &Config{
+	Time:         testTime,
+	Certificates: []Certificate{testECDSAP256Cert, testRSA2048Cert, testEd25519Cert, testSNICert},
+	ClientCAs:    testClientRootCertPool,
+}
+
+var testConfigClient = &Config{
+	Time:         testTime,
+	Certificates: []Certificate{testClientECDSAP256Cert, testClientRSA2048Cert, testClientEd25519Cert},
+	RootCAs:      testRootCertPool,
+	ServerName:   "test.golang.example",
+}
+
 func runTestAndUpdateIfNeeded(t *testing.T, name string, run func(t *testing.T, update bool)) {
 	// FIPS mode is non-deterministic and so isn't suited for testing against static test transcripts.
 	skipFIPS(t)
@@ -448,6 +461,12 @@ func runMain(m *testing.M) int {
 		fmt.Fprintf(os.Stderr, "Error: %v", err)
 		os.Exit(1)
 	}
+
+	rootCAPath := tempFile(testRootCertPEM)
+	defer os.Remove(rootCAPath)
+	defaultClientCommand = []string{"openssl", "s_client", "-no_ticket",
+		"-verify", "1", "-verify_return_error", "-CAfile", rootCAPath,
+		"-servername", "test.golang.example", "-attime", fmt.Sprint(testTime().Unix())}
 
 	// TODO(filippo): deprecate Config.Rand, and regenerate handshake recordings
 	// to use cryptotest.SetGlobalRandom instead.
