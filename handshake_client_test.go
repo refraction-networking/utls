@@ -314,6 +314,7 @@ func (test *clientTest) run(t *testing.T, write bool) {
 	if config == nil {
 		config = testConfig
 	}
+	config = config.Clone()
 	client := Client(clientConn, config)
 	defer client.Close()
 
@@ -473,7 +474,6 @@ func peekError(conn net.Conn) error {
 }
 
 func runClientTestForVersion(t *testing.T, template *clientTest, version, option string) {
-	// Make a deep copy of the template before going parallel.
 	test := *template
 	if template.config != nil {
 		test.config = template.config.Clone()
@@ -481,7 +481,7 @@ func runClientTestForVersion(t *testing.T, template *clientTest, version, option
 	test.name = version + "-" + test.name
 	test.args = append([]string{option}, test.args...)
 
-	runTestAndUpdateIfNeeded(t, version, test.run, false)
+	runTestAndUpdateIfNeeded(t, version, test.run)
 }
 
 func runClientTestTLS10(t *testing.T, template *clientTest) {

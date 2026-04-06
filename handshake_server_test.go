@@ -599,9 +599,6 @@ type serverTest struct {
 	// ConnectionState of the resulting connection. It returns false if the
 	// ConnectionState is unacceptable.
 	validate func(ConnectionState) error
-	// wait, if true, prevents this subtest from calling t.Parallel.
-	// If false, runServerTest* returns immediately.
-	wait bool
 }
 
 var defaultClientCommand = []string{"openssl", "s_client", "-no_ticket"}
@@ -710,6 +707,7 @@ func (test *serverTest) run(t *testing.T, write bool) {
 	if config == nil {
 		config = testConfig
 	}
+	config = config.Clone()
 	server := Server(serverConn, config)
 
 	_, err := server.Write([]byte("hello, world\n"))
@@ -772,7 +770,6 @@ func (test *serverTest) run(t *testing.T, write bool) {
 }
 
 func runServerTestForVersion(t *testing.T, template *serverTest, version, option string) {
-	// Make a deep copy of the template before going parallel.
 	test := *template
 	if template.config != nil {
 		test.config = template.config.Clone()
@@ -784,7 +781,7 @@ func runServerTestForVersion(t *testing.T, template *serverTest, version, option
 	test.command = append([]string(nil), test.command...)
 	test.command = append(test.command, option)
 
-	runTestAndUpdateIfNeeded(t, version, test.run, test.wait)
+	runTestAndUpdateIfNeeded(t, version, test.run)
 }
 
 func runServerTestTLS10(t *testing.T, template *serverTest) {
@@ -1232,7 +1229,6 @@ func TestServerResumption(t *testing.T) {
 	testIssue := &serverTest{
 		name:    "IssueTicket",
 		command: []string{"openssl", "s_client", "-cipher", "AES128-SHA", "-ciphersuites", "TLS_AES_128_GCM_SHA256", "-sess_out", sessionFilePath},
-		wait:    true,
 	}
 	testResume := &serverTest{
 		name:    "Resume",
@@ -1280,7 +1276,6 @@ func TestServerResumptionDisabled(t *testing.T) {
 		name:    "IssueTicketPreDisable",
 		command: []string{"openssl", "s_client", "-cipher", "AES128-SHA", "-ciphersuites", "TLS_AES_128_GCM_SHA256", "-sess_out", sessionFilePath},
 		config:  config,
-		wait:    true,
 	}
 	testResume := &serverTest{
 		name:    "ResumeDisabled",
@@ -1483,8 +1478,6 @@ func TestClientAuth(t *testing.T) {
 		defer os.Remove(ed25519CertPath)
 		ed25519KeyPath = tempFile(clientEd25519KeyPEM)
 		defer os.Remove(ed25519KeyPath)
-	} else {
-		t.Parallel()
 	}
 
 	config := testConfig.Clone()

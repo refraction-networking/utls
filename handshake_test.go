@@ -23,6 +23,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/cryptotest"
 	"time"
 )
 
@@ -52,19 +53,18 @@ var (
 	bogoReport = flag.String("bogo-html-report", "", "File path to render an HTML report with BoGo results")
 )
 
-func runTestAndUpdateIfNeeded(t *testing.T, name string, run func(t *testing.T, update bool), wait bool) {
+func runTestAndUpdateIfNeeded(t *testing.T, name string, run func(t *testing.T, update bool)) {
 	// FIPS mode is non-deterministic and so isn't suited for testing against static test transcripts.
 	skipFIPS(t)
 
 	success := t.Run(name, func(t *testing.T) {
-		if !*update && !wait {
-			t.Parallel()
-		}
+		cryptotest.SetGlobalRandom(t, 0)
 		run(t, false)
 	})
 
 	if !success && *update {
 		t.Run(name+"#update", func(t *testing.T) {
+			cryptotest.SetGlobalRandom(t, 0)
 			run(t, true)
 		})
 	}
