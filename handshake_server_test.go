@@ -609,13 +609,13 @@ var defaultClientCommand = []string{"openssl", "s_client", "-no_ticket"}
 // connFromCommand starts opens a listening socket and starts the reference
 // client to connect to it. It returns a recordingConn that wraps the resulting
 // connection.
-func (test *serverTest) connFromCommand() (conn *recordingConn, child *exec.Cmd, err error) {
+func (test *serverTest) connFromCommand() (conn *recordingConn, child *exec.Cmd, exit <-chan error, err error) {
 	l, err := net.ListenTCP("tcp", &net.TCPAddr{
 		IP:   net.IPv4(127, 0, 0, 1),
 		Port: 0,
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	defer l.Close()
 
@@ -634,8 +634,13 @@ func (test *serverTest) connFromCommand() (conn *recordingConn, child *exec.Cmd,
 	cmd.Stdout = &output
 	cmd.Stderr = &output
 	if err := cmd.Start(); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
+
+	exitChan := make(chan error, 1)
+	go func() {
+		exitChan <- cmd.Wait()
+	}()
 
 	connChan := make(chan any, 1)
 	go func() {
@@ -651,18 +656,21 @@ func (test *serverTest) connFromCommand() (conn *recordingConn, child *exec.Cmd,
 	select {
 	case connOrError := <-connChan:
 		if err, ok := connOrError.(error); ok {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		tcpConn = connOrError.(net.Conn)
+	case err := <-exitChan:
+		return nil, nil, nil, fmt.Errorf("child process exited before connecting: %v\n%s", err, output.String())
 	case <-time.After(2 * time.Second):
-		return nil, nil, errors.New("timed out waiting for connection from child process")
+		cmd.Process.Kill()
+		return nil, nil, nil, fmt.Errorf("timed out waiting for connection from child process\n%s", output.String())
 	}
 
 	record := &recordingConn{
 		Conn: tcpConn,
 	}
 
-	return record, cmd, nil
+	return record, cmd, exitChan, nil
 }
 
 func (test *serverTest) dataPath() string {
@@ -682,19 +690,15 @@ func (test *serverTest) run(t *testing.T, write bool) {
 	var serverConn net.Conn
 	var recordingConn *recordingConn
 	var childProcess *exec.Cmd
+	var childExit <-chan error
 
 	if write {
 		var err error
-		recordingConn, childProcess, err = test.connFromCommand()
+		recordingConn, childProcess, childExit, err = test.connFromCommand()
 		if err != nil {
 			t.Fatalf("Failed to start subcommand: %s", err)
 		}
 		serverConn = recordingConn
-		defer func() {
-			if t.Failed() {
-				t.Logf("OpenSSL output:\n\n%s", childProcess.Stdout)
-			}
-		}()
 	} else {
 		flows, err := test.loadData()
 		if err != nil {
@@ -717,7 +721,7 @@ func (test *serverTest) run(t *testing.T, write bool) {
 		}
 	} else {
 		if err != nil {
-			t.Logf("Error from Server.Write: '%s'", err)
+			t.Errorf("Error from Server.Write: '%s'", err)
 		}
 	}
 	server.Close()
@@ -743,21 +747,27 @@ func (test *serverTest) run(t *testing.T, write bool) {
 
 	if write {
 		serverConn.Close()
+		recordingConn.Close()
+		if err := <-childExit; err != nil && len(test.expectHandshakeErrorIncluding) == 0 {
+			t.Errorf("OpenSSL exited with error: %s", err)
+		}
+		if t.Failed() {
+			t.Logf("OpenSSL output:\n\n%s", childProcess.Stdout)
+			return
+		}
+		if len(recordingConn.flows) < 3 {
+			if len(test.expectHandshakeErrorIncluding) == 0 {
+				t.Fatalf("Handshake failed")
+			}
+		}
 		path := test.dataPath()
 		out, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 		if err != nil {
 			t.Fatalf("Failed to create output file: %s", err)
 		}
 		defer out.Close()
-		recordingConn.Close()
-		if len(recordingConn.flows) < 3 {
-			if len(test.expectHandshakeErrorIncluding) == 0 {
-				t.Fatalf("Handshake failed")
-			}
-		}
 		recordingConn.WriteTo(out)
 		t.Logf("Wrote %s\n", path)
-		childProcess.Wait()
 	}
 }
 

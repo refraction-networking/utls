@@ -163,7 +163,7 @@ type clientTest struct {
 	sendKeyUpdate bool
 }
 
-var serverCommand = []string{"openssl", "s_server", "-no_ticket", "-num_tickets", "0"}
+var serverCommand = []string{"openssl", "s_server", "-no_ticket", "-num_tickets", "0", "-naccept", "1"}
 
 // connFromCommand starts the reference server process, connects to it and
 // returns a recordingConn for the connection. The stdin return value is an
@@ -435,19 +435,24 @@ func (test *clientTest) run(t *testing.T, write bool) {
 
 	if write {
 		client.Close()
+		recordingConn.Close()
+		close(stdin)
+		if err := childProcess.Wait(); err != nil {
+			t.Errorf("OpenSSL exited with error: %s", err)
+		}
+		if t.Failed() {
+			t.Logf("OpenSSL output:\n\n%s", stdout.all)
+			return
+		}
+		if len(recordingConn.flows) < 3 {
+			t.Fatalf("Client connection didn't work")
+		}
 		path := test.dataPath()
 		out, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 		if err != nil {
 			t.Fatalf("Failed to create output file: %s", err)
 		}
 		defer out.Close()
-		recordingConn.Close()
-		close(stdin)
-		childProcess.Process.Kill()
-		childProcess.Wait()
-		if len(recordingConn.flows) < 3 {
-			t.Fatalf("Client connection didn't work")
-		}
 		recordingConn.WriteTo(out)
 		t.Logf("Wrote %s\n", path)
 	}
