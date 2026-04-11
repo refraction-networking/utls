@@ -468,6 +468,12 @@ func runMain(m *testing.M) int {
 		"-verify", "1", "-verify_return_error", "-CAfile", rootCAPath,
 		"-servername", "test.golang.example", "-attime", fmt.Sprint(testTime().Unix())}
 
+	clientRootCAPath := tempFile(testClientRootCertPEM)
+	defer os.Remove(clientRootCAPath)
+	serverCommand = []string{"openssl", "s_server", "-no_ticket", "-num_tickets", "0",
+		"-naccept", "1", "-verify_return_error", "-verifyCAfile", clientRootCAPath,
+		"-attime", fmt.Sprint(testTime().Unix())}
+
 	// TODO(filippo): deprecate Config.Rand, and regenerate handshake recordings
 	// to use cryptotest.SetGlobalRandom instead.
 	os.Setenv("GODEBUG", "cryptocustomrand=1,"+os.Getenv("GODEBUG"))
