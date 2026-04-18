@@ -1514,6 +1514,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 						0x0, // uncompressed
 					},
 				},
+				&SessionTicketExtension{},
 				&ALPNExtension{
 					AlpnProtocols: []string{
 						"h2",
@@ -1566,6 +1567,9 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 						PKCS1WithSHA1,
 					},
 				},
+				&PSKKeyExchangeModesExtension{[]uint8{
+					PskModeDHE,
+				}},
 				&FakeRecordSizeLimitExtension{
 					Limit: 0x4001,
 				},
