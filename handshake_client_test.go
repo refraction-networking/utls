@@ -2588,7 +2588,7 @@ func TestDowngradeCanary(t *testing.T) {
 			t.Errorf("client unexpectedly reacted to a canary in TLS 1.0")
 		}
 	} else {
-		t.Logf("skiping TLS 1.1 and TLS 1.0 downgrade canary checks in FIPS mode")
+		t.Logf("skipping TLS 1.1 and TLS 1.0 downgrade canary checks in FIPS mode")
 	}
 }
 

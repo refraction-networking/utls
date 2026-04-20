@@ -2407,10 +2407,10 @@ func TestECH(t *testing.T) {
 			t.Fatalf("unexpected ConnectionState.ServerName, want %q, got server:%q, client: %q", "secret.example", ss.ServerName, cs.ServerName)
 		}
 		if len(cs.VerifiedChains) != 1 {
-			t.Fatal("unexpect number of certificate chains")
+			t.Fatal("unexpected number of certificate chains")
 		}
 		if len(cs.VerifiedChains[0]) != 1 {
-			t.Fatal("unexpect number of certificates")
+			t.Fatal("unexpected number of certificates")
 		}
 		if !cs.VerifiedChains[0][0].Equal(secretCert) {
 			t.Fatal("unexpected certificate")
