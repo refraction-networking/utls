@@ -398,6 +398,7 @@ type PubClientHelloMsg struct {
 	PskModes                         []uint8
 	PskIdentities                    []PskIdentity
 	PskBinders                       [][]byte
+	TrustAnchors                     bool
 	QuicTransportParameters          []byte
 
 	cachedPrivateHello   *clientHelloMsg // todo: further optimize to reduce clientHelloMsg construction
@@ -436,6 +437,7 @@ func (chm *PubClientHelloMsg) getPrivatePtr() *clientHelloMsg {
 			pskModes:                chm.PskModes,
 			pskIdentities:           PskIdentities(chm.PskIdentities).ToPrivate(),
 			pskBinders:              chm.PskBinders,
+			trustAnchors:            chm.TrustAnchors,
 			quicTransportParameters: chm.QuicTransportParameters,
 			encryptedClientHello:    chm.encryptedClientHello,
 
@@ -487,6 +489,7 @@ func (chm *clientHelloMsg) getPublicPtr() *PubClientHelloMsg {
 			PskModes:                         chm.pskModes,
 			PskIdentities:                    pskIdentities(chm.pskIdentities).ToPublic(),
 			PskBinders:                       chm.pskBinders,
+			TrustAnchors:                     chm.trustAnchors,
 			QuicTransportParameters:          chm.quicTransportParameters,
 			cachedPrivateHello:               chm,
 			encryptedClientHello:             chm.encryptedClientHello,

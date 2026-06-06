@@ -645,6 +645,10 @@ var (
 	HelloChrome_131 = ClientHelloID{helloChrome, "131", nil, nil}
 	// Chrome w/ New ALPS codepoint
 	HelloChrome_133 = ClientHelloID{helloChrome, "133", nil, nil}
+	// Chrome w/ Trust Anchors (draft extension)
+	HelloChrome_141 = ClientHelloID{helloChrome, "141", nil, nil}
+	// Chrome w/ Trust Anchors and PQ signature algorithms (draft extension and experiment)
+	HelloChrome_144 = ClientHelloID{helloChrome, "144", nil, nil}
 
 	HelloIOS_Auto = HelloIOS_14
 	HelloIOS_11_1 = ClientHelloID{helloIOS, "111", nil, nil} // legacy "111" means 11.1

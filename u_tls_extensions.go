@@ -208,6 +208,48 @@ func (e *SNIExtension) writeToUConn(uc *UConn) error {
 	return nil
 }
 
+// TrustAnchorsExtension implements trust_anchors
+type TrustAnchorsExtension struct {
+}
+
+func (e *TrustAnchorsExtension) Len() int {
+	return 6
+}
+
+func (e *TrustAnchorsExtension) Read(b []byte) (int, error) {
+	if len(b) < e.Len() {
+		return 0, io.ErrShortBuffer
+	}
+	b[0] = byte(extensionTrustAnchors >> 8)
+	b[1] = byte(extensionTrustAnchors & 0xff)
+	b[2] = 0
+	b[3] = 2
+	// 00 00 values.
+	return e.Len(), io.EOF
+}
+
+func (e *TrustAnchorsExtension) UnmarshalJSON(_ []byte) error {
+	return nil
+}
+
+func (e *TrustAnchorsExtension) Write(b []byte) (int, error) {
+	fullLen := len(b)
+	extData := cryptobyte.String(b)
+	var data uint16
+	if !extData.ReadUint16(&data) {
+		return fullLen, errors.New("unable to read trust anchors extension data")
+	}
+	if data != 0 {
+		return fullLen, errors.New("trust anchors extension data is not empty") // todo: support non empty
+	}
+	return fullLen, nil
+}
+
+func (e *TrustAnchorsExtension) writeToUConn(uc *UConn) error {
+	uc.HandshakeState.Hello.TrustAnchors = true
+	return nil
+}
+
 // StatusRequestExtension implements status_request (5)
 type StatusRequestExtension struct {
 }
