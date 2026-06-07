@@ -656,7 +656,9 @@ var (
 	HelloIOS_13   = ClientHelloID{helloIOS, "13", nil, nil}
 	HelloIOS_14   = ClientHelloID{helloIOS, "14", nil, nil}
 
-	HelloAndroid_11_OkHttp = ClientHelloID{helloAndroid, "11", nil, nil}
+	HelloAndroid_OkHttp_Auto = HelloAndroid_16_OkHttp
+	HelloAndroid_11_OkHttp   = ClientHelloID{helloAndroid, "11", nil, nil}
+	HelloAndroid_16_OkHttp   = ClientHelloID{helloAndroid, "16", nil, nil}
 
 	// Probably should be deleted completely
 	HelloEdge_Auto = HelloEdge_133 // HelloEdge_106 seems to be incompatible with this library
