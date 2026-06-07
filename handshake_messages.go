@@ -98,6 +98,7 @@ type clientHelloMsg struct {
 	pskBinders              [][]byte
 	quicTransportParameters []byte
 	encryptedClientHello    []byte
+	trustAnchors            bool
 	// extensions are only populated on the server-side of a handshake
 	extensions []uint16
 
@@ -315,6 +316,17 @@ func (m *clientHelloMsg) marshalMsgReorderOuterExts(echInner bool, outerExts []u
 				exts.AddUint8LengthPrefixed(func(exts *cryptobyte.Builder) {
 					exts.AddBytes(m.pskModes)
 				})
+			})
+		}
+	}
+	if m.trustAnchors {
+		// RFC 9881
+		if echInner {
+			echOuterExts = append(echOuterExts, extensionTrustAnchors)
+		} else {
+			exts.AddUint16(extensionTrustAnchors)
+			exts.AddUint16LengthPrefixed(func(exts *cryptobyte.Builder) {
+				exts.AddUint16(0) // 00 00
 			})
 		}
 	}
@@ -694,6 +706,12 @@ func (m *clientHelloMsg) unmarshal(data []byte) bool {
 				}
 				m.pskBinders = append(m.pskBinders, binder)
 			}
+		case extensionTrustAnchors:
+			var data uint16
+			if !extData.ReadUint16(&data) {
+				return false
+			}
+			m.trustAnchors = data == 0
 		case extensionEncryptedClientHello:
 			if !extData.ReadBytes(&m.encryptedClientHello, len(extData)) {
 				return false

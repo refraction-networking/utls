@@ -235,6 +235,9 @@ func (*clientHelloMsg) Generate(rand *rand.Rand, size int) reflect.Value {
 		m.earlyData = true
 	}
 	if rand.Intn(10) > 5 {
+		m.trustAnchors = true
+	}
+	if rand.Intn(10) > 5 {
 		m.encryptedClientHello = randomBytes(rand.Intn(50)+1, rand)
 	}
 
