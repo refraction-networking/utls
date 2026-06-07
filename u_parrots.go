@@ -1632,7 +1632,6 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
 				TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
 				TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
-				TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
 				TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
 				TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
 				TLS_RSA_WITH_AES_128_GCM_SHA256,
@@ -1656,8 +1655,8 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 						CurveP256,
 						CurveP384,
 						CurveP521,
-						0x0100,
-						0x0101,
+						FFDHE2048,
+						FFDHE3072,
 					},
 				},
 				&SupportedPointsExtension{
@@ -1665,6 +1664,7 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 						0x0, // uncompressed
 					},
 				},
+				&SessionTicketExtension{}, // Actually it's supported from Firefox 3.0
 				&ALPNExtension{
 					AlpnProtocols: []string{
 						"h2",
@@ -1717,6 +1717,9 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 						PKCS1WithSHA1,
 					},
 				},
+				&PSKKeyExchangeModesExtension{[]uint8{
+					PskModeDHE,
+				}}, // This is default since Firefox 60
 				&FakeRecordSizeLimitExtension{
 					Limit: 0x4001,
 				},

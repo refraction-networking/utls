@@ -153,6 +153,8 @@ const (
 	CurveP521      CurveID = 25
 	X25519         CurveID = 29
 	X25519MLKEM768 CurveID = 4588
+	FFDHE2048      CurveID = 0x0100
+	FFDHE3072      CurveID = 0x0101
 )
 
 func isTLS13OnlyKeyExchange(curve CurveID) bool {
