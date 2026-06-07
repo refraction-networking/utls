@@ -658,9 +658,11 @@ var (
 
 	HelloAndroid_11_OkHttp = ClientHelloID{helloAndroid, "11", nil, nil}
 
-	HelloEdge_Auto = HelloEdge_85 // HelloEdge_106 seems to be incompatible with this library
+	// Probably should be deleted completely
+	HelloEdge_Auto = HelloEdge_133 // HelloEdge_106 seems to be incompatible with this library
 	HelloEdge_85   = ClientHelloID{helloEdge, "85", nil, nil}
 	HelloEdge_106  = ClientHelloID{helloEdge, "106", nil, nil}
+	HelloEdge_133  = HelloChrome_133 // It's basically Chrome 1:1
 
 	HelloSafari_Auto = HelloSafari_26_3
 	HelloSafari_16_0 = ClientHelloID{helloSafari, "16.0", nil, nil}
