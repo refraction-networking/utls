@@ -130,6 +130,7 @@ const (
 	extensionRenegotiationInfo       uint16 = 0xff01
 	extensionECHOuterExtensions      uint16 = 0xfd00
 	extensionEncryptedClientHello    uint16 = 0xfe0d
+	extensionTrustAnchors            uint16 = 0xca34
 )
 
 // TLS signaling cipher suite values
@@ -152,6 +153,8 @@ const (
 	CurveP521      CurveID = 25
 	X25519         CurveID = 29
 	X25519MLKEM768 CurveID = 4588
+	FFDHE2048      CurveID = 0x0100
+	FFDHE3072      CurveID = 0x0101
 )
 
 func isTLS13OnlyKeyExchange(curve CurveID) bool {
@@ -393,6 +396,7 @@ type ClientSessionCache interface {
 
 // SignatureScheme identifies a signature algorithm supported by TLS. See
 // RFC 8446, Section 4.2.3.
+// RFC 9881 for PQ
 type SignatureScheme uint16
 
 const (
@@ -417,6 +421,11 @@ const (
 	// Legacy signature and hash algorithms for TLS 1.2.
 	PKCS1WithSHA1 SignatureScheme = 0x0201
 	ECDSAWithSHA1 SignatureScheme = 0x0203
+
+	// MLDSA algorithms for PQ cryptography
+	MLDSA44 SignatureScheme = 0x0904
+	MLDSA65 SignatureScheme = 0x0905
+	MLDSA87 SignatureScheme = 0x0906
 )
 
 // ClientHelloInfo contains information from a ClientHello message in order to
