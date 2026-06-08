@@ -613,7 +613,7 @@ var (
 	HelloFirefox_120  = ClientHelloID{helloFirefox, "120", nil, nil}
 	HelloFirefox_148  = ClientHelloID{helloFirefox, "148", nil, nil}
 
-	HelloChrome_Auto        = HelloChrome_141
+	HelloChrome_Auto        = HelloChrome_133
 	HelloChrome_58          = ClientHelloID{helloChrome, "58", nil, nil}
 	HelloChrome_62          = ClientHelloID{helloChrome, "62", nil, nil}
 	HelloChrome_70          = ClientHelloID{helloChrome, "70", nil, nil}
@@ -645,10 +645,10 @@ var (
 	HelloChrome_131 = ClientHelloID{helloChrome, "131", nil, nil}
 	// Chrome w/ New ALPS codepoint
 	HelloChrome_133 = ClientHelloID{helloChrome, "133", nil, nil}
-	// Chrome w/ trust anchors
-	HelloChrome_141 = ClientHelloID{helloChrome, "141", nil, nil}
-	// Chrome w/ MLDSA Signatures (Experiment feature)
-	HelloChrome_144 = ClientHelloID{helloChrome, "144", nil, nil}
+	// Chrome w/ Trust anchors (Draft)
+	HelloChrome_141_TA = ClientHelloID{helloChrome, "141", nil, nil}
+	// Chrome w/ TA and PQ MLDSA Signatures (Experimental feature)
+	HelloChrome_144_TA_PQS = ClientHelloID{helloChrome, "144", nil, nil}
 
 	HelloIOS_Auto = HelloIOS_14
 	HelloIOS_11_1 = ClientHelloID{helloIOS, "111", nil, nil} // legacy "111" means 11.1
