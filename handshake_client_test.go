@@ -2810,6 +2810,10 @@ func TestHandshakeRSATooBig(t *testing.T) {
 	}
 }
 
+// echConfigListExampleGolang is a serialized ECHConfigList (draft-ietf-tls-esni)
+// advertising the public_name "example.golang".
+const echConfigListExampleGolang = "0041fe0d003d0100200020204bed0a11fc0dde595a9b78d966b0011128eb83f65d3c91c1cc5ac786cd246f000400010001ff0e6578616d706c652e676f6c616e670000"
+
 func TestTLS13ECHRejectionCallbacks(t *testing.T) {
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -2842,7 +2846,7 @@ func TestTLS13ECHRejectionCallbacks(t *testing.T) {
 	clientConfig.RootCAs = x509.NewCertPool()
 	clientConfig.RootCAs.AddCert(cert)
 	clientConfig.MinVersion = VersionTLS13
-	clientConfig.EncryptedClientHelloConfigList, _ = hex.DecodeString("0041fe0d003d0100200020204bed0a11fc0dde595a9b78d966b0011128eb83f65d3c91c1cc5ac786cd246f000400010001ff0e6578616d706c652e676f6c616e670000")
+	clientConfig.EncryptedClientHelloConfigList, _ = hex.DecodeString(echConfigListExampleGolang)
 	clientConfig.ServerName = "example.golang"
 
 	for _, tc := range []struct {
@@ -2951,7 +2955,7 @@ func TestTLS13ECHRejectionVerifiesPublicName(t *testing.T) {
 	clientConfig.RootCAs = x509.NewCertPool()
 	clientConfig.RootCAs.AddCert(cert)
 	clientConfig.MinVersion = VersionTLS13
-	clientConfig.EncryptedClientHelloConfigList, _ = hex.DecodeString("0041fe0d003d0100200020204bed0a11fc0dde595a9b78d966b0011128eb83f65d3c91c1cc5ac786cd246f000400010001ff0e6578616d706c652e676f6c616e670000")
+	clientConfig.EncryptedClientHelloConfigList, _ = hex.DecodeString(echConfigListExampleGolang)
 	// The inner ServerName differs from the public_name ("example.golang").
 	clientConfig.ServerName = "secret.example"
 
@@ -2981,7 +2985,7 @@ func TestECHTLS12Server(t *testing.T) {
 	serverConfig.MaxVersion = VersionTLS12
 	clientConfig.MinVersion = 0
 
-	clientConfig.EncryptedClientHelloConfigList, _ = hex.DecodeString("0041fe0d003d0100200020204bed0a11fc0dde595a9b78d966b0011128eb83f65d3c91c1cc5ac786cd246f000400010001ff0e6578616d706c652e676f6c616e670000")
+	clientConfig.EncryptedClientHelloConfigList, _ = hex.DecodeString(echConfigListExampleGolang)
 
 	expectedErr := "server: tls: client offered only unsupported versions: [304]\nclient: remote error: tls: protocol version not supported"
 	_, _, err := testHandshake(t, clientConfig, serverConfig)
