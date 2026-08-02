@@ -1499,6 +1499,7 @@ func (m *certificateMsg) unmarshal(data []byte) bool {
 }
 
 type certificateMsgTLS13 struct {
+	original     []byte // [uTLS]
 	certificate  Certificate
 	ocspStapling bool
 	scts         bool
@@ -1561,7 +1562,7 @@ func marshalCertificate(b *cryptobyte.Builder, certificate Certificate) {
 }
 
 func (m *certificateMsgTLS13) unmarshal(data []byte) bool {
-	*m = certificateMsgTLS13{}
+	*m = certificateMsgTLS13{original: data} // [uTLS]
 	s := cryptobyte.String(data)
 
 	var context cryptobyte.String
@@ -1577,6 +1578,22 @@ func (m *certificateMsgTLS13) unmarshal(data []byte) bool {
 
 	return true
 }
+
+// [UTLS SECTION BEGINS]
+// originalBytes lets transcriptMsg hash this Certificate message exactly as it
+// was received, instead of a re-marshal via marshalCertificate(). The re-marshal
+// is not guaranteed to be byte-identical to the peer's encoding (only leaf
+// OCSP/SCT are re-emitted, in a fixed order; other per-certificate extensions
+// and non-canonical length encodings are lost), which diverges the TLS 1.3
+// handshake transcript and causes CertificateVerify to fail with
+// "crypto/rsa: verification error". clientHelloMsg, serverHelloMsg and
+// certificateRequestMsgTLS13 already preserve their original bytes for the same
+// reason.
+func (m *certificateMsgTLS13) originalBytes() []byte {
+	return m.original
+}
+
+// [UTLS SECTION ENDS]
 
 func unmarshalCertificate(s *cryptobyte.String, certificate *Certificate) bool {
 	var certList cryptobyte.String
