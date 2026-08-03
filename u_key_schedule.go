@@ -1,19 +1,8 @@
 package tls
 
 import (
-	"crypto/mlkem"
-
 	"golang.org/x/crypto/sha3"
 )
-
-// kyberDecapsulate implements decapsulation according to Kyber Round 3.
-func kyberDecapsulate(dk *mlkem.DecapsulationKey768, c []byte) ([]byte, error) {
-	K, err := dk.Decapsulate(c)
-	if err != nil {
-		return nil, err
-	}
-	return kyberSharedSecret(c, K), nil
-}
 
 func kyberSharedSecret(c, K []byte) []byte {
 	// Package mlkem implements ML-KEM, which compared to Kyber removed a

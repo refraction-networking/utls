@@ -7,10 +7,10 @@
 package tls13
 
 import (
+	"crypto/hkdf"
 	fips140 "hash"
 
 	"github.com/refraction-networking/utls/internal/byteorder"
-	"github.com/refraction-networking/utls/internal/hkdf"
 )
 
 // We don't set the service indicator in this package but we delegate that to
@@ -37,14 +37,22 @@ func ExpandLabel[H fips140.Hash](hash func() H, secret []byte, label string, con
 	hkdfLabel = append(hkdfLabel, label...)
 	hkdfLabel = append(hkdfLabel, byte(len(context)))
 	hkdfLabel = append(hkdfLabel, context...)
-	return hkdf.Expand(hash, secret, string(hkdfLabel), length)
+	res, err := hkdf.Expand(hash, secret, string(hkdfLabel), length)
+	if err != nil {
+		panic("tls13: hkdf expand err" + err.Error())
+	}
+	return res
 }
 
 func extract[H fips140.Hash](hash func() H, newSecret, currentSecret []byte) []byte {
 	if newSecret == nil {
 		newSecret = make([]byte, hash().Size())
 	}
-	return hkdf.Extract(hash, newSecret, currentSecret)
+	res, err := hkdf.Extract(hash, newSecret, currentSecret)
+	if err != nil {
+		panic("tls13: hkdf extract err" + err.Error())
+	}
+	return res
 }
 
 func deriveSecret[H fips140.Hash](hash func() H, secret []byte, label string, transcript fips140.Hash) []byte {

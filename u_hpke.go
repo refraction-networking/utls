@@ -1,7 +1,8 @@
 package tls
 
 import (
-	"github.com/refraction-networking/utls/internal/hpke"
+	"crypto/ecdh"
+	"crypto/hpke"
 )
 
 type HPKERawPublicKey = []byte
@@ -14,9 +15,9 @@ type HPKESymmetricCipherSuite struct {
 	AeadId HPKE_AEAD_ID
 }
 
-const defaultHpkeKdf = hpke.KDF_HKDF_SHA256
-const defaultHpkeKem = hpke.DHKEM_X25519_HKDF_SHA256
-const defaultHpkeAead = hpke.AEAD_AES_128_GCM
+var defaultHpkeKdf = hpke.HKDFSHA256().ID()
+var defaultHpkeKem = hpke.DHKEM(ecdh.X25519()).ID()
+var defaultHpkeAead = hpke.AES128GCM().ID()
 
 var dummyX25519PublicKey = []byte{
 	143, 38, 37, 36, 12, 6, 229, 30, 140, 27, 167, 73, 26, 100, 203, 107, 216,
@@ -27,7 +28,7 @@ var dummyX25519PublicKey = []byte{
 // length mLen.
 func cipherLen(a uint16, mLen int) int {
 	switch a {
-	case hpke.AEAD_AES_128_GCM, hpke.AEAD_AES_256_GCM, hpke.AEAD_ChaCha20Poly1305:
+	case hpke.AES128GCM().ID(), hpke.AES256GCM().ID(), hpke.ChaCha20Poly1305().ID():
 		return mLen + 16
 	default:
 		panic("hpke: invalid AEAD identifier")

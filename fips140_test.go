@@ -2,11 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build cgo
-// +build cgo
+package tls
 
-package testenv
-
-func init() {
-	haveCGO = true
+func isFIPSVersion(v uint16) bool {
+	return v == VersionTLS12 || v == VersionTLS13
 }

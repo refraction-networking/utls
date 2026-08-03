@@ -328,32 +328,18 @@ func (c *UConn) handshakeContext(ctx context.Context) (ret error) {
 	// this cancellation. In the former case, we need to close the connection.
 	defer cancel()
 
-	// Start the "interrupter" goroutine, if this context might be canceled.
-	// (The background context cannot).
-	//
-	// The interrupter goroutine waits for the input context to be done and
-	// closes the connection if this happens before the function returns.
 	if c.quic != nil {
-		c.quic.cancelc = handshakeCtx.Done()
+		c.quic.ctx = handshakeCtx
 		c.quic.cancel = cancel
 	} else if ctx.Done() != nil {
-		done := make(chan struct{})
-		interruptRes := make(chan error, 1)
+		// Close the connection if ctx is canceled before the function returns.
+		stop := context.AfterFunc(ctx, func() {
+			_ = c.conn.Close()
+		})
 		defer func() {
-			close(done)
-			if ctxErr := <-interruptRes; ctxErr != nil {
+			if !stop() {
 				// Return context error to user.
-				ret = ctxErr
-			}
-		}()
-		go func() {
-			select {
-			case <-handshakeCtx.Done():
-				// Close the connection, discarding the error
-				_ = c.conn.Close()
-				interruptRes <- handshakeCtx.Err()
-			case <-done:
-				interruptRes <- nil
+				ret = ctx.Err()
 			}
 		}()
 	}
@@ -401,11 +387,13 @@ func (c *UConn) handshakeContext(ctx context.Context) (ret error) {
 			// Provide the 1-RTT read secret now that the handshake is complete.
 			// The QUIC layer MUST NOT decrypt 1-RTT packets prior to completing
 			// the handshake (RFC 9001, Section 5.7).
-			c.quicSetReadSecret(QUICEncryptionLevelApplication, c.cipherSuite, c.in.trafficSecret)
+			if err := c.quicSetReadSecret(QUICEncryptionLevelApplication, c.cipherSuite, c.in.trafficSecret); err != nil {
+				return err
+			}
 		} else {
-			var a alert
 			c.out.Lock()
-			if !errors.As(c.out.err, &a) {
+			a, ok := errors.AsType[alert](c.out.err)
+			if !ok {
 				a = alertInternalError
 			}
 			c.out.Unlock()
@@ -515,6 +503,7 @@ func (uconn *UConn) computeAndUpdateOuterECHExtension(inner *clientHelloMsg, ech
 	if err != nil {
 		return err
 	}
+	ech.encodedInner = bytes.Clone(encodedInner)
 
 	encryptedLen := len(encodedInner) + 16
 	outerECHExt, err := generateOuterECHExt(ech.config.ConfigID, ech.kdfID, ech.aeadID, encapKey, make([]byte, encryptedLen))

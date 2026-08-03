@@ -1,6 +1,7 @@
 package tls
 
 import (
+	"crypto/hpke"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -9,7 +10,6 @@ import (
 	"sync"
 
 	"github.com/refraction-networking/utls/dicttls"
-	"github.com/refraction-networking/utls/internal/hpke"
 	"golang.org/x/crypto/cryptobyte"
 )
 
@@ -109,22 +109,46 @@ func (g *GREASEEncryptedClientHelloExtension) init() error {
 		}
 
 		if len(g.EncapsulatedKey) == 0 {
-			kem := uint16(defaultHpkeKem)
+			// kem := uint16(defaultHpkeKem)
 
-			echPK, err := hpke.ParseHPKEPublicKey(uint16(kem), dummyX25519PublicKey)
+			// echPK, err := hpke.ParseHPKEPublicKey(uint16(kem), dummyX25519PublicKey)
+			// if err != nil {
+			// 	initErr = fmt.Errorf("tls: grease ech: failed to parse dummy public key: %w", err)
+			// 	return
+			// }
+			// suite := echCipher{
+			// 	KDFID:  defaultHpkeKdf,
+			// 	AEADID: defaultHpkeAead,
+			// }
+			// g.EncapsulatedKey, _, err = hpke.SetupSender(kem, suite.KDFID, suite.AEADID, echPK, []byte{})
+			// if err != nil {
+			// 	initErr = fmt.Errorf("tls: grease ech: failed to setup encapsulated key: %w", err)
+			// 	return
+			// }
+
+			kem, err := hpke.NewKEM(defaultHpkeKem)
+			if err != nil {
+				initErr = fmt.Errorf("tls: grease ech: failed to create kem: %w", err)
+				return
+			}
+			publicKey, err := kem.NewPublicKey(dummyX25519PublicKey)
 			if err != nil {
 				initErr = fmt.Errorf("tls: grease ech: failed to parse dummy public key: %w", err)
 				return
 			}
-			suite := echCipher{
-				KDFID:  defaultHpkeKdf,
-				AEADID: defaultHpkeAead,
-			}
-			g.EncapsulatedKey, _, err = hpke.SetupSender(kem, suite.KDFID, suite.AEADID, echPK, []byte{})
+
+			kdf, err := hpke.NewKDF(defaultHpkeKdf)
 			if err != nil {
-				initErr = fmt.Errorf("tls: grease ech: failed to setup encapsulated key: %w", err)
-				return
+				initErr = fmt.Errorf("tls: grease ech: failed to create kdf: %w", err)
 			}
+
+			aead, err := hpke.NewAEAD(defaultHpkeAead)
+			if err != nil {
+				initErr = fmt.Errorf("tls: grease ech: failed to create aead: %w", err)
+			}
+
+			g.EncapsulatedKey, _, err = hpke.NewSender(publicKey, kdf, aead, []byte{})
+
 		}
 
 		if len(g.payload) == 0 {
