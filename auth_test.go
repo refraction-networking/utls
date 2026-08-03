@@ -157,6 +157,42 @@ func TestLegacyTypeAndHash(t *testing.T) {
 	}
 }
 
+func TestMLDSASignatureSchemeUsesDirectSigning(t *testing.T) {
+	for _, sigAlg := range []SignatureScheme{MLDSA44, MLDSA65, MLDSA87} {
+		sigType, hash, err := typeAndHashFromSignatureScheme(sigAlg)
+		if err != nil {
+			t.Fatalf("typeAndHashFromSignatureScheme(%v) returned error: %v", sigAlg, err)
+		}
+		if sigType != signatureMLDSA {
+			t.Fatalf("typeAndHashFromSignatureScheme(%v) signature type = %#x, want %#x", sigAlg, sigType, signatureMLDSA)
+		}
+		if hash != directSigning {
+			t.Fatalf("typeAndHashFromSignatureScheme(%v) hash = %#x, want directSigning", sigAlg, hash)
+		}
+	}
+}
+
+func TestDefaultSupportedSignatureAlgorithmsFollowGoMLDSASupport(t *testing.T) {
+	for _, sigAlg := range []SignatureScheme{MLDSA44, MLDSA65, MLDSA87} {
+		got := isSupportedSignatureAlgorithm(sigAlg, supportedSignatureAlgorithms())
+		if got != goMLDSASupported() {
+			t.Fatalf("default support for %v = %v, want %v", sigAlg, got, goMLDSASupported())
+		}
+	}
+}
+
+func TestSupportedSignatureAlgorithmsForVersionGatesMLDSA(t *testing.T) {
+	for _, sigAlg := range []SignatureScheme{MLDSA44, MLDSA65, MLDSA87} {
+		if isSupportedSignatureAlgorithm(sigAlg, supportedSignatureAlgorithmsForVersion(VersionTLS12)) {
+			t.Fatalf("%v advertised for TLS 1.2", sigAlg)
+		}
+		gotTLS13 := isSupportedSignatureAlgorithm(sigAlg, supportedSignatureAlgorithmsForVersion(VersionTLS13))
+		if gotTLS13 != goMLDSASupported() {
+			t.Fatalf("TLS 1.3 support for %v = %v, want %v", sigAlg, gotTLS13, goMLDSASupported())
+		}
+	}
+}
+
 // TestSupportedSignatureAlgorithms checks that all supportedSignatureAlgorithms
 // have valid type and hash information.
 func TestSupportedSignatureAlgorithms(t *testing.T) {
@@ -168,7 +204,7 @@ func TestSupportedSignatureAlgorithms(t *testing.T) {
 		if sigType == 0 {
 			t.Errorf("%v: missing signature type", sigAlg)
 		}
-		if hash == 0 && sigAlg != Ed25519 {
+		if hash == 0 && sigAlg != Ed25519 && !isMLDSASignatureScheme(sigAlg) {
 			t.Errorf("%v: missing hash", sigAlg)
 		}
 	}

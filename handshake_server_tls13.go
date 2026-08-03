@@ -834,6 +834,9 @@ func (hs *serverHandshakeStateTLS13) sendServerCertificate() error {
 		certReq.ocspStapling = true
 		certReq.scts = true
 		certReq.supportedSignatureAlgorithms = supportedSignatureAlgorithms()
+		if c.config.testingOnlyForceSignatureAlgorithms != nil {
+			certReq.supportedSignatureAlgorithms = c.config.testingOnlyForceSignatureAlgorithms
+		}
 		if c.config.ClientCAs != nil {
 			certReq.certificateAuthorities = c.config.ClientCAs.Subjects()
 		}

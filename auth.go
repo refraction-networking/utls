@@ -37,6 +37,13 @@ func verifyHandshakeSignature(sigType uint8, pubkey crypto.PublicKey, hashFunc c
 		if !ed25519.Verify(pubKey, signed, sig) {
 			return errors.New("Ed25519 verification failure")
 		}
+	case signatureMLDSA:
+		if hashFunc != directSigning {
+			return errors.New("tls: ML-DSA must use direct signing")
+		}
+		if err := verifyMLDSAHandshakeSignature(pubkey, signed, sig); err != nil {
+			return err
+		}
 	case signaturePKCS1v15:
 		pubKey, ok := pubkey.(*rsa.PublicKey)
 		if !ok {
@@ -105,6 +112,8 @@ func typeAndHashFromSignatureScheme(signatureAlgorithm SignatureScheme) (sigType
 		sigType = signatureECDSA
 	case Ed25519:
 		sigType = signatureEd25519
+	case MLDSA44, MLDSA65, MLDSA87:
+		sigType = signatureMLDSA
 	default:
 		return 0, 0, fmt.Errorf("unsupported signature algorithm: %v", signatureAlgorithm)
 	}
@@ -118,6 +127,8 @@ func typeAndHashFromSignatureScheme(signatureAlgorithm SignatureScheme) (sigType
 	case PKCS1WithSHA512, PSSWithSHA512, ECDSAWithP521AndSHA512:
 		hash = crypto.SHA512
 	case Ed25519:
+		hash = directSigning
+	case MLDSA44, MLDSA65, MLDSA87:
 		hash = directSigning
 	default:
 		return 0, 0, fmt.Errorf("unsupported signature algorithm: %v", signatureAlgorithm)
@@ -141,6 +152,9 @@ func legacyTypeAndHashFromPublicKey(pub crypto.PublicKey) (sigType uint8, hash c
 		// complexity, so we can't even test it properly.
 		return 0, 0, fmt.Errorf("tls: Ed25519 public keys are not supported before TLS 1.2")
 	default:
+		if isMLDSAPublicKey(pub) {
+			return 0, 0, errors.New("tls: ML-DSA public keys are not supported before TLS 1.3")
+		}
 		return 0, 0, fmt.Errorf("tls: unsupported public key: %T", pub)
 	}
 }
@@ -211,7 +225,10 @@ func signatureSchemesForCertificate(version uint16, cert *Certificate) []Signatu
 	case ed25519.PublicKey:
 		sigAlgs = []SignatureScheme{Ed25519}
 	default:
-		return nil
+		sigAlgs = signatureSchemesForMLDSAPublicKey(version, pub)
+		if sigAlgs == nil {
+			return nil
+		}
 	}
 
 	if cert.SupportedSignatureAlgorithms != nil {
@@ -284,6 +301,9 @@ func unsupportedCertificateError(cert *Certificate) error {
 		return fmt.Errorf("tls: certificate RSA key size too small for supported signature algorithms")
 	case ed25519.PublicKey:
 	default:
+		if err := unsupportedMLDSACertificateError(pub); err != nil {
+			return err
+		}
 		return fmt.Errorf("tls: unsupported certificate key (%T)", pub)
 	}
 

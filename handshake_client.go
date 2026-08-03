@@ -136,7 +136,10 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, *keySharePrivateKeys, *echCli
 	}
 
 	if maxVersion >= VersionTLS12 {
-		hello.supportedSignatureAlgorithms = supportedSignatureAlgorithms()
+		hello.supportedSignatureAlgorithms = supportedSignatureAlgorithmsForVersion(maxVersion)
+	}
+	if config.testingOnlyForceSignatureAlgorithms != nil {
+		hello.supportedSignatureAlgorithms = config.testingOnlyForceSignatureAlgorithms
 	}
 	if testingOnlyForceClientHelloSignatureAlgorithms != nil {
 		hello.supportedSignatureAlgorithms = testingOnlyForceClientHelloSignatureAlgorithms
@@ -1217,10 +1220,17 @@ func (c *Conn) verifyServerCertificate(certificates [][]byte) error {
 		}
 	}
 
-	switch certs[0].PublicKey.(type) {
+	switch pub := certs[0].PublicKey.(type) {
 	case *rsa.PublicKey, *ecdsa.PublicKey, ed25519.PublicKey:
 		break
 	default:
+		if isMLDSAPublicKey(pub) {
+			if c.vers < VersionTLS13 {
+				c.sendAlert(alertUnsupportedCertificate)
+				return errors.New("tls: ML-DSA certificates require TLS 1.3")
+			}
+			break
+		}
 		c.sendAlert(alertUnsupportedCertificate)
 		return fmt.Errorf("tls: server's certificate contains an unsupported type of public key: %T", certs[0].PublicKey)
 	}

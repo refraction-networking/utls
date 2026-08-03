@@ -30,7 +30,7 @@ func defaultCurvePreferences() []CurveID {
 // the code advertises as supported in a TLS 1.2+ ClientHello and in a TLS 1.2+
 // CertificateRequest. The two fields are merged to match with TLS 1.3.
 // Note that in TLS 1.2, the ECDSA algorithms are not constrained to P-256, etc.
-var defaultSupportedSignatureAlgorithms = []SignatureScheme{
+var defaultSupportedSignatureAlgorithms = append(defaultMLDSASignatureAlgorithms(),
 	PSSWithSHA256,
 	ECDSAWithP256AndSHA256,
 	Ed25519,
@@ -43,7 +43,7 @@ var defaultSupportedSignatureAlgorithms = []SignatureScheme{
 	ECDSAWithP521AndSHA512,
 	PKCS1WithSHA1,
 	ECDSAWithSHA1,
-}
+)
 
 // [uTLS section begins]
 // var tlsrsakex = godebug.New("tlsrsakex")

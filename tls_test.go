@@ -899,7 +899,7 @@ func TestCloneNonFuncFields(t *testing.T) {
 			f.Set(reflect.ValueOf([]EncryptedClientHelloKey{
 				{Config: []byte{1}, PrivateKey: []byte{1}},
 			}))
-		case "mutex", "autoSessionTicketKeys", "sessionTicketKeys":
+		case "mutex", "autoSessionTicketKeys", "sessionTicketKeys", "testingOnlyForceSignatureAlgorithms":
 			continue // these are unexported fields that are handled separately
 		case "ApplicationSettings": // [UTLS] ALPS (Application Settings)
 			f.Set(reflect.ValueOf(map[string][]byte{"a": {1}}))
@@ -910,6 +910,7 @@ func TestCloneNonFuncFields(t *testing.T) {
 	// Set the unexported fields related to session ticket keys, which are copied with Clone().
 	c1.autoSessionTicketKeys = []ticketKey{c1.ticketKeyFromBytes(c1.SessionTicketKey)}
 	c1.sessionTicketKeys = []ticketKey{c1.ticketKeyFromBytes(c1.SessionTicketKey)}
+	c1.testingOnlyForceSignatureAlgorithms = []SignatureScheme{PSSWithSHA256}
 
 	c2 := c1.Clone()
 	if !reflect.DeepEqual(&c1, c2) {

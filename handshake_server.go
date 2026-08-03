@@ -641,7 +641,10 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 		}
 		if c.vers >= VersionTLS12 {
 			certReq.hasSignatureAlgorithm = true
-			certReq.supportedSignatureAlgorithms = supportedSignatureAlgorithms()
+			certReq.supportedSignatureAlgorithms = supportedSignatureAlgorithmsForVersion(c.vers)
+			if c.config.testingOnlyForceSignatureAlgorithms != nil {
+				certReq.supportedSignatureAlgorithms = c.config.testingOnlyForceSignatureAlgorithms
+			}
 		}
 
 		// An empty list of certificateAuthorities signals to
@@ -910,7 +913,7 @@ func (c *Conn) processCertsFromClient(certificate Certificate) error {
 	certs := make([]*x509.Certificate, len(certificates))
 	var err error
 	for i, asn1Data := range certificates {
-		if certs[i], err = x509.ParseCertificate(asn1Data); err != nil {
+		if certs[i], err = parseCertificate(asn1Data); err != nil {
 			c.sendAlert(alertBadCertificate)
 			return errors.New("tls: failed to parse client certificate: " + err.Error())
 		}
@@ -969,9 +972,16 @@ func (c *Conn) processCertsFromClient(certificate Certificate) error {
 	c.scts = certificate.SignedCertificateTimestamps
 
 	if len(certs) > 0 {
-		switch certs[0].PublicKey.(type) {
+		switch pub := certs[0].PublicKey.(type) {
 		case *ecdsa.PublicKey, *rsa.PublicKey, ed25519.PublicKey:
 		default:
+			if isMLDSAPublicKey(pub) {
+				if c.vers < VersionTLS13 {
+					c.sendAlert(alertUnsupportedCertificate)
+					return errors.New("tls: ML-DSA certificates require TLS 1.3")
+				}
+				break
+			}
 			c.sendAlert(alertUnsupportedCertificate)
 			return fmt.Errorf("tls: client certificate contains an unsupported public key of type %T", certs[0].PublicKey)
 		}

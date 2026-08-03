@@ -82,7 +82,7 @@ func (cc *certCache) newCert(der []byte) (*activeCert, error) {
 		return cc.active(entry.(*cacheEntry)), nil
 	}
 
-	cert, err := x509.ParseCertificate(der)
+	cert, err := parseCertificate(der)
 	if err != nil {
 		return nil, err
 	}

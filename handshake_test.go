@@ -458,6 +458,9 @@ func runMain(m *testing.M) int {
 		MinVersion:         VersionTLS10,
 		MaxVersion:         VersionTLS13,
 	}
+	if !*update {
+		testConfig.testingOnlyForceSignatureAlgorithms = recordedTestSignatureAlgorithms()
+	}
 	testConfig.Certificates[0].Certificate = [][]byte{testRSACertificate}
 	testConfig.Certificates[0].PrivateKey = testRSAPrivateKey
 	testConfig.Certificates[1].Certificate = [][]byte{testSNICertificate}
@@ -473,6 +476,17 @@ func runMain(m *testing.M) int {
 	}
 
 	return m.Run()
+}
+
+func recordedTestSignatureAlgorithms() []SignatureScheme {
+	sigAlgs := supportedSignatureAlgorithms()
+	filtered := make([]SignatureScheme, 0, len(sigAlgs))
+	for _, sigAlg := range sigAlgs {
+		if !isMLDSASignatureScheme(sigAlg) {
+			filtered = append(filtered, sigAlg)
+		}
+	}
+	return filtered
 }
 
 func testHandshake(t *testing.T, clientConfig, serverConfig *Config) (serverState, clientState ConnectionState, err error) {
