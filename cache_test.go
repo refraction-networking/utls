@@ -41,10 +41,10 @@ func TestCertCache(t *testing.T) {
 
 	timeoutRefCheck := func(t *testing.T, key string, count int64) {
 		t.Helper()
-		c := time.After(4 * time.Second)
+		timeout := time.After(4 * time.Second)
 		for {
 			select {
-			case <-c:
+			case <-timeout:
 				t.Fatal("timed out waiting for expected ref count")
 			default:
 				e, ok := cc.Load(key)
@@ -58,6 +58,15 @@ func TestCertCache(t *testing.T) {
 					return
 				}
 			}
+			// Explicitly yield to the scheduler.
+			//
+			// On single-threaded platforms like js/wasm a busy-loop might
+			// never call into the scheduler for the full timeout, meaning
+			// that if we arrive here and the cleanup hasn't already run,
+			// we'll simply loop until the timeout. Busy-loops put us at the
+			// mercy of the Go scheduler, making this test fragile on some
+			// platforms.
+			runtime.Gosched()
 		}
 	}
 

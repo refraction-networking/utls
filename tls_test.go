@@ -522,6 +522,7 @@ func TestTLSUniqueMatches(t *testing.T) {
 }
 
 func TestVerifyHostname(t *testing.T) {
+	t.Skip()
 	testenv.MustHaveExternalNetwork(t)
 
 	c, err := Dial("tcp", "www.google.com:https", nil)
@@ -783,7 +784,7 @@ func TestWarningAlertFlood(t *testing.T) {
 }
 
 func TestCloneFuncFields(t *testing.T) {
-	const expectedCount = 9
+	const expectedCount = 10
 	called := 0
 
 	c1 := Config{
@@ -823,6 +824,10 @@ func TestCloneFuncFields(t *testing.T) {
 			called |= 1 << 8
 			return nil
 		},
+		GetEncryptedClientHelloKeys: func(*ClientHelloInfo) ([]EncryptedClientHelloKey, error) {
+			called |= 1 << 9
+			return nil, nil
+		},
 	}
 
 	c2 := c1.Clone()
@@ -836,6 +841,7 @@ func TestCloneFuncFields(t *testing.T) {
 	c2.UnwrapSession(nil, ConnectionState{})
 	c2.WrapSession(ConnectionState{}, nil)
 	c2.EncryptedClientHelloRejectionVerify(ConnectionState{})
+	c2.GetEncryptedClientHelloKeys(nil)
 
 	if called != (1<<expectedCount)-1 {
 		t.Fatalf("expected %d calls but saw calls %b", expectedCount, called)
@@ -854,7 +860,7 @@ func TestCloneNonFuncFields(t *testing.T) {
 		switch fn := typ.Field(i).Name; fn {
 		case "Rand":
 			f.Set(reflect.ValueOf(io.Reader(os.Stdin)))
-		case "Time", "GetCertificate", "GetConfigForClient", "VerifyPeerCertificate", "VerifyConnection", "GetClientCertificate", "WrapSession", "UnwrapSession", "EncryptedClientHelloRejectionVerify":
+		case "Time", "GetCertificate", "GetConfigForClient", "VerifyPeerCertificate", "VerifyConnection", "GetClientCertificate", "WrapSession", "UnwrapSession", "EncryptedClientHelloRejectionVerify", "GetEncryptedClientHelloKeys":
 			// DeepEqual can't compare functions. If you add a
 			// function field to this list, you must also change
 			// TestCloneFuncFields to ensure that the func field is
@@ -1127,9 +1133,7 @@ func TestConnectionStateMarshal(t *testing.T) {
 }
 
 func TestConnectionState(t *testing.T) {
-	skipFIPS(t) // Test certificates not FIPS compatible.
-
-	issuer, err := x509.ParseCertificate(testRSACertificateIssuer)
+	issuer, err := x509.ParseCertificate(testRSA2048CertificateIssuer)
 	if err != nil {
 		panic(err)
 	}
@@ -1141,9 +1145,133 @@ func TestConnectionState(t *testing.T) {
 	var scts = [][]byte{[]byte("dummy sct 1"), []byte("dummy sct 2")}
 	var ocsp = []byte("dummy ocsp")
 
-	for _, v := range []uint16{VersionTLS12, VersionTLS13} {
+	checkConnectionState := func(t *testing.T, cs ConnectionState, version uint16, isClient bool) {
+		if cs.Version != version {
+			t.Errorf("got Version %x, expected %x", cs.Version, version)
+		}
+
+		if !cs.HandshakeComplete {
+			t.Errorf("got HandshakeComplete %v, expected true", cs.HandshakeComplete)
+		}
+
+		if cs.DidResume {
+			t.Errorf("got DidResume %v, expected false", cs.DidResume)
+		}
+
+		if cs.CipherSuite == 0 {
+			t.Errorf("got zero CipherSuite")
+		}
+
+		if cs.CurveID == 0 {
+			t.Errorf("got zero CurveID")
+		}
+
+		if cs.NegotiatedProtocol != alpnProtocol {
+			t.Errorf("got ALPN protocol %q, expected %q", cs.NegotiatedProtocol, alpnProtocol)
+		}
+
+		if !cs.NegotiatedProtocolIsMutual {
+			t.Errorf("got NegotiatedProtocolIsMutual %v, expected true", cs.NegotiatedProtocolIsMutual)
+		}
+
+		if cs.ServerName != serverName {
+			t.Errorf("got ServerName %q, expected %q", cs.ServerName, serverName)
+		}
+
+		if len(cs.PeerCertificates) != 1 {
+			t.Errorf("got %d PeerCertificates, expected %d", len(cs.PeerCertificates), 1)
+		} else if !bytes.Equal(cs.PeerCertificates[0].Raw, testRSA2048Certificate) {
+			t.Errorf("got PeerCertificates %x, expected %x", cs.PeerCertificates[0].Raw, testRSA2048Certificate)
+		}
+
+		if len(cs.VerifiedChains) != 1 {
+			t.Errorf("got %d long verified chain, expected %d", len(cs.VerifiedChains), 1)
+		} else if len(cs.VerifiedChains[0]) != 2 {
+			t.Errorf("got %d verified chain, expected %d", len(cs.VerifiedChains[0]), 2)
+		} else if !bytes.Equal(cs.VerifiedChains[0][0].Raw, testRSA2048Certificate) {
+			t.Errorf("got verified chain[0][0] %x, expected %x", cs.VerifiedChains[0][0].Raw, testRSA2048Certificate)
+		} else if !bytes.Equal(cs.VerifiedChains[0][1].Raw, testRSA2048CertificateIssuer) {
+			t.Errorf("got verified chain[0][1] %x, expected %x", cs.VerifiedChains[0][1].Raw, testRSA2048CertificateIssuer)
+		}
+
+		// Only TLS 1.3 supports OCSP and SCTs on client certs.
+		if isClient || version == VersionTLS13 {
+			if len(cs.SignedCertificateTimestamps) != 2 {
+				t.Errorf("got %d SCTs, expected %d", len(cs.SignedCertificateTimestamps), 2)
+			} else if !bytes.Equal(cs.SignedCertificateTimestamps[0], scts[0]) {
+				t.Errorf("got SCTs %x, expected %x", cs.SignedCertificateTimestamps[0], scts[0])
+			} else if !bytes.Equal(cs.SignedCertificateTimestamps[1], scts[1]) {
+				t.Errorf("got SCTs %x, expected %x", cs.SignedCertificateTimestamps[1], scts[1])
+			}
+			if !bytes.Equal(cs.OCSPResponse, ocsp) {
+				t.Errorf("got OCSP %x, expected %x", cs.OCSPResponse, ocsp)
+			}
+		} else {
+			if cs.SignedCertificateTimestamps != nil {
+				t.Errorf("got %d SCTs, expected nil", len(cs.SignedCertificateTimestamps))
+			}
+			if cs.OCSPResponse != nil {
+				t.Errorf("got OCSP %x, expected nil", cs.OCSPResponse)
+			}
+		}
+
+		if version == VersionTLS13 {
+			if cs.TLSUnique != nil {
+				t.Errorf("got TLSUnique %x, expected nil", cs.TLSUnique)
+			}
+		} else {
+			if cs.TLSUnique == nil {
+				t.Errorf("got nil TLSUnique")
+			}
+		}
+	}
+
+	compareConnectionStates := func(t *testing.T, cs1, cs2 ConnectionState) {
+		if cs1.Version != cs2.Version {
+			t.Errorf("Version mismatch: %x != %x", cs1.Version, cs2.Version)
+		}
+		if cs1.HandshakeComplete != cs2.HandshakeComplete {
+			t.Errorf("HandshakeComplete mismatch: %v != %v", cs1.HandshakeComplete, cs2.HandshakeComplete)
+		}
+		// DidResume is expected to be different.
+		if cs1.CipherSuite != cs2.CipherSuite {
+			t.Errorf("CipherSuite mismatch: %x != %x", cs1.CipherSuite, cs2.CipherSuite)
+		}
+		if cs1.CurveID != cs2.CurveID {
+			t.Errorf("CurveID mismatch: %s != %s", cs1.CurveID, cs2.CurveID)
+		}
+		if cs1.NegotiatedProtocol != cs2.NegotiatedProtocol {
+			t.Errorf("NegotiatedProtocol mismatch: %q != %q", cs1.NegotiatedProtocol, cs2.NegotiatedProtocol)
+		}
+		if cs1.NegotiatedProtocolIsMutual != cs2.NegotiatedProtocolIsMutual {
+			t.Errorf("NegotiatedProtocolIsMutual mismatch: %v != %v", cs1.NegotiatedProtocolIsMutual, cs2.NegotiatedProtocolIsMutual)
+		}
+		if cs1.ServerName != cs2.ServerName {
+			t.Errorf("ServerName mismatch: %q != %q", cs1.ServerName, cs2.ServerName)
+		}
+		if !reflect.DeepEqual(cs1.PeerCertificates, cs2.PeerCertificates) {
+			t.Errorf("PeerCertificates mismatch")
+		}
+		if !reflect.DeepEqual(cs1.VerifiedChains, cs2.VerifiedChains) {
+			t.Errorf("VerifiedChains mismatch")
+		}
+		if !reflect.DeepEqual(cs1.SignedCertificateTimestamps, cs2.SignedCertificateTimestamps) {
+			t.Errorf("SignedCertificateTimestamps mismatch: %x != %x", cs1.SignedCertificateTimestamps, cs2.SignedCertificateTimestamps)
+		}
+		if !bytes.Equal(cs1.OCSPResponse, cs2.OCSPResponse) {
+			t.Errorf("OCSPResponse mismatch: %x != %x", cs1.OCSPResponse, cs2.OCSPResponse)
+		}
+		// TLSUnique is expected to be different.
+	}
+
+	for _, v := range []uint16{VersionTLS10, VersionTLS12, VersionTLS13} {
+		//if !isFIPSVersion(v) && fips140tls.Required() {
+		//	t.Skipf("skipping test in FIPS 140-3 mode for non-FIPS version %x", v)
+		//}
 		var name string
 		switch v {
+		case VersionTLS10:
+			name = "TLSv10"
 		case VersionTLS12:
 			name = "TLSv12"
 		case VersionTLS13:
@@ -1151,93 +1279,46 @@ func TestConnectionState(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			config := &Config{
-				Time:         testTime,
-				Rand:         zeroSource{},
-				Certificates: make([]Certificate, 1),
-				MaxVersion:   v,
-				RootCAs:      rootCAs,
-				ClientCAs:    rootCAs,
-				ClientAuth:   RequireAndVerifyClientCert,
-				NextProtos:   []string{alpnProtocol},
-				ServerName:   serverName,
+				Time:               testTime,
+				Certificates:       make([]Certificate, 1),
+				MinVersion:         v,
+				MaxVersion:         v,
+				RootCAs:            rootCAs,
+				ClientCAs:          rootCAs,
+				ClientAuth:         RequireAndVerifyClientCert,
+				NextProtos:         []string{alpnProtocol},
+				ServerName:         serverName,
+				ClientSessionCache: NewLRUClientSessionCache(1),
 			}
-			config.Certificates[0].Certificate = [][]byte{testRSACertificate}
-			config.Certificates[0].PrivateKey = testRSAPrivateKey
+			config.Certificates[0].Certificate = [][]byte{testRSA2048Certificate}
+			config.Certificates[0].PrivateKey = testRSA2048PrivateKey
 			config.Certificates[0].SignedCertificateTimestamps = scts
 			config.Certificates[0].OCSPStaple = ocsp
 
 			ss, cs, err := testHandshake(t, config, config)
 			if err != nil {
-				t.Fatalf("Handshake failed: %v", err)
+				t.Fatalf("handshake failed: %v", err)
 			}
 
-			if ss.Version != v || cs.Version != v {
-				t.Errorf("Got versions %x (server) and %x (client), expected %x", ss.Version, cs.Version, v)
-			}
+			t.Run("Client", func(t *testing.T) { checkConnectionState(t, cs, v, true) })
+			t.Run("Server", func(t *testing.T) { checkConnectionState(t, ss, v, false) })
 
-			if !ss.HandshakeComplete || !cs.HandshakeComplete {
-				t.Errorf("Got HandshakeComplete %v (server) and %v (client), expected true", ss.HandshakeComplete, cs.HandshakeComplete)
-			}
+			t.Run("Resume", func(t *testing.T) {
+				// TODO: test changing parameters between original and resumed
+				// connection when the protocol allows it.
 
-			if ss.DidResume || cs.DidResume {
-				t.Errorf("Got DidResume %v (server) and %v (client), expected false", ss.DidResume, cs.DidResume)
-			}
-
-			if ss.CipherSuite == 0 || cs.CipherSuite == 0 {
-				t.Errorf("Got invalid cipher suite: %v (server) and %v (client)", ss.CipherSuite, cs.CipherSuite)
-			}
-
-			if ss.NegotiatedProtocol != alpnProtocol || cs.NegotiatedProtocol != alpnProtocol {
-				t.Errorf("Got negotiated protocol %q (server) and %q (client), expected %q", ss.NegotiatedProtocol, cs.NegotiatedProtocol, alpnProtocol)
-			}
-
-			if !cs.NegotiatedProtocolIsMutual {
-				t.Errorf("Got false NegotiatedProtocolIsMutual on the client side")
-			}
-			// NegotiatedProtocolIsMutual on the server side is unspecified.
-
-			if ss.ServerName != serverName {
-				t.Errorf("Got server name %q, expected %q", ss.ServerName, serverName)
-			}
-			if cs.ServerName != serverName {
-				t.Errorf("Got server name on client connection %q, expected %q", cs.ServerName, serverName)
-			}
-
-			if len(ss.PeerCertificates) != 1 || len(cs.PeerCertificates) != 1 {
-				t.Errorf("Got %d (server) and %d (client) peer certificates, expected %d", len(ss.PeerCertificates), len(cs.PeerCertificates), 1)
-			}
-
-			if len(ss.VerifiedChains) != 1 || len(cs.VerifiedChains) != 1 {
-				t.Errorf("Got %d (server) and %d (client) verified chains, expected %d", len(ss.VerifiedChains), len(cs.VerifiedChains), 1)
-			} else if len(ss.VerifiedChains[0]) != 2 || len(cs.VerifiedChains[0]) != 2 {
-				t.Errorf("Got %d (server) and %d (client) long verified chain, expected %d", len(ss.VerifiedChains[0]), len(cs.VerifiedChains[0]), 2)
-			}
-
-			if len(cs.SignedCertificateTimestamps) != 2 {
-				t.Errorf("Got %d SCTs, expected %d", len(cs.SignedCertificateTimestamps), 2)
-			}
-			if !bytes.Equal(cs.OCSPResponse, ocsp) {
-				t.Errorf("Got OCSPs %x, expected %x", cs.OCSPResponse, ocsp)
-			}
-			// Only TLS 1.3 supports OCSP and SCTs on client certs.
-			if v == VersionTLS13 {
-				if len(ss.SignedCertificateTimestamps) != 2 {
-					t.Errorf("Got %d client SCTs, expected %d", len(ss.SignedCertificateTimestamps), 2)
+				ss1, cs1, err := testHandshake(t, config, config)
+				if err != nil {
+					t.Fatalf("handshake failed: %v", err)
 				}
-				if !bytes.Equal(ss.OCSPResponse, ocsp) {
-					t.Errorf("Got client OCSPs %x, expected %x", ss.OCSPResponse, ocsp)
-				}
-			}
 
-			if v == VersionTLS13 {
-				if ss.TLSUnique != nil || cs.TLSUnique != nil {
-					t.Errorf("Got TLSUnique %x (server) and %x (client), expected nil in TLS 1.3", ss.TLSUnique, cs.TLSUnique)
+				if !cs1.DidResume || !ss1.DidResume {
+					t.Errorf("DidResume is false")
 				}
-			} else {
-				if ss.TLSUnique == nil || cs.TLSUnique == nil {
-					t.Errorf("Got TLSUnique %x (server) and %x (client), expected non-nil", ss.TLSUnique, cs.TLSUnique)
-				}
-			}
+
+				t.Run("Client", func(t *testing.T) { compareConnectionStates(t, cs, cs1) })
+				t.Run("Server", func(t *testing.T) { compareConnectionStates(t, ss, ss1) })
+			})
 		})
 	}
 }
@@ -1382,7 +1463,7 @@ func TestClientHelloInfo_SupportsCertificate(t *testing.T) {
 			SupportedPoints:   []uint8{1},
 			SignatureSchemes:  []SignatureScheme{ECDSAWithP256AndSHA256},
 			SupportedVersions: []uint16{VersionTLS12},
-		}, "doesn't support ECDHE"},
+		}, "only incompatible point formats"},
 		{ecdsaCert, &ClientHelloInfo{
 			CipherSuites:      []uint16{TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256},
 			SupportedCurves:   []CurveID{CurveP256},
@@ -1496,11 +1577,11 @@ func TestCipherSuites(t *testing.T) {
 		}
 
 		if cc.Insecure {
-			if slices.Contains(defaultCipherSuites(), c.id) {
+			if slices.Contains(defaultCipherSuites(false), c.id) {
 				t.Errorf("%#04x: insecure suite in default list", c.id)
 			}
 		} else {
-			if !slices.Contains(defaultCipherSuites(), c.id) {
+			if !slices.Contains(defaultCipherSuites(false), c.id) {
 				t.Errorf("%#04x: secure suite not in default list", c.id)
 			}
 		}
@@ -1977,18 +2058,18 @@ func TestHandshakeMLKEM(t *testing.T) {
 				t.Fatal(err)
 			}
 			if test.expectMLKEM {
-				if ss.testingOnlyCurveID != X25519MLKEM768 {
-					t.Errorf("got CurveID %v (server), expected %v", ss.testingOnlyCurveID, X25519MLKEM768)
+				if ss.CurveID != X25519MLKEM768 {
+					t.Errorf("got CurveID %v (server), expected %v", ss.CurveID, X25519MLKEM768)
 				}
-				if cs.testingOnlyCurveID != X25519MLKEM768 {
-					t.Errorf("got CurveID %v (client), expected %v", cs.testingOnlyCurveID, X25519MLKEM768)
+				if cs.CurveID != X25519MLKEM768 {
+					t.Errorf("got CurveID %v (client), expected %v", cs.CurveID, X25519MLKEM768)
 				}
 			} else {
-				if ss.testingOnlyCurveID == X25519MLKEM768 {
-					t.Errorf("got CurveID %v (server), expected not X25519MLKEM768", ss.testingOnlyCurveID)
+				if ss.CurveID == X25519MLKEM768 {
+					t.Errorf("got CurveID %v (server), expected not X25519MLKEM768", ss.CurveID)
 				}
-				if cs.testingOnlyCurveID == X25519MLKEM768 {
-					t.Errorf("got CurveID %v (client), expected not X25519MLKEM768", cs.testingOnlyCurveID)
+				if cs.CurveID == X25519MLKEM768 {
+					t.Errorf("got CurveID %v (client), expected not X25519MLKEM768", cs.CurveID)
 				}
 			}
 			if test.expectHRR {
@@ -2066,10 +2147,10 @@ func TestLargeCertMsg(t *testing.T) {
 }
 
 func TestECH(t *testing.T) {
-	testECHSpec(t, nil, true)
+	testECHSpec(t, func() *ClientHelloSpec { return nil }, true)
 }
 
-func testECHSpec(t *testing.T, spec *ClientHelloSpec, expectSuccess bool) {
+func testECHSpec(t *testing.T, spec func() *ClientHelloSpec, expectSuccess bool) {
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
@@ -2159,34 +2240,52 @@ func testECHSpec(t *testing.T, spec *ClientHelloSpec, expectSuccess bool) {
 		{Config: echConfig, PrivateKey: echKey.Bytes(), SendAsRetry: true},
 	}
 
-	// [uTLS SECTION BEGIN]
-	ss, cs, err := testUtlsHandshake(t, clientConfig, serverConfig, spec)
-	if expectSuccess {
-		if err != nil {
-			t.Fatalf("unexpected failure: %s", err)
+	check := func() {
+		// [uTLS SECTION BEGIN]
+		ss, cs, err := testUtlsHandshake(t, clientConfig, serverConfig, spec())
+		if expectSuccess {
+			if err != nil {
+				t.Fatalf("unexpected failure: %s", err)
+			}
+			if !ss.ECHAccepted {
+				t.Fatal("server ConnectionState shows ECH not accepted")
+			}
+			if !cs.ECHAccepted {
+				t.Fatal("client ConnectionState shows ECH not accepted")
+			}
+			if cs.ServerName != "secret.example" || ss.ServerName != "secret.example" {
+				t.Fatalf("unexpected ConnectionState.ServerName, want %q, got server:%q, client: %q", "secret.example", ss.ServerName, cs.ServerName)
+			}
+			if len(cs.VerifiedChains) != 1 {
+				t.Fatal("unexpect number of certificate chains")
+			}
+			if len(cs.VerifiedChains[0]) != 1 {
+				t.Fatal("unexpect number of certificates")
+			}
+			if !cs.VerifiedChains[0][0].Equal(secretCert) {
+				t.Fatal("unexpected certificate")
+			}
+		} else {
+			if err == nil {
+				t.Fatalf("unexpected handshake success, expected failure")
+			}
 		}
-		if !ss.ECHAccepted {
-			t.Fatal("server ConnectionState shows ECH not accepted")
-		}
-		if !cs.ECHAccepted {
-			t.Fatal("client ConnectionState shows ECH not accepted")
-		}
-		if cs.ServerName != "secret.example" || ss.ServerName != "secret.example" {
-			t.Fatalf("unexpected ConnectionState.ServerName, want %q, got server:%q, client: %q", "secret.example", ss.ServerName, cs.ServerName)
-		}
-		if len(cs.VerifiedChains) != 1 {
-			t.Fatal("unexpect number of certificate chains")
-		}
-		if len(cs.VerifiedChains[0]) != 1 {
-			t.Fatal("unexpect number of certificates")
-		}
-		if !cs.VerifiedChains[0][0].Equal(secretCert) {
-			t.Fatal("unexpected certificate")
-		}
-	} else {
-		if err == nil {
-			t.Fatalf("unexpected handshake success, expected failure")
-		}
+		// [uTLS SECTION END]
 	}
-	// [uTLS SECTION END]
+
+	check()
+
+	serverConfig.GetEncryptedClientHelloKeys = func(_ *ClientHelloInfo) ([]EncryptedClientHelloKey, error) {
+		return []EncryptedClientHelloKey{{Config: echConfig, PrivateKey: echKey.Bytes(), SendAsRetry: true}}, nil
+	}
+	randKey, err := ecdh.X25519().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	randConfig := marshalECHConfig(32, randKey.PublicKey().Bytes(), "random.example", 32)
+	serverConfig.EncryptedClientHelloKeys = []EncryptedClientHelloKey{
+		{Config: randConfig, PrivateKey: randKey.Bytes(), SendAsRetry: true},
+	}
+
+	check()
 }

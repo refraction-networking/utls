@@ -54,19 +54,30 @@ type echConfig struct {
 	Extensions    []echExtension
 }
 
-var errMalformedECHConfig = errors.New("tls: malformed ECHConfigList")
+var errMalformedECHConfigList = errors.New("tls: malformed ECHConfigList")
+
+type echConfigErr struct {
+	field string
+}
+
+func (e *echConfigErr) Error() string {
+	if e.field == "" {
+		return "tls: malformed ECHConfig"
+	}
+	return fmt.Sprintf("tls: malformed ECHConfig, invalid %s field", e.field)
+}
 
 func parseECHConfig(enc []byte) (skip bool, ec echConfig, err error) {
 	s := cryptobyte.String(enc)
 	ec.raw = []byte(enc)
 	if !s.ReadUint16(&ec.Version) {
-		return false, echConfig{}, errMalformedECHConfig
+		return false, echConfig{}, &echConfigErr{"version"}
 	}
 	if !s.ReadUint16(&ec.Length) {
-		return false, echConfig{}, errMalformedECHConfig
+		return false, echConfig{}, &echConfigErr{"length"}
 	}
 	if len(ec.raw) < int(ec.Length)+4 {
-		return false, echConfig{}, errMalformedECHConfig
+		return false, echConfig{}, &echConfigErr{"length"}
 	}
 	ec.raw = ec.raw[:ec.Length+4]
 	if ec.Version != extensionEncryptedClientHello {
@@ -74,47 +85,47 @@ func parseECHConfig(enc []byte) (skip bool, ec echConfig, err error) {
 		return true, echConfig{}, nil
 	}
 	if !s.ReadUint8(&ec.ConfigID) {
-		return false, echConfig{}, errMalformedECHConfig
+		return false, echConfig{}, &echConfigErr{"config_id"}
 	}
 	if !s.ReadUint16(&ec.KemID) {
-		return false, echConfig{}, errMalformedECHConfig
+		return false, echConfig{}, &echConfigErr{"kem_id"}
 	}
 	if !readUint16LengthPrefixed(&s, &ec.PublicKey) {
-		return false, echConfig{}, errMalformedECHConfig
+		return false, echConfig{}, &echConfigErr{"public_key"}
 	}
 	var cipherSuites cryptobyte.String
 	if !s.ReadUint16LengthPrefixed(&cipherSuites) {
-		return false, echConfig{}, errMalformedECHConfig
+		return false, echConfig{}, &echConfigErr{"cipher_suites"}
 	}
 	for !cipherSuites.Empty() {
 		var c echCipher
 		if !cipherSuites.ReadUint16(&c.KDFID) {
-			return false, echConfig{}, errMalformedECHConfig
+			return false, echConfig{}, &echConfigErr{"cipher_suites kdf_id"}
 		}
 		if !cipherSuites.ReadUint16(&c.AEADID) {
-			return false, echConfig{}, errMalformedECHConfig
+			return false, echConfig{}, &echConfigErr{"cipher_suites aead_id"}
 		}
 		ec.SymmetricCipherSuite = append(ec.SymmetricCipherSuite, c)
 	}
 	if !s.ReadUint8(&ec.MaxNameLength) {
-		return false, echConfig{}, errMalformedECHConfig
+		return false, echConfig{}, &echConfigErr{"maximum_name_length"}
 	}
 	var publicName cryptobyte.String
 	if !s.ReadUint8LengthPrefixed(&publicName) {
-		return false, echConfig{}, errMalformedECHConfig
+		return false, echConfig{}, &echConfigErr{"public_name"}
 	}
 	ec.PublicName = publicName
 	var extensions cryptobyte.String
 	if !s.ReadUint16LengthPrefixed(&extensions) {
-		return false, echConfig{}, errMalformedECHConfig
+		return false, echConfig{}, &echConfigErr{"extensions"}
 	}
 	for !extensions.Empty() {
 		var e echExtension
 		if !extensions.ReadUint16(&e.Type) {
-			return false, echConfig{}, errMalformedECHConfig
+			return false, echConfig{}, &echConfigErr{"extensions type"}
 		}
 		if !extensions.ReadUint16LengthPrefixed((*cryptobyte.String)(&e.Data)) {
-			return false, echConfig{}, errMalformedECHConfig
+			return false, echConfig{}, &echConfigErr{"extensions data"}
 		}
 		ec.Extensions = append(ec.Extensions, e)
 	}
@@ -129,10 +140,10 @@ func parseECHConfigList(data []byte) ([]echConfig, error) {
 	s := cryptobyte.String(data)
 	var length uint16
 	if !s.ReadUint16(&length) {
-		return nil, errMalformedECHConfig
+		return nil, errMalformedECHConfigList
 	}
 	if length != uint16(len(data)-2) {
-		return nil, errMalformedECHConfig
+		return nil, errMalformedECHConfigList
 	}
 	var configs []echConfig
 	for len(s) > 0 {
@@ -390,8 +401,28 @@ func decodeInnerClientHello(outer *clientHelloMsg, encoded []byte) (*clientHello
 		return nil, errInvalidECHExt
 	}
 
-	if len(inner.supportedVersions) != 1 || (len(inner.supportedVersions) >= 1 && inner.supportedVersions[0] != VersionTLS13) {
-		return nil, errors.New("tls: client sent encrypted_client_hello extension and offered incompatible versions")
+	hasTLS13 := false
+	for _, v := range inner.supportedVersions {
+		// Skip GREASE values (values of the form 0x?A0A).
+		// GREASE (Generate Random Extensions And Sustain Extensibility) is a mechanism used by
+		// browsers like Chrome to ensure TLS implementations correctly ignore unknown values.
+		// GREASE values follow a specific pattern: 0x?A0A, where ? can be any hex digit.
+		// These values should be ignored when processing supported TLS versions.
+		if v&0x0F0F == 0x0A0A && v&0xff == v>>8 {
+			continue
+		}
+
+		// Ensure at least TLS 1.3 is offered.
+		if v == VersionTLS13 {
+			hasTLS13 = true
+		} else if v < VersionTLS13 {
+			// Reject if any non-GREASE value is below TLS 1.3, as ECH requires TLS 1.3+.
+			return nil, errors.New("tls: client sent encrypted_client_hello extension with unsupported versions")
+		}
+	}
+
+	if !hasTLS13 {
+		return nil, errors.New("tls: client sent encrypted_client_hello extension but did not offer TLS 1.3")
 	}
 
 	return inner, nil
@@ -556,7 +587,7 @@ func marshalEncryptedClientHelloConfigList(configs []EncryptedClientHelloKey) ([
 	return builder.Bytes()
 }
 
-func (c *Conn) processECHClientHello(outer *clientHelloMsg) (*clientHelloMsg, *echServerContext, error) {
+func (c *Conn) processECHClientHello(outer *clientHelloMsg, echKeys []EncryptedClientHelloKey) (*clientHelloMsg, *echServerContext, error) {
 	echType, echCiphersuite, configID, encap, payload, err := parseECHExt(outer.encryptedClientHello)
 	if err != nil {
 		if errors.Is(err, errInvalidECHExt) {
@@ -572,11 +603,11 @@ func (c *Conn) processECHClientHello(outer *clientHelloMsg) (*clientHelloMsg, *e
 		return outer, &echServerContext{inner: true}, nil
 	}
 
-	if len(c.config.EncryptedClientHelloKeys) == 0 {
+	if len(echKeys) == 0 {
 		return outer, nil, nil
 	}
 
-	for _, echKey := range c.config.EncryptedClientHelloKeys {
+	for _, echKey := range echKeys {
 		skip, config, err := parseECHConfig(echKey.Config)
 		if err != nil || skip {
 			c.sendAlert(alertInternalError)

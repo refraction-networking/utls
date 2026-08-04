@@ -3272,7 +3272,7 @@ func generateRandomizedSpec(
 		return p, fmt.Errorf("using non-randomized ClientHelloID %v to generate randomized spec", id.Client)
 	}
 
-	p.CipherSuites = defaultCipherSuites()
+	p.CipherSuites = defaultCipherSuites(hasAESGCMHardwareSupport)
 	shuffledSuites, err := shuffledCiphers(r)
 	if err != nil {
 		return p, err

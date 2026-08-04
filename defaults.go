@@ -26,23 +26,51 @@ func defaultCurvePreferences() []CurveID {
 	return []CurveID{X25519MLKEM768, X25519, CurveP256, CurveP384, CurveP521}
 }
 
-// defaultSupportedSignatureAlgorithms contains the signature and hash algorithms that
-// the code advertises as supported in a TLS 1.2+ ClientHello and in a TLS 1.2+
+// defaultSupportedSignatureAlgorithms returns the signature and hash algorithms that
+// the code advertises and supports in a TLS 1.2+ ClientHello and in a TLS 1.2+
 // CertificateRequest. The two fields are merged to match with TLS 1.3.
 // Note that in TLS 1.2, the ECDSA algorithms are not constrained to P-256, etc.
-var defaultSupportedSignatureAlgorithms = []SignatureScheme{
-	PSSWithSHA256,
-	ECDSAWithP256AndSHA256,
-	Ed25519,
-	PSSWithSHA384,
-	PSSWithSHA512,
-	PKCS1WithSHA256,
-	PKCS1WithSHA384,
-	PKCS1WithSHA512,
-	ECDSAWithP384AndSHA384,
-	ECDSAWithP521AndSHA512,
-	PKCS1WithSHA1,
-	ECDSAWithSHA1,
+func defaultSupportedSignatureAlgorithms() []SignatureScheme {
+	return []SignatureScheme{
+		PSSWithSHA256,
+		ECDSAWithP256AndSHA256,
+		Ed25519,
+		PSSWithSHA384,
+		PSSWithSHA512,
+		PKCS1WithSHA256,
+		PKCS1WithSHA384,
+		PKCS1WithSHA512,
+		ECDSAWithP384AndSHA384,
+		ECDSAWithP521AndSHA512,
+		PKCS1WithSHA1,
+		ECDSAWithSHA1,
+	}
+}
+
+// defaultSupportedSignatureAlgorithmsCert returns the signature algorithms that
+// the code advertises as supported for signatures in certificates.
+//
+// We include all algorithms, including SHA-1 and PKCS#1 v1.5, because it's more
+// likely that something on our side will be willing to accept a *-with-SHA1
+// certificate (e.g. with a custom VerifyConnection or by a direct match with
+// the CertPool), than that the peer would have a better certificate but is just
+// choosing not to send it. crypto/x509 will refuse to verify important SHA-1
+// signatures anyway.
+func defaultSupportedSignatureAlgorithmsCert() []SignatureScheme {
+	return []SignatureScheme{
+		PSSWithSHA256,
+		ECDSAWithP256AndSHA256,
+		Ed25519,
+		PSSWithSHA384,
+		PSSWithSHA512,
+		PKCS1WithSHA256,
+		PKCS1WithSHA384,
+		PKCS1WithSHA512,
+		ECDSAWithP384AndSHA384,
+		ECDSAWithP521AndSHA512,
+		PKCS1WithSHA1,
+		ECDSAWithSHA1,
+	}
 }
 
 // [uTLS section begins]
@@ -50,9 +78,17 @@ var defaultSupportedSignatureAlgorithms = []SignatureScheme{
 // var tls3des = godebug.New("tls3des")
 // [uTLS section ends]
 
-func defaultCipherSuites() []uint16 {
-	suites := slices.Clone(cipherSuitesPreferenceOrder)
-	return slices.DeleteFunc(suites, func(c uint16) bool {
+func supportedCipherSuites(aesGCMPreferred bool) []uint16 {
+	if aesGCMPreferred {
+		return slices.Clone(cipherSuitesPreferenceOrder)
+	} else {
+		return slices.Clone(cipherSuitesPreferenceOrderNoAES)
+	}
+}
+
+func defaultCipherSuites(aesGCMPreferred bool) []uint16 {
+	cipherSuites := supportedCipherSuites(aesGCMPreferred)
+	return slices.DeleteFunc(cipherSuites, func(c uint16) bool {
 		return disabledCipherSuites[c] ||
 			// [uTLS section begins]
 			// tlsrsakex.Value() != "1" && rsaKexCiphers[c] ||
@@ -95,46 +131,6 @@ var defaultCipherSuitesTLS13 = []uint16{
 //go:linkname defaultCipherSuitesTLS13NoAES
 var defaultCipherSuitesTLS13NoAES = []uint16{
 	TLS_CHACHA20_POLY1305_SHA256,
-	TLS_AES_128_GCM_SHA256,
-	TLS_AES_256_GCM_SHA384,
-}
-
-// The FIPS-only policies below match BoringSSL's
-// ssl_compliance_policy_fips_202205, which is based on NIST SP 800-52r2.
-// https://cs.opensource.google/boringssl/boringssl/+/master:ssl/ssl_lib.cc;l=3289;drc=ea7a88fa
-
-var defaultSupportedVersionsFIPS = []uint16{
-	VersionTLS12,
-	VersionTLS13,
-}
-
-// defaultCurvePreferencesFIPS are the FIPS-allowed curves,
-// in preference order (most preferable first).
-var defaultCurvePreferencesFIPS = []CurveID{CurveP256, CurveP384}
-
-// defaultSupportedSignatureAlgorithmsFIPS currently are a subset of
-// defaultSupportedSignatureAlgorithms without Ed25519 and SHA-1.
-var defaultSupportedSignatureAlgorithmsFIPS = []SignatureScheme{
-	PSSWithSHA256,
-	PSSWithSHA384,
-	PSSWithSHA512,
-	PKCS1WithSHA256,
-	ECDSAWithP256AndSHA256,
-	PKCS1WithSHA384,
-	ECDSAWithP384AndSHA384,
-	PKCS1WithSHA512,
-}
-
-// defaultCipherSuitesFIPS are the FIPS-allowed cipher suites.
-var defaultCipherSuitesFIPS = []uint16{
-	TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-	TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-	TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-	TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-}
-
-// defaultCipherSuitesTLS13FIPS are the FIPS-allowed cipher suites for TLS 1.3.
-var defaultCipherSuitesTLS13FIPS = []uint16{
 	TLS_AES_128_GCM_SHA256,
 	TLS_AES_256_GCM_SHA384,
 }

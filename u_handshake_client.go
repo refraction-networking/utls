@@ -192,7 +192,10 @@ func (c *Conn) makeClientHelloForApplyPreset() (*clientHelloMsg, *keySharePrivat
 	if len(supportedVersions) == 0 {
 		return nil, nil, nil, errors.New("tls: no supported versions satisfy MinVersion and MaxVersion")
 	}
-	maxVersion := config.maxSupportedVersion(roleClient)
+	// Since supportedVersions is sorted in descending order, the first element
+	// is the maximum version and the last element is the minimum version.
+	maxVersion := supportedVersions[0]
+	minVersion := supportedVersions[len(supportedVersions)-1]
 
 	hello := &clientHelloMsg{
 		vers:                         maxVersion,
@@ -224,7 +227,7 @@ func (c *Conn) makeClientHelloForApplyPreset() (*clientHelloMsg, *keySharePrivat
 	if !hasAESGCMHardwareSupport {
 		preferenceOrder = cipherSuitesPreferenceOrderNoAES
 	}
-	configCipherSuites := config.cipherSuites()
+	configCipherSuites := config.cipherSuites(hasAESGCMHardwareSupport)
 	hello.cipherSuites = make([]uint16, 0, len(configCipherSuites))
 
 	for _, suiteId := range preferenceOrder {
@@ -258,10 +261,8 @@ func (c *Conn) makeClientHelloForApplyPreset() (*clientHelloMsg, *keySharePrivat
 	}
 
 	if maxVersion >= VersionTLS12 {
-		hello.supportedSignatureAlgorithms = supportedSignatureAlgorithms()
-	}
-	if testingOnlyForceClientHelloSignatureAlgorithms != nil {
-		hello.supportedSignatureAlgorithms = testingOnlyForceClientHelloSignatureAlgorithms
+		hello.supportedSignatureAlgorithms = supportedSignatureAlgorithms(minVersion)
+		hello.supportedSignatureAlgorithmsCert = supportedSignatureAlgorithmsCert()
 	}
 
 	var keyShareKeys *keySharePrivateKeys
@@ -271,7 +272,7 @@ func (c *Conn) makeClientHelloForApplyPreset() (*clientHelloMsg, *keySharePrivat
 			hello.cipherSuites = nil
 		}
 		if fips140tls.Required() {
-			hello.cipherSuites = append(hello.cipherSuites, defaultCipherSuitesTLS13FIPS...)
+			hello.cipherSuites = append(hello.cipherSuites, allowedCipherSuitesTLS13FIPS...)
 		} else if hasAESGCMHardwareSupport {
 			hello.cipherSuites = append(hello.cipherSuites, defaultCipherSuitesTLS13...)
 		} else {
