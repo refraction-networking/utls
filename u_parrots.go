@@ -3039,7 +3039,10 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 	uconn.HandshakeState.Hello = privateHello.getPublicPtr()
 	if clientKeySharePrivate != nil {
 		uconn.HandshakeState.State13.KeyShareKeys = clientKeySharePrivate.ToPublic()
-	} else {
+	} else if uconn.HandshakeState.State13.KeyShareKeys == nil {
+		// When BuildHandshakeStateWithoutSession is called before
+		// BuildHandshakeState, the spec is reused and KeyShareExtension data is
+		// already populated.
 		uconn.HandshakeState.State13.KeyShareKeys = &KeySharePrivateKeys{}
 	}
 	uconn.echCtx = ech
