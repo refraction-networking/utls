@@ -47,6 +47,11 @@ type Conn struct {
 	handshakes       int
 	extMasterSecret  bool
 	clientSentTicket bool // whether the client sent a session ticket or a PSK in the Client Hello
+
+	// clientHelloFragmented records whether any eligible ClientHello was sent
+	// across multiple TLS records.
+	clientHelloFragmented bool
+
 	didResume        bool // whether this connection was a session resumption
 	didHRR           bool // whether a HelloRetryRequest was sent/received
 	cipherSuite      uint16
@@ -1065,6 +1070,11 @@ func (c *Conn) writeHandshakeRecord(msg handshakeMessage, transcript transcriptH
 		transcript.Write(data)
 	}
 
+	// [uTLS] Optionally split an eligible ClientHello across two records.
+	if c.shouldFragmentClientHello(data) {
+		return c.writeFragmentedClientHello(data)
+	}
+
 	return c.writeRecordLocked(recordTypeHandshake, data)
 }
 
@@ -1725,5 +1735,6 @@ func (c *Conn) ConnectionMetrics() ConnectionMetrics {
 	defer c.handshakeMutex.Unlock()
 	var metrics ConnectionMetrics
 	metrics.ClientSentTicket = c.clientSentTicket
+	metrics.ClientHelloFragmented = c.clientHelloFragmented
 	return metrics
 }

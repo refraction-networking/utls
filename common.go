@@ -249,10 +249,15 @@ const (
 var testingOnlyForceDowngradeCanary bool
 
 // ConnectionMetrics contains basic metrics about the connection.
+// Metrics are a snapshot and are final only after the handshake completes.
 type ConnectionMetrics struct {
 	// ClientSentTicket is true if the client has sent a TLS 1.2 session ticket
 	// or a TLS 1.3 PSK in the ClientHello successfully.
 	ClientSentTicket bool
+
+	// ClientHelloFragmented is true if any eligible ClientHello was sent across
+	// multiple TLS records.
+	ClientHelloFragmented bool
 }
 
 // ConnectionState records basic TLS details about the connection.
@@ -574,6 +579,15 @@ const (
 	RenegotiateFreelyAsClient
 )
 
+// ClientHelloFragFunc returns a ClientHello split offset. The input
+// is the marshaled handshake message, excluding the TLS record header.
+// Returning 0 < n < len(clientHello) splits at n; any other value sends one
+// record.
+//
+// Called for non-QUIC, non-ECH ClientHellos in the initial client handshake,
+// including TLS 1.3 HRR retries. It must not modify or retain clientHello.
+type ClientHelloFragFunc func(clientHello []byte) int
+
 // A Config structure is used to configure a TLS client or server.
 // After one has been passed to a TLS function it must not be
 // modified. A Config may be reused; the tls package will also not
@@ -751,6 +765,10 @@ type Config struct {
 	// in the selected ClientHelloSpec. If there are no cached sessions, OmitEmptyPsk
 	// controls whether the extension is omitted.
 	AlwaysIncludePSK bool // [uTLS]
+
+	// FragmentClientHello enables ClientHello TLS record fragmentation.
+	// If nil, ClientHellos are sent normally.
+	FragmentClientHello ClientHelloFragFunc // [uTLS]
 
 	// InsecureServerNameToVerify is used to verify the hostname on the returned
 	// certificates. It is intended to use with spoofed ServerName.
@@ -1087,6 +1105,7 @@ func (c *Config) Clone() *Config {
 		InsecureServerNameToVerify:          c.InsecureServerNameToVerify,
 		OmitEmptyPsk:                        c.OmitEmptyPsk,
 		AlwaysIncludePSK:                    c.AlwaysIncludePSK,
+		FragmentClientHello:                 c.FragmentClientHello,
 		CipherSuites:                        c.CipherSuites,
 		PreferServerCipherSuites:            c.PreferServerCipherSuites,
 		SessionTicketsDisabled:              c.SessionTicketsDisabled,
