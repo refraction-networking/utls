@@ -457,6 +457,15 @@ func (c *Conn) loadSession(hello *clientHelloMsg) (
 	}
 
 	if session.version != VersionTLS13 {
+		// [uTLS] TLS 1.2 resumption requires the cached session EMS state to
+		// match the new ClientHello. A ClientHelloSpec may omit the
+		// extended_master_secret extension, in which case a server holding an
+		// EMS session will reject the handshake. Skip resumption instead, so
+		// the dial proceeds with the selected spec.
+		if session.extMasterSecret != hello.extendedMasterSecret {
+			return nil, nil, nil, nil
+		}
+
 		// In TLS 1.2 the cipher suite must match the resumed session. Ensure we
 		// are still offering it.
 		if mutualCipherSuite(hello.cipherSuites, session.cipherSuite) == nil {
