@@ -2810,6 +2810,10 @@ func TestHandshakeRSATooBig(t *testing.T) {
 	}
 }
 
+// echConfigListExampleGolang is a serialized ECHConfigList (draft-ietf-tls-esni)
+// advertising the public_name "example.golang".
+const echConfigListExampleGolang = "0041fe0d003d0100200020204bed0a11fc0dde595a9b78d966b0011128eb83f65d3c91c1cc5ac786cd246f000400010001ff0e6578616d706c652e676f6c616e670000"
+
 func TestTLS13ECHRejectionCallbacks(t *testing.T) {
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -2842,7 +2846,7 @@ func TestTLS13ECHRejectionCallbacks(t *testing.T) {
 	clientConfig.RootCAs = x509.NewCertPool()
 	clientConfig.RootCAs.AddCert(cert)
 	clientConfig.MinVersion = VersionTLS13
-	clientConfig.EncryptedClientHelloConfigList, _ = hex.DecodeString("0041fe0d003d0100200020204bed0a11fc0dde595a9b78d966b0011128eb83f65d3c91c1cc5ac786cd246f000400010001ff0e6578616d706c652e676f6c616e670000")
+	clientConfig.EncryptedClientHelloConfigList, _ = hex.DecodeString(echConfigListExampleGolang)
 	clientConfig.ServerName = "example.golang"
 
 	for _, tc := range []struct {
@@ -2915,13 +2919,73 @@ func TestTLS13ECHRejectionCallbacks(t *testing.T) {
 	}
 }
 
+// TestTLS13ECHRejectionVerifiesPublicName checks that, on an ECH rejection, the
+// presented (outer) certificate is verified against the ClientHelloOuter's
+// public_name rather than the concealed inner ServerName. When the two differ (the
+// normal ECH case), verifying against the inner name always fails, so the
+// *ECHRejectionError carrying retry_configs never surfaces and ECH retry recovery
+// cannot complete.
+func TestTLS13ECHRejectionVerifiesPublicName(t *testing.T) {
+	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The certificate is for the ECH public_name, not the client's inner ServerName.
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "test"},
+		DNSNames:     []string{"example.golang"},
+		NotBefore:    testConfig.Time().Add(-time.Hour),
+		NotAfter:     testConfig.Time().Add(time.Hour),
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, k.Public(), k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert, err := x509.ParseCertificate(certDER)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	clientConfig, serverConfig := testConfig.Clone(), testConfig.Clone()
+	// The server holds no ECH keys, so it rejects the client's ECH and completes the
+	// handshake with the ClientHelloOuter (public_name).
+	serverConfig.Certificates = []Certificate{{Certificate: [][]byte{certDER}, PrivateKey: k}}
+	serverConfig.MinVersion = VersionTLS13
+	clientConfig.RootCAs = x509.NewCertPool()
+	clientConfig.RootCAs.AddCert(cert)
+	clientConfig.MinVersion = VersionTLS13
+	clientConfig.EncryptedClientHelloConfigList, _ = hex.DecodeString(echConfigListExampleGolang)
+	// The inner ServerName differs from the public_name ("example.golang").
+	clientConfig.ServerName = "secret.example"
+
+	c, s := localPipe(t)
+	done := make(chan error, 1)
+	go func() {
+		serverErr := Server(s, serverConfig).Handshake()
+		s.Close()
+		done <- serverErr
+	}()
+
+	clientErr := Client(c, clientConfig).Handshake()
+	c.Close()
+	<-done
+
+	// The rejected handshake must surface as an ECH rejection (so a caller can read
+	// retry_configs), not a certificate-verification error against the inner name.
+	var echErr *ECHRejectionError
+	if !errors.As(clientErr, &echErr) {
+		t.Fatalf("want *ECHRejectionError (server rejected ECH), got %T: %v", clientErr, clientErr)
+	}
+}
+
 func TestECHTLS12Server(t *testing.T) {
 	clientConfig, serverConfig := testConfig.Clone(), testConfig.Clone()
 
 	serverConfig.MaxVersion = VersionTLS12
 	clientConfig.MinVersion = 0
 
-	clientConfig.EncryptedClientHelloConfigList, _ = hex.DecodeString("0041fe0d003d0100200020204bed0a11fc0dde595a9b78d966b0011128eb83f65d3c91c1cc5ac786cd246f000400010001ff0e6578616d706c652e676f6c616e670000")
+	clientConfig.EncryptedClientHelloConfigList, _ = hex.DecodeString(echConfigListExampleGolang)
 
 	expectedErr := "server: tls: client offered only unsupported versions: [304]\nclient: remote error: tls: protocol version not supported"
 	_, _, err := testHandshake(t, clientConfig, serverConfig)

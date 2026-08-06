@@ -1160,7 +1160,7 @@ func (c *Conn) verifyServerCertificate(certificates [][]byte) error {
 			}
 
 			if len(c.config.InsecureServerNameToVerify) == 0 {
-				opts.DNSName = c.config.ServerName
+				opts.DNSName = c.serverName // ECH rejected: verify the provider cert against the outer public_name, not the concealed inner name
 			} else if c.config.InsecureServerNameToVerify != "*" {
 				opts.DNSName = c.config.InsecureServerNameToVerify
 			}
