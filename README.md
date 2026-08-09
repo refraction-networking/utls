@@ -256,7 +256,7 @@ will prepare ClientHello with empty uconn.Extensions so you can fill it with TLS
 	
 # Usage
 ## Examples
-Find basic examples [here](examples/examples.go).  
+Find basic examples [here](examples).  
 Here's a more [advanced example](https://github.com/sergeyfrolov/gotapdance/blob//9a777f35a04b0c4c5dacd30bca0e9224eb737b5e/tapdance/conn_raw.go#L275-L292) showing how to generate randomized ClientHello, modify generated ciphersuites a bit, and proceed with the handshake.
 ### Migrating from "crypto/tls"
 Here's how default "crypto/tls" is typically used:
