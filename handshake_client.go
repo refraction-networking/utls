@@ -137,7 +137,7 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, *keySharePrivateKeys, *echCli
 	}
 
 	if maxVersion >= VersionTLS12 {
-		hello.supportedSignatureAlgorithms = clientSupportedSignatureAlgorithms(maxVersion)
+		hello.supportedSignatureAlgorithms = supportedSignatureAlgorithms()
 	}
 	if testingOnlyForceClientHelloSignatureAlgorithms != nil {
 		hello.supportedSignatureAlgorithms = testingOnlyForceClientHelloSignatureAlgorithms
