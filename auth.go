@@ -38,6 +38,14 @@ func verifyHandshakeSignature(sigType uint8, pubkey crypto.PublicKey, hashFunc c
 		if !ed25519.Verify(pubKey, signed, sig) {
 			return errors.New("Ed25519 verification failure")
 		}
+	case signatureMLDSA:
+		pubKey, ok := pubkey.(*mldsa.PublicKey)
+		if !ok {
+			return fmt.Errorf("expected an ML-DSA public key, got %T", pubkey)
+		}
+		if err := mldsa.Verify(pubKey, signed, sig, nil); err != nil {
+			return fmt.Errorf("ML-DSA verification failure: %w", err)
+		}
 	case signaturePKCS1v15:
 		pubKey, ok := pubkey.(*rsa.PublicKey)
 		if !ok {

@@ -1,6 +1,10 @@
 package tls
 
-import "testing"
+import (
+	"crypto/mldsa"
+	"crypto/rand"
+	"testing"
+)
 
 // TestMLDSASignatureSchemeValues checks the codepoints of the ML-DSA schemes. The
 // values come from RFC 9881 and agree with Go 1.27 crypto/tls.
@@ -37,5 +41,30 @@ func TestTypeAndHashFromMLDSAScheme(t *testing.T) {
 		if hash != directSigning {
 			t.Errorf("%v maps to the hash %v, but the test expects directSigning", scheme, hash)
 		}
+	}
+}
+
+// TestVerifyMLDSAHandshakeSignature signs a message with an ML-DSA key, then verifies
+// the signature through the handshake code. The test uses no certificate, because it
+// covers the signature step only.
+func TestVerifyMLDSAHandshakeSignature(t *testing.T) {
+	key, err := mldsa.GenerateKey(mldsa.MLDSA65())
+	if err != nil {
+		t.Fatalf("cannot make an ML-DSA key: %v", err)
+	}
+
+	signed := []byte("the transcript that the CertificateVerify message signs")
+	signature, err := key.Sign(rand.Reader, signed, &mldsa.Options{})
+	if err != nil {
+		t.Fatalf("cannot sign: %v", err)
+	}
+
+	if err := verifyHandshakeSignature(signatureMLDSA, key.PublicKey(), directSigning, signed, signature); err != nil {
+		t.Errorf("the correct signature does not verify: %v", err)
+	}
+
+	signed[0] ^= 0xff
+	if err := verifyHandshakeSignature(signatureMLDSA, key.PublicKey(), directSigning, signed, signature); err == nil {
+		t.Error("a signature over different data verifies, but the test expects an error")
 	}
 }
