@@ -4,8 +4,12 @@ import (
 	"crypto/mldsa"
 	"crypto/rand"
 	ctls "crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"math/big"
 	"net"
 	"testing"
+	"time"
 )
 
 // TestMLDSASignatureSchemeValues checks the codepoints of the ML-DSA schemes. The
@@ -188,5 +192,87 @@ func TestServerCertificateRequestHoldsNoMLDSA(t *testing.T) {
 		if scheme == 0x0904 || scheme == 0x0905 || scheme == 0x0906 {
 			t.Errorf("the server CertificateRequest message holds the ML-DSA codepoint 0x%04x", scheme)
 		}
+	}
+}
+
+// TestClientVerifiesMLDSAServerCertificate runs a full TLS 1.3 handshake against a
+// standard library server that holds an ML-DSA certificate. The uTLS client must verify
+// the CertificateVerify message of the server, and crypto/x509 must verify the chain.
+//
+// The server is the standard library, because the uTLS server cannot sign with ML-DSA.
+func TestClientVerifiesMLDSAServerCertificate(t *testing.T) {
+	key, err := mldsa.GenerateKey(mldsa.MLDSA65())
+	if err != nil {
+		t.Fatalf("cannot make an ML-DSA key: %v", err)
+	}
+
+	template := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "mldsa.example"},
+		DNSNames:              []string{"mldsa.example"},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(time.Hour),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, key.PublicKey(), key)
+	if err != nil {
+		t.Fatalf("cannot make an ML-DSA certificate: %v", err)
+	}
+	leaf, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatalf("cannot parse the ML-DSA certificate: %v", err)
+	}
+
+	roots := x509.NewCertPool()
+	roots.AddCert(leaf)
+
+	listener := newLocalListener(t)
+	defer listener.Close()
+
+	serverErr := make(chan error, 1)
+	go func() {
+		serverConn, err := listener.Accept()
+		if err != nil {
+			serverErr <- err
+
+			return
+		}
+		defer serverConn.Close()
+
+		server := ctls.Server(serverConn, &ctls.Config{
+			Certificates: []ctls.Certificate{{Certificate: [][]byte{der}, PrivateKey: key}},
+			MinVersion:   ctls.VersionTLS13,
+		})
+		serverErr <- server.Handshake()
+	}()
+
+	clientConn, err := net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer clientConn.Close()
+
+	client := UClient(clientConn, &Config{
+		ServerName:   "mldsa.example",
+		RootCAs:      roots,
+		OmitEmptyPsk: true,
+	}, HelloChrome_150_PSK)
+	if err := client.Handshake(); err != nil {
+		t.Fatalf("the client handshake failed: %v", err)
+	}
+	if err := <-serverErr; err != nil {
+		t.Fatalf("the server handshake failed: %v", err)
+	}
+
+	state := client.ConnectionState()
+	if len(state.PeerCertificates) == 0 {
+		t.Fatal("the connection holds no peer certificate")
+	}
+	got := state.PeerCertificates[0].SignatureAlgorithm
+	if got != x509.MLDSA65 {
+		t.Errorf("the certificate uses the signature algorithm %v, but the test expects MLDSA65", got)
 	}
 }
