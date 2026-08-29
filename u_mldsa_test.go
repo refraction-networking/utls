@@ -68,3 +68,68 @@ func TestVerifyMLDSAHandshakeSignature(t *testing.T) {
 		t.Error("a signature over different data verifies, but the test expects an error")
 	}
 }
+
+// holdsScheme reports whether a list holds a scheme.
+func holdsScheme(list []SignatureScheme, want SignatureScheme) bool {
+	for _, s := range list {
+		if s == want {
+			return true
+		}
+	}
+
+	return false
+}
+
+// TestClientSupportedSignatureAlgorithms checks that a client offers the ML-DSA schemes
+// for TLS 1.3 only. The ML-DSA codepoints are defined for TLS 1.3 only.
+func TestClientSupportedSignatureAlgorithms(t *testing.T) {
+	tls13 := clientSupportedSignatureAlgorithms(VersionTLS13)
+	for _, scheme := range []SignatureScheme{MLDSA44, MLDSA65, MLDSA87} {
+		if !holdsScheme(tls13, scheme) {
+			t.Errorf("the TLS 1.3 client list holds no %v", scheme)
+		}
+	}
+
+	tls12 := clientSupportedSignatureAlgorithms(VersionTLS12)
+	for _, scheme := range []SignatureScheme{MLDSA44, MLDSA65, MLDSA87} {
+		if holdsScheme(tls12, scheme) {
+			t.Errorf("the TLS 1.2 client list holds %v, but ML-DSA needs TLS 1.3", scheme)
+		}
+	}
+}
+
+// TestServerListHoldsNoMLDSA checks the shared list that the 3 server call sites read.
+// A uTLS server must not advertise the ML-DSA codepoints, and must not accept an ML-DSA
+// client certificate. This test fails if a later change puts ML-DSA in the shared list.
+func TestServerListHoldsNoMLDSA(t *testing.T) {
+	shared := supportedSignatureAlgorithms()
+	for _, scheme := range []SignatureScheme{MLDSA44, MLDSA65, MLDSA87} {
+		if holdsScheme(shared, scheme) {
+			t.Errorf("supportedSignatureAlgorithms holds %v, thus a server advertises it", scheme)
+		}
+		// This is the guard at handshake_server_tls13.go:1092.
+		if isSupportedSignatureAlgorithm(scheme, shared) {
+			t.Errorf("a server accepts a client certificate that uses %v", scheme)
+		}
+	}
+}
+
+// TestClientListDoesNotChangeSharedList checks that the client list makes a new slice.
+// An append to the array behind defaultSupportedSignatureAlgorithms would put ML-DSA in
+// the server list as well.
+func TestClientListDoesNotChangeSharedList(t *testing.T) {
+	before := append([]SignatureScheme(nil), supportedSignatureAlgorithms()...)
+
+	clientSupportedSignatureAlgorithms(VersionTLS13)
+
+	after := supportedSignatureAlgorithms()
+	if len(before) != len(after) {
+		t.Fatalf("the shared list holds %d algorithms after the call, but held %d before",
+			len(after), len(before))
+	}
+	for i := range before {
+		if before[i] != after[i] {
+			t.Errorf("the shared list changed at index %d: %v became %v", i, before[i], after[i])
+		}
+	}
+}
