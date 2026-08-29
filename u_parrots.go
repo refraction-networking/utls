@@ -3211,6 +3211,12 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 					ext.Versions[i] = GetBoringGREASEValue(uconn.greaseSeed, ssl_grease_version)
 				}
 			}
+		case *SignatureAlgorithmsExtension:
+			for i := range ext.SupportedSignatureAlgorithms {
+				if isGREASEUint16(uint16(ext.SupportedSignatureAlgorithms[i])) { // just in case the user set a GREASE value instead of unGREASEd
+					ext.SupportedSignatureAlgorithms[i] = SignatureScheme(GetBoringGREASEValue(uconn.greaseSeed, ssl_grease_signature_algorithm))
+				}
+			}
 		case *NPNExtension:
 			haveNPN = true
 		}
