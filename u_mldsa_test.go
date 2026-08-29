@@ -3,6 +3,8 @@ package tls
 import (
 	"crypto/mldsa"
 	"crypto/rand"
+	ctls "crypto/tls"
+	"net"
 	"testing"
 )
 
@@ -130,6 +132,61 @@ func TestClientListDoesNotChangeSharedList(t *testing.T) {
 	for i := range before {
 		if before[i] != after[i] {
 			t.Errorf("the shared list changed at index %d: %v became %v", i, before[i], after[i])
+		}
+	}
+}
+
+// TestServerCertificateRequestHoldsNoMLDSA runs a uTLS server that asks for a client
+// certificate. The CertificateRequest message must hold no ML-DSA codepoint, because
+// this fork supports ML-DSA for the client role only. The client is the standard
+// library, which reports the advertised list in CertificateRequestInfo.
+func TestServerCertificateRequestHoldsNoMLDSA(t *testing.T) {
+	serverConfig := testConfig.Clone()
+	serverConfig.MinVersion = VersionTLS13
+	serverConfig.MaxVersion = VersionTLS13
+	serverConfig.ClientAuth = RequireAnyClientCert
+
+	listener := newLocalListener(t)
+	defer listener.Close()
+
+	go func() {
+		serverConn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer serverConn.Close()
+
+		// The handshake fails, because the client sends an empty certificate. The
+		// test reads the CertificateRequest message before that point.
+		Server(serverConn, serverConfig).Handshake()
+	}()
+
+	clientConn, err := net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer clientConn.Close()
+
+	var offered []uint16
+	client := ctls.Client(clientConn, &ctls.Config{
+		InsecureSkipVerify: true,
+		MinVersion:         ctls.VersionTLS13,
+		GetClientCertificate: func(cri *ctls.CertificateRequestInfo) (*ctls.Certificate, error) {
+			for _, scheme := range cri.SignatureSchemes {
+				offered = append(offered, uint16(scheme))
+			}
+
+			return &ctls.Certificate{}, nil
+		},
+	})
+	client.Handshake()
+
+	if len(offered) == 0 {
+		t.Fatal("the server sent no CertificateRequest message, thus the test proves nothing")
+	}
+	for _, scheme := range offered {
+		if scheme == 0x0904 || scheme == 0x0905 || scheme == 0x0906 {
+			t.Errorf("the server CertificateRequest message holds the ML-DSA codepoint 0x%04x", scheme)
 		}
 	}
 }
