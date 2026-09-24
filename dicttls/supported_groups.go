@@ -101,6 +101,7 @@ var DictSupportedGroupsValueIndexed = map[uint16]string{
 	258:   "ffdhe4096",
 	259:   "ffdhe6144",
 	260:   "ffdhe8192",
+	4588:  "X25519MLKEM768", // 0x11ec — X25519 + ML-KEM-768 hybrid (RFC 9794 / draft-ietf-tls-ecdhe-mlkem)
 	65281: "arbitrary_explicit_prime_curves",
 	65282: "arbitrary_explicit_char2_curves",
 }
@@ -152,6 +153,7 @@ var DictSupportedGroupsNameIndexed = map[string]uint16{
 	"ffdhe4096":                       258,
 	"ffdhe6144":                       259,
 	"ffdhe8192":                       260,
+	"X25519MLKEM768":                  4588, // 0x11ec — X25519 + ML-KEM-768 hybrid
 	"arbitrary_explicit_prime_curves": 65281,
 	"arbitrary_explicit_char2_curves": 65282,
 }

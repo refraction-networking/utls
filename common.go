@@ -248,6 +248,13 @@ const (
 // include downgrade canaries even if it's using its highers supported version.
 var testingOnlyForceDowngradeCanary bool
 
+// ConnectionMetrics contains basic metrics about the connection.
+type ConnectionMetrics struct {
+	// ClientSentTicket is true if the client has sent a TLS 1.2 session ticket
+	// or a TLS 1.3 PSK in the ClientHello successfully.
+	ClientSentTicket bool
+}
+
 // ConnectionState records basic TLS details about the connection.
 type ConnectionState struct {
 	// Version is the TLS version used by the connection (e.g. VersionTLS12).
@@ -739,6 +746,12 @@ type Config struct {
 	// this behavior at their own discretion.
 	OmitEmptyPsk bool // [uTLS]
 
+	// AlwaysIncludePSK controls whether the PreSharedKey extension is always
+	// included in the ClientHello if there is a cached session, even if not specified
+	// in the selected ClientHelloSpec. If there are no cached sessions, OmitEmptyPsk
+	// controls whether the extension is omitted.
+	AlwaysIncludePSK bool // [uTLS]
+
 	// InsecureServerNameToVerify is used to verify the hostname on the returned
 	// certificates. It is intended to use with spoofed ServerName.
 	// If InsecureServerNameToVerify is "*", crypto/tls will do normal
@@ -1073,6 +1086,7 @@ func (c *Config) Clone() *Config {
 		InsecureSkipTimeVerify:              c.InsecureSkipTimeVerify,
 		InsecureServerNameToVerify:          c.InsecureServerNameToVerify,
 		OmitEmptyPsk:                        c.OmitEmptyPsk,
+		AlwaysIncludePSK:                    c.AlwaysIncludePSK,
 		CipherSuites:                        c.CipherSuites,
 		PreferServerCipherSuites:            c.PreferServerCipherSuites,
 		SessionTicketsDisabled:              c.SessionTicketsDisabled,

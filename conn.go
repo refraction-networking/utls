@@ -46,6 +46,7 @@ type Conn struct {
 	// zero or one.
 	handshakes       int
 	extMasterSecret  bool
+	clientSentTicket bool // whether the client sent a session ticket or a PSK in the Client Hello
 	didResume        bool // whether this connection was a session resumption
 	didHRR           bool // whether a HelloRetryRequest was sent/received
 	cipherSuite      uint16
@@ -1716,4 +1717,13 @@ func (c *Conn) setReadTrafficSecret(suite *cipherSuiteTLS13, level QUICEncryptio
 // to setWriteTrafficSecret happens first so any alerts are sent at the write level.
 func (c *Conn) setWriteTrafficSecret(suite *cipherSuiteTLS13, level QUICEncryptionLevel, secret []byte) {
 	c.out.setTrafficSecret(suite, level, secret)
+}
+
+// ConnectionMetrics returns basic metrics about the connection.
+func (c *Conn) ConnectionMetrics() ConnectionMetrics {
+	c.handshakeMutex.Lock()
+	defer c.handshakeMutex.Unlock()
+	var metrics ConnectionMetrics
+	metrics.ClientSentTicket = c.clientSentTicket
+	return metrics
 }
