@@ -965,6 +965,7 @@ const (
 	ssl_grease_extension1
 	ssl_grease_extension2
 	ssl_grease_version
+	ssl_grease_signature_algorithm
 	ssl_grease_ticket_extension
 	ssl_grease_last_index = ssl_grease_ticket_extension
 )
