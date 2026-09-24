@@ -56,6 +56,13 @@ type keySharePrivateKeys struct {
 	mlkem crypto.Decapsulator
 
 	mlkemEcdhe *ecdh.PrivateKey // [uTLS] seperate ecdhe key for pq keyshare in line with Chrome, instead of reusing ecdhe key like stdlib
+
+	// [uTLS] ecdheFallback stores private keys for additional (non-preferred)
+	// key shares sent in the ClientHello. When a spec advertises multiple
+	// classical key shares (e.g. X25519 + P256 in Firefox profiles), only the
+	// first is stored in ecdhe. If the server selects a different curve,
+	// clientSharedSecret falls back to this map.
+	ecdheFallback map[CurveID]*ecdh.PrivateKey
 }
 
 // A keyExchange implements a TLS 1.3 KEM.
@@ -167,6 +174,12 @@ func (ke *ecdhKeyExchange) clientSharedSecretChooseEcdhe(priv *keySharePrivateKe
 			return nil, errors.New("tls: missing separate hybrid ECDHE private key")
 		}
 		ecdhe = priv.mlkemEcdhe
+	} else if ecdhe == nil || ecdhe.Curve() != ke.curve {
+		// The server selected a curve other than the preferred key share.
+		// Use the matching secondary key if one was generated.
+		if fallback, ok := priv.ecdheFallback[ke.id]; ok {
+			ecdhe = fallback
+		}
 	}
 	if ecdhe == nil {
 		return nil, errors.New("tls: missing ECDHE private key")
