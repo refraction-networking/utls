@@ -9,6 +9,7 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/mldsa"
 	"crypto/rsa"
 	"crypto/subtle"
 	"crypto/x509"
@@ -189,7 +190,7 @@ func (c *Conn) readClientHello(ctx context.Context) (*clientHelloMsg, *echServer
 	} else if len(clientVersions) == 0 {
 		clientVersions = supportedVersionsFromMax(clientHello.vers)
 	}
-	c.vers, ok = c.config.mutualVersion(roleServer, clientVersions)
+	c.vers, ok = c.config.mutualVersion(roleServer, c.quic != nil, clientVersions)
 	if !ok {
 		c.sendAlert(alertProtocolVersion)
 		return nil, nil, fmt.Errorf("tls: client offered only unsupported versions: %x", clientVersions)
@@ -209,14 +210,6 @@ func (c *Conn) readClientHello(ctx context.Context) (*clientHelloMsg, *echServer
 		c.sendAlert(alertIllegalParameter)
 		return nil, nil, errors.New("tls: Encrypted Client Hello cannot be used pre-TLS 1.3")
 	}
-
-	// [UTLS SECTION BEGIN]
-	// Disable unsupported godebug package
-	// if c.config.MinVersion == 0 && c.vers < VersionTLS12 {
-	// 	tls10server.Value() // ensure godebug is initialized
-	// 	tls10server.IncNonDefault()
-	// }
-	// [UTLS SECTION END]
 
 	return clientHello, ech, nil
 }
@@ -244,7 +237,7 @@ func (hs *serverHandshakeState) processClientHello() error {
 	hs.hello.random = make([]byte, 32)
 	serverRandom := hs.hello.random
 	// Downgrade protection canaries. See RFC 8446, Section 4.1.3.
-	maxVers := c.config.maxSupportedVersion(roleServer)
+	maxVers := c.config.maxSupportedVersion(roleServer, c.quic != nil)
 	if maxVers >= VersionTLS12 && c.vers < maxVers || testingOnlyForceDowngradeCanary {
 		if c.vers == VersionTLS12 {
 			copy(serverRandom[24:], downgradeCanaryTLS12)
@@ -288,6 +281,7 @@ func (hs *serverHandshakeState) processClientHello() error {
 		}
 		return err
 	}
+
 	if hs.clientHello.scts {
 		hs.hello.scts = hs.cert.SignedCertificateTimestamps
 	}
@@ -315,6 +309,11 @@ func (hs *serverHandshakeState) processClientHello() error {
 			hs.ecSignOk = true
 		case *rsa.PublicKey:
 			hs.rsaSignOk = true
+		case *mldsa.PublicKey:
+			// ML-DSA can only be used with TLS 1.3.
+			c.sendAlert(alertInternalError)
+			return fmt.Errorf("tls: ML-DSA certificates require TLS 1.3, but client negotiated %s",
+				VersionName(c.vers))
 		default:
 			c.sendAlert(alertInternalError)
 			return fmt.Errorf("tls: unsupported signing key type (%T)", priv.Public())
@@ -411,22 +410,10 @@ func (hs *serverHandshakeState) pickCipherSuite() error {
 	}
 	c.cipherSuite = hs.suite.id
 
-	// [UTLS SECTION BEGIN]
-	// Disable unsupported godebug package
-	// if c.config.CipherSuites == nil && !fips140tls.Required() && rsaKexCiphers[hs.suite.id] {
-	// 	tlsrsakex.Value() // ensure godebug is initialized
-	// 	tlsrsakex.IncNonDefault()
-	// }
-	// if c.config.CipherSuites == nil && !fips140tls.Required() && tdesCiphers[hs.suite.id] {
-	// 	tls3des.Value() // ensure godebug is initialized
-	// 	tls3des.IncNonDefault()
-	// }
-	// [UTLS SECTION END]
-
 	for _, id := range hs.clientHello.cipherSuites {
 		if id == TLS_FALLBACK_SCSV {
 			// The client is doing a fallback connection. See RFC 7507.
-			if hs.clientHello.vers < c.config.maxSupportedVersion(roleServer) {
+			if hs.clientHello.vers < c.config.maxSupportedVersion(roleServer, c.quic != nil) {
 				c.sendAlert(alertInappropriateFallback)
 				return errors.New("tls: client using inappropriate protocol fallback")
 			}
@@ -551,7 +538,7 @@ func (hs *serverHandshakeState) checkForResumption() error {
 		return errors.New("tls: session supported extended_master_secret but client does not")
 	}
 	if !sessionState.extMasterSecret && fips140tls.Required() {
-		// FIPS 140-3 requires the use of Extended Master Secret.
+		// [uTLS] fips140ems is unsupported; retain mandatory EMS.
 		return nil
 	}
 
@@ -629,6 +616,10 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 
 	certMsg := new(certificateMsg)
 	certMsg.certificates = hs.cert.Certificate
+	// Set localCertificate here, rather than at certificate selection time, so
+	// that it is only populated when a certificate is actually presented to the
+	// peer, and not on resumed connections.
+	c.localCertificate = hs.cert.Certificate
 	if _, err := hs.c.writeHandshakeRecord(certMsg, &hs.finishedHash); err != nil {
 		return err
 	}
@@ -667,7 +658,7 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 		}
 		if c.vers >= VersionTLS12 {
 			certReq.hasSignatureAlgorithm = true
-			certReq.supportedSignatureAlgorithms = supportedSignatureAlgorithms(c.vers)
+			certReq.supportedSignatureAlgorithms = supportedSignatureAlgorithms(c.vers, c.vers)
 		}
 
 		// An empty list of certificateAuthorities signals to
@@ -747,6 +738,7 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 			hs.finishedHash.Sum())
 	} else {
 		if fips140tls.Required() {
+			// [uTLS] fips140ems is unsupported; retain mandatory EMS.
 			c.sendAlert(alertHandshakeFailure)
 			return errors.New("tls: FIPS 140-3 requires the use of Extended Master Secret")
 		}
@@ -1013,6 +1005,11 @@ func (c *Conn) processCertsFromClient(certificate Certificate) error {
 	if len(certs) > 0 {
 		switch certs[0].PublicKey.(type) {
 		case *ecdsa.PublicKey, *rsa.PublicKey, ed25519.PublicKey:
+		case *mldsa.PublicKey:
+			if c.vers < VersionTLS13 {
+				c.sendAlert(alertIllegalParameter)
+				return errors.New("tls: client certificate uses ML-DSA, which requires TLS 1.3")
+			}
 		default:
 			c.sendAlert(alertUnsupportedCertificate)
 			return fmt.Errorf("tls: client certificate contains an unsupported public key of type %T", certs[0].PublicKey)
@@ -1035,6 +1032,10 @@ func clientHelloInfo(ctx context.Context, c *Conn, clientHello *clientHelloMsg) 
 		supportedVersions = supportedVersionsFromMax(clientHello.vers)
 	}
 
+	conn := c.conn
+	if c.quic != nil {
+		conn = c.quic.clientHelloInfoConn
+	}
 	return &ClientHelloInfo{
 		CipherSuites:      clientHello.cipherSuites,
 		ServerName:        clientHello.serverName,
@@ -1044,9 +1045,10 @@ func clientHelloInfo(ctx context.Context, c *Conn, clientHello *clientHelloMsg) 
 		SupportedProtos:   clientHello.alpnProtocols,
 		SupportedVersions: supportedVersions,
 		Extensions:        clientHello.extensions,
-		Conn:              c.conn,
+		Conn:              conn,
 		HelloRetryRequest: c.didHRR,
 		config:            c.config,
+		isQUIC:            c.quic != nil,
 		ctx:               ctx,
 	}
 }

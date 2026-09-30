@@ -16,6 +16,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/refraction-networking/utls/internal/testenv"
 )
 
 // helloStrategy is a sum type interface which allows us to pass either a ClientHelloID or a ClientHelloSpec and then act accordingly
@@ -175,7 +177,8 @@ func TestUTLSHandshakeClientParrotChrome_58_setclienthello(t *testing.T) {
 // openssl server, configured to use P-256, will send HelloRetryRequest
 func TestUTLSHelloRetryRequest(t *testing.T) {
 	hello := &helloID{HelloChrome_70}
-	config := testConfig.Clone()
+	config := getUTLSTestConfig()
+	config.ServerName = ""
 	config.CurvePreferences = []CurveID{X25519, CurveP256}
 
 	test := &clientTest{
@@ -249,7 +252,7 @@ func getUTLSTestConfig() *Config {
 		InsecureSkipVerify: true,
 		MinVersion:         VersionSSL30,
 		MaxVersion:         VersionTLS13,
-		CipherSuites:       allCipherSuites(),
+		CipherSuites:       supportedCipherSuites(false),
 		ServerName:         "foobar.com",
 	}
 	return testUTLSConfig
@@ -283,11 +286,10 @@ func testUTLSHandshakeClientECDHE_ECDSA_AES128_CBC_SHA(t *testing.T, hello hello
 	config := getUTLSTestConfig()
 	opensslCipherName := "ECDHE-ECDSA-AES128-SHA"
 	test := &clientTest{
-		name:   "UTLS-" + opensslCipherName + "-" + hello.helloName(),
-		args:   []string{"-cipher", opensslCipherName},
-		cert:   testECDSACertificate,
-		key:    testECDSAPrivateKey,
-		config: config,
+		name:       "UTLS-" + opensslCipherName + "-" + hello.helloName(),
+		args:       []string{"-cipher", opensslCipherName},
+		serverCert: &testECDSAP521Cert,
+		config:     config,
 	}
 
 	runUTLSClientTestTLS12(t, test, hello)
@@ -297,11 +299,10 @@ func testUTLSHandshakeClientECDHE_ECDSA_AES256_CBC_SHA(t *testing.T, hello hello
 	config := getUTLSTestConfig()
 	opensslCipherName := "ECDHE-ECDSA-AES256-SHA"
 	test := &clientTest{
-		name:   "UTLS-" + opensslCipherName + "-" + hello.helloName(),
-		args:   []string{"-cipher", opensslCipherName},
-		cert:   testECDSACertificate,
-		key:    testECDSAPrivateKey,
-		config: config,
+		name:       "UTLS-" + opensslCipherName + "-" + hello.helloName(),
+		args:       []string{"-cipher", opensslCipherName},
+		serverCert: &testECDSAP521Cert,
+		config:     config,
 	}
 
 	runUTLSClientTestTLS12(t, test, hello)
@@ -324,11 +325,10 @@ func testUTLSHandshakeClientECDHE_ECDSA_AES128_GCM_SHA256(t *testing.T, hello he
 
 	opensslCipherName := "ECDHE-ECDSA-AES128-GCM-SHA256"
 	test := &clientTest{
-		name:   "UTLS-" + opensslCipherName + "-" + hello.helloName(),
-		args:   []string{"-cipher", opensslCipherName},
-		cert:   testECDSACertificate,
-		key:    testECDSAPrivateKey,
-		config: config,
+		name:       "UTLS-" + opensslCipherName + "-" + hello.helloName(),
+		args:       []string{"-cipher", opensslCipherName},
+		serverCert: &testECDSAP521Cert,
+		config:     config,
 	}
 
 	runUTLSClientTestTLS12(t, test, hello)
@@ -351,11 +351,10 @@ func testUTLSHandshakeClientECDHE_ECDSA_AES256_GCM_SHA256(t *testing.T, hello he
 	config := getUTLSTestConfig()
 	opensslCipherName := "ECDHE-ECDSA-AES256-GCM-SHA256"
 	test := &clientTest{
-		name:   "UTLS-" + opensslCipherName + "-" + hello.helloName(),
-		args:   []string{"-cipher", opensslCipherName},
-		cert:   testECDSACertificate,
-		key:    testECDSAPrivateKey,
-		config: config,
+		name:       "UTLS-" + opensslCipherName + "-" + hello.helloName(),
+		args:       []string{"-cipher", opensslCipherName},
+		serverCert: &testECDSAP521Cert,
+		config:     config,
 	}
 
 	runUTLSClientTestTLS12(t, test, hello)
@@ -430,11 +429,10 @@ func testUTLSHandshakeClientECDHE_ECDSA_WITH_CHACHA20_POLY1305(t *testing.T, hel
 	config.CipherSuites = []uint16{TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305}
 	opensslCipherName := "ECDHE-ECDSA-CHACHA20-POLY1305"
 	test := &clientTest{
-		name:   "UTLS-" + opensslCipherName + "-" + hello.helloName(),
-		args:   []string{"-cipher", opensslCipherName},
-		config: config,
-		cert:   testECDSACertificate,
-		key:    testECDSAPrivateKey,
+		name:       "UTLS-" + opensslCipherName + "-" + hello.helloName(),
+		args:       []string{"-cipher", opensslCipherName},
+		config:     config,
+		serverCert: &testECDSAP521Cert,
 	}
 
 	runUTLSClientTestTLS12(t, test, hello)
@@ -460,6 +458,12 @@ func runUTLSClientTestTLS13(t *testing.T, template *clientTest, hello helloStrat
 }
 
 func (test *clientTest) runUTLS(t *testing.T, write bool, hello helloStrategy, omitSNIExtension bool) {
+	// Existing uTLS transcripts use Config.Rand rather than the upstream
+	// Go 1.27 testing/cryptotest random stream.
+	testenv.SetGODEBUG(t, "cryptocustomrand=1")
+	if test.serverCert == nil {
+		test.serverCert = &testRSA2048Cert
+	}
 	checkOpenSSLVersion()
 
 	var clientConn, serverConn net.Conn

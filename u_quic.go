@@ -20,10 +20,8 @@ type UQUICConn struct {
 	sessionTicketSent bool
 }
 
-// QUICClient returns a new TLS client side connection using QUICTransport as the
+// UQUICClient returns a new TLS client side connection using QUICTransport as the
 // underlying transport. The config cannot be nil.
-//
-// The config's MinVersion must be at least TLS 1.3.
 func UQUICClient(config *QUICConfig, clientHelloID ClientHelloID) *UQUICConn {
 	return newUQUICConn(UClient(nil, config.TLSConfig, clientHelloID), config)
 }
@@ -33,6 +31,7 @@ func newUQUICConn(uconn *UConn, config *QUICConfig) *UQUICConn {
 		signalc:             make(chan struct{}),
 		blockedc:            make(chan struct{}),
 		enableSessionEvents: config.EnableSessionEvents,
+		clientHelloInfoConn: config.ClientHelloInfoConn,
 	}
 	uconn.quic.events = uconn.quic.eventArr[:0]
 	return &UQUICConn{
@@ -49,9 +48,6 @@ func (q *UQUICConn) Start(ctx context.Context) error {
 		return quicError(errors.New("tls: Start called more than once"))
 	}
 	q.conn.quic.started = true
-	if q.conn.config.MinVersion < VersionTLS13 {
-		return quicError(errors.New("tls: Config MinVersion must be at least TLS 1.3"))
-	}
 	go q.conn.HandshakeContext(ctx)
 	if _, ok := <-q.conn.quic.blockedc; !ok {
 		return q.conn.handshakeErr

@@ -60,10 +60,66 @@ plus we test some other minor things.
 Basically, current tests aim to provide a sanity check.
 
 # Merging upstream
-```Bash
-git remote add -f golang git@github.com:golang/go.git
-git checkout -b golang-upstream golang/master
-git subtree split -P src/crypto/tls/ -b golang-tls-upstream
-git checkout master
-git merge --no-commit golang-tls-upstream
+
+Merge the `src/crypto/tls` subtree from an exact Go release tag. The recent
+Go 1.23.4 (`cefe226`), Go 1.24.0 (`a99feac`), and Go 1.26.0 (`ec54fa8`)
+updates are two-parent merges whose second parent is the upstream TLS subtree.
+Preserve that history so Git can identify the upstream merge base on the next
+update; do not squash the merge or replace it with a directory copy.
+
+Start with a clean uTLS working tree on an update branch. For example:
+
+```bash
+# Add this remote once, if it does not already exist.
+git remote add golang https://github.com/golang/go.git
+git fetch --no-tags golang tag go1.27.1
+git switch -c codex/update-go1.27.1
+git subtree split --prefix=src/crypto/tls refs/tags/go1.27.1 \
+    --branch golang-tls-go1.27.1
+git merge --no-ff --no-commit golang-tls-go1.27.1
 ```
+
+Use the release tag, not the moving Go development or release branch. Keep the
+upstream history available for the split, and inspect the previous sync merges
+before resolving conflicts. Record the Go tag and split commit in the update's
+description.
+
+During the merge:
+
+* Preserve the uTLS-specific behavior marked by `[uTLS]` comments. Review the
+  resulting code even where Git merges it cleanly. Propagate relevant upstream
+  changes into duplicated paths such as `u_handshake_client.go` and `u_quic.go`,
+  and check the public/private conversions in `u_public.go`.
+* Audit dependencies outside `src/crypto/tls`, especially the local `internal/`
+  packages, against the same Go release. The subtree merge does not update
+  these copies. Prefer exported standard-library APIs where available, and
+  preserve the local adaptations for inaccessible Go internal packages.
+* uTLS does not implement Go's internal `godebug` machinery. Retain this
+  limitation when porting upstream defaults and tests; environment-dependent
+  TLS compatibility tests cannot assume the standard library's switches work
+  here. Distinguish those switches from ones honored by imported standard-library
+  packages. Port useful test helpers instead of importing Go-only internal
+  packages, and explain tests that cannot be carried over.
+* Follow upstream changes to private structs and functions that uTLS exposes.
+  If those changes break a public uTLS field or method, document the old and new
+  API and any direct migration. Do not reconstruct removed internal state or
+  add compatibility machinery solely to preserve the old API.
+* Update the minimum Go version in `go.mod` and the toolchain used by
+  `.github/workflows/go.yml` when required by the imported code.
+
+After resolving conflicts, format changed Go files and run:
+
+```bash
+go build ./...
+go test ./...
+go test -race ./...
+git diff --check
+```
+
+Pay particular attention to custom ClientHello handshakes, ECH (including the
+inner transcript), HelloRetryRequest, PSK/session resumption and binder updates,
+hybrid key shares, and public/private state conversions on failed handshakes.
+Previous syncs needed follow-up fixes in these areas. Exercise both `HelloGolang`
+and custom/parrot paths where applicable. Keep upstream test fixtures from the
+same release, and report any unavailable platform or external-network checks.
+Once validation is complete, commit the resolved merge with both parents intact.

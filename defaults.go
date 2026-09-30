@@ -12,23 +12,26 @@ import (
 // Defaults are collected in this file to allow distributions to more easily patch
 // them to apply local policies.
 
-// defaultCurvePreferences is the default set of supported key exchanges, as
-// well as the preference order.
-func defaultCurvePreferences() []CurveID {
-	switch {
-	// tlsmlkem=0 restores the pre-Go 1.24 default.
-	//[uTLS] SECTION BEGIN
-	// case tlsmlkem.Value() == "0":
-	// 	return []CurveID{X25519, CurveP256, CurveP384, CurveP521}
-	// // tlssecpmlkem=0 restores the pre-Go 1.26 default.
-	// case tlssecpmlkem.Value() == "0":
-	// 	return []CurveID{X25519MLKEM768, X25519, CurveP256, CurveP384, CurveP521}
-	//[uTLS] SECTION END
+// defaultCurveEnabled returns whether the key exchange c is enabled by default.
+func defaultCurveEnabled(c CurveID) bool {
+	switch c {
+	case X25519, CurveP256, CurveP384, CurveP521:
+		return true
+	case X25519MLKEM768:
+		return true // [uTLS] TLS GODEBUG switches are not supported.
+	case SecP256r1MLKEM768, SecP384r1MLKEM1024:
+		return true // [uTLS] TLS GODEBUG switches are not supported.
 	default:
-		return []CurveID{
-			X25519MLKEM768, SecP256r1MLKEM768, SecP384r1MLKEM1024,
-			X25519, CurveP256, CurveP384, CurveP521,
-		}
+		return false
+	}
+}
+
+// curvePreferenceOrder is the fixed preference order of key exchanges. It must
+// include every supported key exchange.
+func curvePreferenceOrder() []CurveID {
+	return []CurveID{
+		X25519MLKEM768, SecP256r1MLKEM768, SecP384r1MLKEM1024, MLKEM1024,
+		X25519, CurveP256, CurveP384, CurveP521,
 	}
 }
 
@@ -38,6 +41,9 @@ func defaultCurvePreferences() []CurveID {
 // Note that in TLS 1.2, the ECDSA algorithms are not constrained to P-256, etc.
 func defaultSupportedSignatureAlgorithms() []SignatureScheme {
 	return []SignatureScheme{
+		MLDSA44,
+		MLDSA65,
+		MLDSA87,
 		PSSWithSHA256,
 		ECDSAWithP256AndSHA256,
 		Ed25519,
@@ -64,13 +70,7 @@ func supportedCipherSuites(aesGCMPreferred bool) []uint16 {
 func defaultCipherSuites(aesGCMPreferred bool) []uint16 {
 	cipherSuites := supportedCipherSuites(aesGCMPreferred)
 	return slices.DeleteFunc(cipherSuites, func(c uint16) bool {
-		return disabledCipherSuites[c] ||
-			// [uTLS section begins]
-			// tlsrsakex.Value() != "1" && rsaKexCiphers[c] ||
-			// tls3des.Value() != "1" && tdesCiphers[c]
-			rsaKexCiphers[c] ||
-			tdesCiphers[c]
-		// [uTLS section ends]
+		return disabledCipherSuites[c]
 	})
 }
 

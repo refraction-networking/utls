@@ -519,6 +519,7 @@ func (uconn *UConn) computeAndUpdateOuterECHExtension(inner *clientHelloMsg, ech
 		return fmt.Errorf("extension satisfying EncryptedClientHelloExtension not present")
 	}
 	oldExt := uconn.Extensions[echExtIdx]
+	defer func() { uconn.Extensions[echExtIdx] = oldExt }()
 
 	uconn.Extensions[echExtIdx] = &GenericExtension{
 		Id:   extensionEncryptedClientHello,
@@ -548,13 +549,21 @@ func (uconn *UConn) computeAndUpdateOuterECHExtension(inner *clientHelloMsg, ech
 		return err
 	}
 
-	uconn.Extensions[echExtIdx] = oldExt
 	return nil
 
 }
 
 func (uconn *UConn) MarshalClientHello() error {
 	if len(uconn.config.EncryptedClientHelloConfigList) > 0 {
+		// Real PSKs must only appear in ClientHelloInner. The custom PSK
+		// controller patches binders in the outer hello, so reject this
+		// combination until it supports the inner transcript. GREASE ECH
+		// does not enter this path and can still be combined with PSK.
+		for _, ext := range uconn.Extensions {
+			if psk, ok := ext.(PreSharedKeyExtension); ok && psk.Len() > 0 {
+				return errors.New("tls: PSK resumption with a custom ECH ClientHello is not supported")
+			}
+		}
 		inner, _, ech, err := uconn.makeClientHello()
 		if err != nil {
 			return err
@@ -568,7 +577,9 @@ func (uconn *UConn) MarshalClientHello() error {
 
 		ech.innerHello = inner
 
-		uconn.computeAndUpdateOuterECHExtension(inner, ech, true)
+		if err := uconn.computeAndUpdateOuterECHExtension(inner, ech, true); err != nil {
+			return err
+		}
 
 		uconn.echCtx = ech
 		return nil

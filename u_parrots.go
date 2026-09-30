@@ -3146,7 +3146,17 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 
 				isHybridReuse := len(ext.KeyShares[i].Data) == 1 && ext.KeyShares[i].Data[0] == keyShareHybridReuseMarker
 				isClassicalReuse := len(ext.KeyShares[i].Data) == 1 && ext.KeyShares[i].Data[0] == keyShareClassicalReuseMarker
-				if curveID == X25519MLKEM768 || curveID == X25519Kyber768Draft00 {
+				if curveID == MLKEM1024 {
+					if isHybridReuse || isClassicalReuse {
+						return errors.New("keyshare reuse is not supported for MLKEM1024")
+					}
+					mlkemKey, err := mlkem.GenerateKey1024()
+					if err != nil {
+						return err
+					}
+					ext.KeyShares[i].Data = mlkemKey.EncapsulationKey().Bytes()
+					uconn.HandshakeState.State13.KeyShareKeys.Mlkem = mlkemKey
+				} else if curveID == X25519MLKEM768 || curveID == X25519Kyber768Draft00 {
 					if isClassicalReuse {
 						return fmt.Errorf("hybrid keyshare reuse mismatch: classical marker is invalid for hybrid group %v", curveID)
 					}

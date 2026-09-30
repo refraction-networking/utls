@@ -1,6 +1,6 @@
 module github.com/refraction-networking/utls
 
-go 1.26
+go 1.27
 
 retract (
 	v1.4.1 // #218
