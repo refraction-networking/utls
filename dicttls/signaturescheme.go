@@ -38,6 +38,9 @@ const (
 	SigScheme_ecdsa_brainpoolP256r1tls13_sha256 uint16 = 0x081A
 	SigScheme_ecdsa_brainpoolP384r1tls13_sha384 uint16 = 0x081B
 	SigScheme_ecdsa_brainpoolP512r1tls13_sha512 uint16 = 0x081C
+	SigScheme_mldsa44                           uint16 = 0x0904
+	SigScheme_mldsa65                           uint16 = 0x0905
+	SigScheme_mldsa87                           uint16 = 0x0906
 )
 
 var DictSignatureSchemeValueIndexed = map[uint16]string{
@@ -75,6 +78,9 @@ var DictSignatureSchemeValueIndexed = map[uint16]string{
 	0x081A: "ecdsa_brainpoolP256r1tls13_sha256",
 	0x081B: "ecdsa_brainpoolP384r1tls13_sha384",
 	0x081C: "ecdsa_brainpoolP512r1tls13_sha512",
+	0x0904: "mldsa44",
+	0x0905: "mldsa65",
+	0x0906: "mldsa87",
 }
 
 var DictSignatureSchemeNameIndexed = map[string]uint16{
@@ -113,4 +119,7 @@ var DictSignatureSchemeNameIndexed = map[string]uint16{
 	"ecdsa_brainpoolP256r1tls13_sha256":   0x081A,
 	"ecdsa_brainpoolP384r1tls13_sha384":   0x081B,
 	"ecdsa_brainpoolP512r1tls13_sha512":   0x081C,
+	"mldsa44":                             0x0904,
+	"mldsa65":                             0x0905,
+	"mldsa87":                             0x0906,
 }

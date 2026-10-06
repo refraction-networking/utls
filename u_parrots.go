@@ -964,6 +964,84 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&UtlsGREASEExtension{},
 			}),
 		}, nil
+	case HelloChrome_155:
+		return ClientHelloSpec{
+			CipherSuites: []uint16{
+				GREASE_PLACEHOLDER,
+				TLS_AES_128_GCM_SHA256,
+				TLS_AES_256_GCM_SHA384,
+				TLS_CHACHA20_POLY1305_SHA256,
+				TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+				TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+				TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+				TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+				TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
+				TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
+				TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+				TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+				TLS_RSA_WITH_AES_128_GCM_SHA256,
+				TLS_RSA_WITH_AES_256_GCM_SHA384,
+				TLS_RSA_WITH_AES_128_CBC_SHA,
+				TLS_RSA_WITH_AES_256_CBC_SHA,
+			},
+			CompressionMethods: []byte{
+				0x00, // compressionNone
+			},
+			Extensions: ShuffleChromeTLSExtensions([]TLSExtension{
+				&UtlsGREASEExtension{},
+				&SNIExtension{},
+				&ExtendedMasterSecretExtension{},
+				&RenegotiationInfoExtension{Renegotiation: RenegotiateOnceAsClient},
+				&SupportedCurvesExtension{[]CurveID{
+					GREASE_PLACEHOLDER,
+					X25519MLKEM768,
+					X25519,
+					CurveP256,
+					CurveP384,
+				}},
+				&SupportedPointsExtension{SupportedPoints: []byte{
+					0x00, // pointFormatUncompressed
+				}},
+				&SessionTicketExtension{},
+				&ALPNExtension{AlpnProtocols: []string{"h2", "http/1.1"}},
+				&StatusRequestExtension{},
+				&SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []SignatureScheme{
+					GREASE_PLACEHOLDER,
+					MLDSA44,
+					MLDSA65,
+					MLDSA87,
+					ECDSAWithP256AndSHA256,
+					PSSWithSHA256,
+					PKCS1WithSHA256,
+					ECDSAWithP384AndSHA384,
+					PSSWithSHA384,
+					PKCS1WithSHA384,
+					PSSWithSHA512,
+					PKCS1WithSHA512,
+				}},
+				&SCTExtension{},
+				&KeyShareExtension{[]KeyShare{
+					{Group: CurveID(GREASE_PLACEHOLDER), Data: []byte{0}},
+					{Group: X25519MLKEM768},
+					{Group: X25519},
+				}},
+				&PSKKeyExchangeModesExtension{[]uint8{
+					PskModeDHE,
+				}},
+				&SupportedVersionsExtension{[]uint16{
+					GREASE_PLACEHOLDER,
+					VersionTLS13,
+					VersionTLS12,
+				}},
+				&UtlsCompressCertExtension{[]CertCompressionAlgo{
+					CertCompressionBrotli,
+				}},
+				&ApplicationSettingsExtensionNew{SupportedProtocols: []string{"h2"}},
+				&TrustAnchorsExtension{TrustAnchorIDs: chrome155TrustAnchorIDs()},
+				BoringGREASEECH(),
+				&UtlsGREASEExtension{},
+			}),
+		}, nil
 	case HelloFirefox_55, HelloFirefox_56:
 		return ClientHelloSpec{
 			TLSVersMax: VersionTLS12,
@@ -3064,7 +3142,7 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 	}
 
 	// Currently, GREASE is assumed to come from BoringSSL
-	grease_bytes := make([]byte, 2*ssl_grease_last_index)
+	grease_bytes := make([]byte, 2*ssl_grease_seed_count)
 	grease_extensions_seen := 0
 	_, err = io.ReadFull(uconn.config.rand(), grease_bytes)
 	if err != nil {
@@ -3073,7 +3151,7 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 	for i := range uconn.greaseSeed {
 		uconn.greaseSeed[i] = binary.LittleEndian.Uint16(grease_bytes[2*i : 2*i+2])
 	}
-	if GetBoringGREASEValue(uconn.greaseSeed, ssl_grease_extension1) == GetBoringGREASEValue(uconn.greaseSeed, ssl_grease_extension2) {
+	if getBoringGREASEValue(uconn.greaseSeed[:], ssl_grease_extension1) == getBoringGREASEValue(uconn.greaseSeed[:], ssl_grease_extension2) {
 		uconn.greaseSeed[ssl_grease_extension2] ^= 0x1010
 	}
 
@@ -3081,7 +3159,7 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 	copy(hello.CipherSuites, p.CipherSuites)
 	for i := range hello.CipherSuites {
 		if isGREASEUint16(hello.CipherSuites[i]) { // just in case the user set a GREASE value instead of unGREASEd
-			hello.CipherSuites[i] = GetBoringGREASEValue(uconn.greaseSeed, ssl_grease_cipher)
+			hello.CipherSuites[i] = getBoringGREASEValue(uconn.greaseSeed[:], ssl_grease_cipher)
 		}
 	}
 
@@ -3117,9 +3195,9 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 		case *UtlsGREASEExtension:
 			switch grease_extensions_seen {
 			case 0:
-				ext.Value = GetBoringGREASEValue(uconn.greaseSeed, ssl_grease_extension1)
+				ext.Value = getBoringGREASEValue(uconn.greaseSeed[:], ssl_grease_extension1)
 			case 1:
-				ext.Value = GetBoringGREASEValue(uconn.greaseSeed, ssl_grease_extension2)
+				ext.Value = getBoringGREASEValue(uconn.greaseSeed[:], ssl_grease_extension2)
 				ext.Body = []byte{0}
 			default:
 				return errors.New("at most 2 grease extensions are supported")
@@ -3128,7 +3206,13 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 		case *SupportedCurvesExtension:
 			for i := range ext.Curves {
 				if isGREASEUint16(uint16(ext.Curves[i])) {
-					ext.Curves[i] = CurveID(GetBoringGREASEValue(uconn.greaseSeed, ssl_grease_group))
+					ext.Curves[i] = CurveID(getBoringGREASEValue(uconn.greaseSeed[:], ssl_grease_group))
+				}
+			}
+		case *SignatureAlgorithmsExtension:
+			for i, scheme := range ext.SupportedSignatureAlgorithms {
+				if isGREASEUint16(uint16(scheme)) {
+					ext.SupportedSignatureAlgorithms[i] = SignatureScheme(getBoringGREASEValue(uconn.greaseSeed[:], ssl_grease_signature_algorithm))
 				}
 			}
 		case *KeyShareExtension:
@@ -3137,7 +3221,7 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 			for i := range ext.KeyShares {
 				curveID := ext.KeyShares[i].Group
 				if isGREASEUint16(uint16(curveID)) { // just in case the user set a GREASE value instead of unGREASEd
-					ext.KeyShares[i].Group = CurveID(GetBoringGREASEValue(uconn.greaseSeed, ssl_grease_group))
+					ext.KeyShares[i].Group = CurveID(getBoringGREASEValue(uconn.greaseSeed[:], ssl_grease_group))
 					continue
 				}
 				if len(ext.KeyShares[i].Data) > 1 {
@@ -3234,7 +3318,7 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 		case *SupportedVersionsExtension:
 			for i := range ext.Versions {
 				if isGREASEUint16(ext.Versions[i]) { // just in case the user set a GREASE value instead of unGREASEd
-					ext.Versions[i] = GetBoringGREASEValue(uconn.greaseSeed, ssl_grease_version)
+					ext.Versions[i] = getBoringGREASEValue(uconn.greaseSeed[:], ssl_grease_version)
 				}
 			}
 		case *NPNExtension:

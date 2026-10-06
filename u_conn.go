@@ -38,7 +38,7 @@ type UConn struct {
 
 	HandshakeState PubClientHandshakeState
 
-	greaseSeed [ssl_grease_last_index]uint16
+	greaseSeed [ssl_grease_seed_count]uint16
 
 	omitSNIExtension bool
 
