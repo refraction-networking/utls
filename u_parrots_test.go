@@ -3,7 +3,9 @@ package tls
 import (
 	"bytes"
 	"crypto/sha256"
+	"io"
 	"net"
+	"slices"
 	"testing"
 )
 
@@ -52,6 +54,88 @@ func newTestUConnWithIncrementingRand() *UConn {
 		ServerName: "example.com",
 		Rand:       &incrementingSource{},
 	}, HelloCustom)
+}
+
+func TestChrome153ClientHelloSpec(t *testing.T) {
+	if HelloChrome_Auto != HelloChrome_153 {
+		t.Fatalf("HelloChrome_Auto = %s, want %s", HelloChrome_Auto.Str(), HelloChrome_153.Str())
+	}
+
+	spec, err := UTLSIdToSpec(HelloChrome_153)
+	if err != nil {
+		t.Fatalf("creating Chrome 153 spec: %v", err)
+	}
+
+	wantSignatureAlgorithms := []SignatureScheme{
+		GREASE_PLACEHOLDER,
+		FakeMLDSA44,
+		FakeMLDSA65,
+		FakeMLDSA87,
+		ECDSAWithP256AndSHA256,
+		PSSWithSHA256,
+		PKCS1WithSHA256,
+		ECDSAWithP384AndSHA384,
+		PSSWithSHA384,
+		PKCS1WithSHA384,
+		PSSWithSHA512,
+		PKCS1WithSHA512,
+	}
+
+	var signatureAlgorithms *SignatureAlgorithmsExtension
+	var trustAnchors *GenericExtension
+	for _, ext := range spec.Extensions {
+		switch ext := ext.(type) {
+		case *SignatureAlgorithmsExtension:
+			signatureAlgorithms = ext
+		case *GenericExtension:
+			if ext.Id == utlsExtensionTrustAnchors {
+				trustAnchors = ext
+			}
+		}
+	}
+
+	if signatureAlgorithms == nil {
+		t.Fatal("signature_algorithms extension not found")
+	}
+	if !slices.Equal(signatureAlgorithms.SupportedSignatureAlgorithms, wantSignatureAlgorithms) {
+		t.Fatalf("signature_algorithms = %#v, want %#v", signatureAlgorithms.SupportedSignatureAlgorithms, wantSignatureAlgorithms)
+	}
+	if trustAnchors == nil {
+		t.Fatal("trust_anchors extension not found")
+	}
+	if !bytes.Equal(trustAnchors.Data, []byte{0, 0}) {
+		t.Fatalf("trust_anchors data = %x, want 0000", trustAnchors.Data)
+	}
+
+	wire := make([]byte, trustAnchors.Len())
+	if _, err := trustAnchors.Read(wire); err != io.EOF {
+		t.Fatalf("trust_anchors Read error = %v, want io.EOF", err)
+	}
+	if want := []byte{0xca, 0x34, 0x00, 0x02, 0x00, 0x00}; !bytes.Equal(wire, want) {
+		t.Fatalf("trust_anchors wire encoding = %x, want %x", wire, want)
+	}
+}
+
+func TestChrome153ReplacesSignatureAlgorithmGREASE(t *testing.T) {
+	uconn := UClient(&net.TCPConn{}, &Config{
+		ServerName: "example.com",
+		Rand:       &incrementingSource{next: 0x81},
+	}, HelloChrome_153)
+	if err := uconn.BuildHandshakeState(); err != nil {
+		t.Fatalf("building Chrome 153 ClientHello: %v", err)
+	}
+
+	got := uconn.HandshakeState.Hello.SupportedSignatureAlgorithms[0]
+	want := SignatureScheme(GetBoringGREASEValue(uconn.greaseSeed, ssl_grease_signature_algorithm))
+	if got != want {
+		t.Fatalf("signature algorithm GREASE = %#04x, want %#04x", got, want)
+	}
+	if !isGREASEUint16(uint16(got)) {
+		t.Fatalf("signature algorithm GREASE = %#04x, want a GREASE value", got)
+	}
+	if got == GREASE_PLACEHOLDER {
+		t.Fatalf("signature algorithm GREASE was not randomized: got placeholder %#04x", got)
+	}
 }
 
 func fingerprintsWithHybridClassicalKeyShareReuse() []ClientHelloID {
