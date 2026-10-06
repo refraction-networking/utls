@@ -77,6 +77,51 @@ func TestDecompressCertBrotliRejectsInvalidMessages(t *testing.T) {
 	}
 }
 
+func TestDecompressCertBrotliTrailingBytesAtInputBoundary(t *testing.T) {
+	// This independently encoded stream has a 22-bit window, one uncompressed
+	// metablock containing the 32,764-byte certificate body, and an empty final
+	// metablock. Its 32 KiB size ends exactly at the reader's input boundary,
+	// leaving any appended bytes unread when the decoder reports EOF.
+	certificate := bytes.Repeat([]byte("a"), 32755)
+	body := marshalBrotliTestCertificate(t, certificate)
+	compressed := append([]byte{0x8b, 0xfd, 0xbf}, body...)
+	compressed = append(compressed, 0x03)
+	if len(compressed) != 32<<10 {
+		t.Fatalf("fixture length = %d, want 32 KiB", len(compressed))
+	}
+	for _, trailingBytes := range []bool{false, true} {
+		name := "valid_stream"
+		message := bytes.Clone(compressed)
+		if trailingBytes {
+			name = "trailing_bytes"
+			message = append(message, 0, 1)
+		}
+		t.Run(name, func(t *testing.T) {
+			hs := brotliTestHandshake()
+			got, err := hs.decompressCert(utlsCompressedCertificateMsg{
+				algorithm:                    uint16(CertCompressionBrotli),
+				uncompressedLength:           uint32(len(body)),
+				compressedCertificateMessage: message,
+			})
+			if trailingBytes {
+				if err == nil {
+					t.Fatal("accepted bytes after the compressed certificate stream")
+				}
+				if len(hs.c.sendBuf) < 2 || hs.c.sendBuf[len(hs.c.sendBuf)-1] != byte(alertBadCertificate) {
+					t.Fatalf("sent alert %x, want bad_certificate", hs.c.sendBuf)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got.certificate.Certificate) != 1 || !bytes.Equal(got.certificate.Certificate[0], certificate) {
+				t.Fatal("decompressed certificate differs from the original")
+			}
+		})
+	}
+}
+
 func brotliTestHandshake() *clientHandshakeStateTLS13 {
 	return &clientHandshakeStateTLS13{
 		c: &Conn{buffering: true, config: &Config{}},
