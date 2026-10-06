@@ -127,6 +127,12 @@ func (hs *clientHandshakeStateTLS13) decompressCert(m utlsCompressedCertificateM
 		c.sendAlert(alertBadCertificate)
 		return nil, err
 	}
+	// A decoder can stop at the end of its stream without consuming the rest
+	// of the compressed certificate message.
+	if compressed.Len() != 0 {
+		c.sendAlert(alertBadCertificate)
+		return nil, errors.New("trailing data after compressed certificate stream")
+	}
 	certMsg := new(certificateMsgTLS13)
 	if !certMsg.unmarshal(rawMsg) {
 		return nil, c.sendAlert(alertUnexpectedMessage)
