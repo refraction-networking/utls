@@ -613,7 +613,7 @@ var (
 	HelloFirefox_120  = ClientHelloID{helloFirefox, "120", nil, nil}
 	HelloFirefox_148  = ClientHelloID{helloFirefox, "148", nil, nil}
 
-	HelloChrome_Auto        = HelloChrome_133
+	HelloChrome_Auto        = HelloChrome_150
 	HelloChrome_58          = ClientHelloID{helloChrome, "58", nil, nil}
 	HelloChrome_62          = ClientHelloID{helloChrome, "62", nil, nil}
 	HelloChrome_70          = ClientHelloID{helloChrome, "70", nil, nil}
@@ -645,6 +645,9 @@ var (
 	HelloChrome_131 = ClientHelloID{helloChrome, "131", nil, nil}
 	// Chrome w/ New ALPS codepoint
 	HelloChrome_133 = ClientHelloID{helloChrome, "133", nil, nil}
+	// Chrome w/ ML-DSA signature algorithms
+	HelloChrome_150     = ClientHelloID{helloChrome, "150", nil, nil}
+	HelloChrome_150_PSK = ClientHelloID{helloChrome, "150_PSK", nil, nil}
 
 	HelloIOS_Auto = HelloIOS_14
 	HelloIOS_11_1 = ClientHelloID{helloIOS, "111", nil, nil} // legacy "111" means 11.1
@@ -660,6 +663,9 @@ var (
 
 	HelloSafari_Auto = HelloSafari_26_3
 	HelloSafari_16_0 = ClientHelloID{helloSafari, "16.0", nil, nil}
+	HelloSafari_18_5 = ClientHelloID{helloSafari, "18.5", nil, nil}
+	// Safari 26.0 sends the same ClientHello as Safari 26.3.
+	HelloSafari_26_0 = ClientHelloID{helloSafari, "26.0", nil, nil}
 	HelloSafari_26_3 = ClientHelloID{helloSafari, "26.3", nil, nil}
 
 	Hello360_Auto = Hello360_7_5 // Hello360_11_0 seems to be incompatible with this library
