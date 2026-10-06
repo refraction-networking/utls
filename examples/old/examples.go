@@ -229,12 +229,12 @@ func HttpGetCustom(hostname string, addr string) (*http.Response, error) {
 				tls.PKCS1WithSHA512,
 				tls.ECDSAWithSHA1,
 				tls.PKCS1WithSHA1}},
-			&tls.KeyShareExtension{[]tls.KeyShare{
+			&tls.KeyShareExtension{KeyShares: []tls.KeyShare{
 				{Group: tls.CurveID(tls.GREASE_PLACEHOLDER), Data: []byte{0}},
 				{Group: tls.X25519},
 			}},
-			&tls.PSKKeyExchangeModesExtension{[]uint8{1}}, // pskModeDHE
-			&tls.SupportedVersionsExtension{[]uint16{
+			&tls.PSKKeyExchangeModesExtension{Modes: []uint8{1}}, // pskModeDHE
+			&tls.SupportedVersionsExtension{Versions: []uint16{
 				tls.VersionTLS13,
 				tls.VersionTLS12,
 				tls.VersionTLS11,

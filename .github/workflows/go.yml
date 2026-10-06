@@ -18,10 +18,11 @@ jobs:
         go: ["1.27.x"]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v4
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version: ${{ matrix.go }}
+          cache-dependency-path: go.sum
       - run: go version
       - name: Build
         run: go build -v ./...
