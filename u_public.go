@@ -925,9 +925,10 @@ func (kpk *kemPrivateKey) ToPublic() *KemPrivateKey {
 
 type KeySharePrivateKeys struct {
 	// CurveID    CurveID
-	Ecdhe      *ecdh.PrivateKey
-	Mlkem      crypto.Decapsulator
-	MlkemEcdhe *ecdh.PrivateKey
+	Ecdhe         *ecdh.PrivateKey
+	Mlkem         crypto.Decapsulator
+	MlkemEcdhe    *ecdh.PrivateKey
+	EcdheFallback map[CurveID]*ecdh.PrivateKey // [uTLS] secondary key shares for non-preferred curves
 }
 
 func (ksp *KeySharePrivateKeys) ToPrivate() *keySharePrivateKeys {
@@ -936,9 +937,10 @@ func (ksp *KeySharePrivateKeys) ToPrivate() *keySharePrivateKeys {
 	}
 	return &keySharePrivateKeys{
 		// curveID:    ksp.CurveID,
-		ecdhe:      ksp.Ecdhe,
-		mlkem:      ksp.Mlkem,
-		mlkemEcdhe: ksp.MlkemEcdhe,
+		ecdhe:         ksp.Ecdhe,
+		mlkem:         ksp.Mlkem,
+		mlkemEcdhe:    ksp.MlkemEcdhe,
+		ecdheFallback: ksp.EcdheFallback,
 	}
 }
 
@@ -948,8 +950,9 @@ func (ksp *keySharePrivateKeys) ToPublic() *KeySharePrivateKeys {
 	}
 	return &KeySharePrivateKeys{
 		// CurveID:    ksp.curveID,
-		Ecdhe:      ksp.ecdhe,
-		Mlkem:      ksp.mlkem,
-		MlkemEcdhe: ksp.mlkemEcdhe,
+		Ecdhe:         ksp.ecdhe,
+		Mlkem:         ksp.mlkem,
+		MlkemEcdhe:    ksp.mlkemEcdhe,
+		EcdheFallback: ksp.ecdheFallback,
 	}
 }
