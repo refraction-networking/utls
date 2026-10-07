@@ -180,6 +180,14 @@ func (uconn *UConn) uLoadSession() error {
 			return err
 		}
 		if session.version == VersionTLS12 {
+			// [uTLS] Without a session ticket extension there is nowhere to
+			// put the TLS 1.2 ticket. initSessionTicketExt below would skip
+			// initialization and leave the controller in NoSession, and the
+			// following setSessionTicketToUConn would then fail its state
+			// assertion. Skip resumption instead.
+			if uconn.sessionController.sessionTicketExt == nil {
+				return nil
+			}
 			// We use the session ticket extension for tls 1.2 session resumption
 			uconn.sessionController.initSessionTicketExt(session, hello.sessionTicket)
 			uconn.sessionController.setSessionTicketToUConn()
