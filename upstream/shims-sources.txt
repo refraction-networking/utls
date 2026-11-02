@@ -1,0 +1,11 @@
+# Hand-maintained shims and the upstream packages they replace.
+# Format: <shim dir>  <upstream package under $GOROOT/src>
+# upstream/shims.txt records a hash of each upstream package's non-test sources at
+# upstream/VERSION; `sync.sh check` fails when they drift so the shim gets re-reviewed.
+internal/tls12        crypto/internal/fips140/tls12
+internal/tls13        crypto/internal/fips140/tls13
+internal/godebug      internal/godebug
+internal/boring       crypto/internal/boring
+internal/cryptotest   crypto/internal/cryptotest
+internal/testenv      internal/testenv
+x/sys/cpu             internal/cpu
