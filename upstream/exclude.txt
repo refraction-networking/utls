@@ -1,0 +1,9 @@
+# Mirrored files that are deliberately NOT copied. One local path per line,
+# followed by the reason. Keep this list short: every exclusion is upstream
+# test coverage we give up.
+internal/tls/bogo_shim_test.go            needs a BoringSSL checkout and network access
+internal/tls/bogo_shim_unix_test.go       part of the BoGo shim
+internal/tls/bogo_shim_notunix_test.go    part of the BoGo shim
+internal/tls/fips140_test.go              exercises GOROOT-only FIPS 140-3 module internals
+internal/tls/link_test.go                 builds binaries against GOROOT's crypto/tls
+internal/tls/handshake_unix_test.go       runs against a system OpenSSL/GnuTLS

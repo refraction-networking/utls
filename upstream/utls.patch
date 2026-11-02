@@ -1,0 +1,139 @@
+--- a/internal/tls/cipher_suites.go
++++ b/internal/tls/cipher_suites.go
+@@ -11,8 +11,6 @@
+ 	"crypto/des"
+ 	"crypto/hmac"
+ 	"github.com/refraction-networking/utls/internal/boring"
+-	fipsaes "crypto/internal/fips140/aes"
+-	"crypto/internal/fips140/aes/gcm"
+ 	"crypto/rc4"
+ 	"crypto/sha1"
+ 	"crypto/sha256"
+@@ -519,7 +517,9 @@
+ 		aead, err = boring.NewGCMTLS(aes)
+ 	} else {
+ 		boring.Unreachable()
+-		aead, err = gcm.NewGCMForTLS12(aes.(*fipsaes.Block))
++		// [uTLS] Not a FIPS build: use crypto/cipher's AES-GCM instead of the
++		// crypto/internal/fips140 module (unimportable outside GOROOT).
++		aead, err = cipher.NewGCM(aes)
+ 	}
+ 	if err != nil {
+ 		panic(err)
+@@ -553,7 +553,9 @@
+ 		aead, err = boring.NewGCMTLS13(aes)
+ 	} else {
+ 		boring.Unreachable()
+-		aead, err = gcm.NewGCMForTLS13(aes.(*fipsaes.Block))
++		// [uTLS] Not a FIPS build: use crypto/cipher's AES-GCM instead of the
++		// crypto/internal/fips140 module (unimportable outside GOROOT).
++		aead, err = cipher.NewGCM(aes)
+ 	}
+ 	if err != nil {
+ 		panic(err)
+--- a/internal/tls/conn.go
++++ b/internal/tls/conn.go
+@@ -25,6 +25,8 @@
+ // A Conn represents a secured connection.
+ // It implements the net.Conn interface.
+ type Conn struct {
++	uconn *UConn // [uTLS] non-nil when this Conn's ClientHello is spec-rendered
++
+ 	// constant
+ 	conn        net.Conn
+ 	isClient    bool
+--- a/internal/tls/handshake_client.go
++++ b/internal/tls/handshake_client.go
+@@ -204,6 +204,19 @@
+ 		}
+ 	}
+ 
++	// [uTLS] If a ClientHelloSpec is attached, render the hello from it. This
++	// rewrites the logical fields, generates the spec's key shares, and sets
++	// hello.original to the exact wire bytes. A UConn with no spec (e.g. the
++	// HelloGolang passthrough) falls through to the standard hello.
++	// See internal/tls/u_conn.go.
++	if c.uconn != nil && c.uconn.spec != nil {
++		ksk, err := c.uconn.buildClientHello(hello)
++		if err != nil {
++			return nil, nil, nil, err
++		}
++		keyShareKeys = ksk
++	}
++
+ 	return hello, keyShareKeys, ech, nil
+ }
+ 
+@@ -1062,7 +1075,11 @@
+ 	session.ticket = hs.ticket
+ 
+ 	cs := &ClientSessionState{session: session}
+-	c.config.ClientSessionCache.Put(cacheKey, cs)
++	// [uTLS] A fingerprint advertises session_ticket on the wire even when the
++	// application set no ClientSessionCache, so there may be nothing to save to.
++	if c.config.ClientSessionCache != nil {
++		c.config.ClientSessionCache.Put(cacheKey, cs)
++	}
+ 	return nil
+ }
+ 
+--- a/internal/tls/handshake_client_tls13.go
++++ b/internal/tls/handshake_client_tls13.go
+@@ -471,6 +471,17 @@
+ func (hs *clientHandshakeStateTLS13) establishHandshakeKeys() error {
+ 	c := hs.c
+ 
++	// [uTLS] A spec may offer several key shares; use the private key that
++	// matches the group the server actually selected, and expose the server's
++	// key share and ServerHello for schemes that derive a secret from it.
++	if c.uconn != nil {
++		c.uconn.serverHelloRaw = hs.serverHello.original
++		c.uconn.serverKeyShare = hs.serverHello.serverShare
++		if k := c.uconn.keyShareKeyForGroup(hs.serverHello.serverShare.group); k != nil {
++			hs.keyShareKeys = k
++		}
++	}
++
+ 	ke, err := keyExchangeForCurveID(hs.serverHello.serverShare.group)
+ 	if err != nil {
+ 		c.sendAlert(alertInternalError)
+--- a/internal/tls/handshake_messages.go
++++ b/internal/tls/handshake_messages.go
+@@ -375,6 +375,13 @@
+ }
+ 
+ func (m *clientHelloMsg) marshal() ([]byte, error) {
++	// [uTLS] When the uTLS renderer has set the exact wire bytes (original),
++	// send them verbatim so the fingerprint on the wire matches the transcript.
++	// crypto/tls only sets original when parsing a received message, so a
++	// normally-built client hello (original == nil) is unaffected.
++	if m.original != nil {
++		return m.original, nil
++	}
+ 	return m.marshalMsg(false)
+ }
+ 
+--- a/internal/tls/handshake_server_test.go
++++ b/internal/tls/handshake_server_test.go
+@@ -10,7 +10,6 @@
+ 	"crypto"
+ 	"crypto/ecdh"
+ 	"crypto/elliptic"
+-	internalrand "crypto/internal/rand"
+ 	"crypto/rand"
+ 	"github.com/refraction-networking/utls/internal/fips140tls"
+ 	"crypto/x509"
+@@ -1416,9 +1415,10 @@
+ func benchmarkHandshakeServer(b *testing.B, version uint16, cipherSuite uint16, curve CurveID, cert []byte, key crypto.PrivateKey) {
+ 	config := testConfigServer.Clone()
+ 
+-	// cryptotest.SetGlobalRandom does not support *testing.B
+-	internalrand.SetTestingReader(zeroSource{})
+-	defer internalrand.SetTestingReader(nil)
++	// [uTLS] Public testing/cryptotest.SetGlobalRandom supports only *testing.T,
++	// and crypto/internal/rand (the std seam it uses for *testing.B) is not
++	// importable here. The benchmark therefore runs with real randomness.
++	_ = zeroSource{}
+ 
+ 	config.CipherSuites = []uint16{cipherSuite}
+ 	config.CurvePreferences = []CurveID{curve}

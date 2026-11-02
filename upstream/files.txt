@@ -1,0 +1,13 @@
+# Upstream directories mirrored into this repository.
+#
+# Format: <dir under $GOROOT/src>  <local dir>  <mode>
+#   mode "go"  : copy *.go files (non-recursive)
+#   mode "all" : copy every regular file (non-recursive)
+#
+# Everything listed here is UPSTREAM-OWNED: never edit these files except
+# through small hunks marked "[uTLS]" (see upstream/PATCHES.md). Files named
+# u_*.go in the same directories are uTLS-owned and are never touched by sync.
+crypto/tls                       internal/tls               go
+crypto/tls/testdata              internal/tls/testdata      all
+crypto/tls/internal/fips140tls   internal/fips140tls        go
+internal/byteorder               internal/byteorder         go

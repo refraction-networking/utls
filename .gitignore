@@ -1,0 +1,4 @@
+# Build / test artifacts
+*.test
+*.out
+/bin/
