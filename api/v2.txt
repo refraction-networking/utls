@@ -1,0 +1,257 @@
+const ALPSCodepointNew uint16
+const ALPSCodepointOld uint16
+const CertCompressionBrotli = itls.CertCompressionBrotli
+const CertCompressionZlib = itls.CertCompressionZlib
+const CertCompressionZstd = itls.CertCompressionZstd
+const CurveP256 CurveID
+const CurveP384 CurveID
+const CurveP521 CurveID
+const ECDSAWithP256AndSHA256 SignatureScheme
+const ECDSAWithP384AndSHA384 SignatureScheme
+const ECDSAWithP521AndSHA512 SignatureScheme
+const ECDSAWithSHA1 SignatureScheme
+const Ed25519 SignatureScheme
+const GREASE_PLACEHOLDER = itls.GREASEPlaceholder
+const MLDSA44 SignatureScheme
+const MLDSA65 SignatureScheme
+const MLDSA87 SignatureScheme
+const PKCS1WithSHA1 SignatureScheme
+const PKCS1WithSHA256 SignatureScheme
+const PKCS1WithSHA384 SignatureScheme
+const PKCS1WithSHA512 SignatureScheme
+const PSSWithSHA256 SignatureScheme
+const PSSWithSHA384 SignatureScheme
+const PSSWithSHA512 SignatureScheme
+const ProfileFormat = "utls-profile"
+const ProfileVersion = 1
+const TLS_AES_128_GCM_SHA256 = tls.TLS_AES_128_GCM_SHA256
+const TLS_AES_256_GCM_SHA384 = tls.TLS_AES_256_GCM_SHA384
+const TLS_CHACHA20_POLY1305_SHA256 = tls.TLS_CHACHA20_POLY1305_SHA256
+const TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA = tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
+const TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256 = tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
+const TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 = tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+const TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA = tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
+const TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 = tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+const TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256 = tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
+const TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA = tls.TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
+const TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA = tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
+const TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256 = tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
+const TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 = tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+const TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA = tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
+const TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 = tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+const TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256 = tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
+const TLS_RSA_WITH_3DES_EDE_CBC_SHA = tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA
+const TLS_RSA_WITH_AES_128_CBC_SHA = tls.TLS_RSA_WITH_AES_128_CBC_SHA
+const TLS_RSA_WITH_AES_128_CBC_SHA256 = tls.TLS_RSA_WITH_AES_128_CBC_SHA256
+const TLS_RSA_WITH_AES_128_GCM_SHA256 = tls.TLS_RSA_WITH_AES_128_GCM_SHA256
+const TLS_RSA_WITH_AES_256_CBC_SHA = tls.TLS_RSA_WITH_AES_256_CBC_SHA
+const TLS_RSA_WITH_AES_256_GCM_SHA384 = tls.TLS_RSA_WITH_AES_256_GCM_SHA384
+const VersionTLS10 = tls.VersionTLS10
+const VersionTLS11 = tls.VersionTLS11
+const VersionTLS12 = tls.VersionTLS12
+const VersionTLS13 = tls.VersionTLS13
+const X25519 CurveID
+const X25519MLKEM768 CurveID
+func (*Dialer).DialContext(ctx context.Context, network, addr string) (net.Conn, error)
+func (*Profile).ClientHelloID() ClientHelloID
+func (*Profile).MarshalJSON() ([]byte, error)
+func (*Profile).UnmarshalJSON(data []byte) error
+func (*QUICConn).ApplyPreset(spec *ClientHelloSpec) error
+func (*QUICConn).ClientHelloID() ClientHelloID
+func (*QUICConn).ClientHelloRaw() []byte
+func (*QUICConn).Close() error
+func (*QUICConn).ConnectionState() tls.ConnectionState
+func (*QUICConn).HandleData(level tls.QUICEncryptionLevel, data []byte) error
+func (*QUICConn).NextEvent() tls.QUICEvent
+func (*QUICConn).SendSessionTicket(tls.QUICSessionTicketOptions) error
+func (*QUICConn).SetClientHelloHook(h func(*ClientHelloContext) error) error
+func (*QUICConn).SetSession(cs *tls.ClientSessionState) error
+func (*QUICConn).SetTransportParameters(params []byte)
+func (*QUICConn).Start(ctx context.Context) error
+func (*QUICConn).StoreSession(session *tls.SessionState) error
+func (*Transport).CloseIdleConnections()
+func (*Transport).RoundTrip(req *http.Request) (*http.Response, error)
+func (*UConn).ApplyPreset(spec *ClientHelloSpec) error
+func (*UConn).ClientHelloID() ClientHelloID
+func (*UConn).ClientHelloRaw() []byte
+func (*UConn).Close() error
+func (*UConn).CloseWrite() error
+func (*UConn).ConnectionState() ConnectionState
+func (*UConn).EphemeralKey(group CurveID) *ecdh.PrivateKey
+func (*UConn).ExportKeyingMaterial(label string, context []byte, length int) ([]byte, error)
+func (*UConn).HandOff() (*RecordLayerState, error)
+func (*UConn).Handshake() error
+func (*UConn).HandshakeContext(ctx context.Context) error
+func (*UConn).LocalAddr() net.Addr
+func (*UConn).NegotiatedApplicationSettings() ([]byte, bool)
+func (*UConn).NetConn() net.Conn
+func (*UConn).Read(b []byte) (int, error)
+func (*UConn).RemoteAddr() net.Addr
+func (*UConn).ServerHelloRaw() []byte
+func (*UConn).ServerKeyShareData() []byte
+func (*UConn).ServerKeyShareGroup() CurveID
+func (*UConn).SetClientHelloHook(h func(*ClientHelloContext) error) error
+func (*UConn).SetDeadline(t time.Time) error
+func (*UConn).SetFragmentation(o FragmentOptions) error
+func (*UConn).SetReadDeadline(t time.Time) error
+func (*UConn).SetSession(cs *tls.ClientSessionState) error
+func (*UConn).SetSessionParams(p ClientSessionParams) error
+func (*UConn).SetWriteDeadline(t time.Time) error
+func (*UConn).Write(b []byte) (int, error)
+func (ClientHelloID).IsSet() bool
+func (ClientHelloID).Spec() (*ClientHelloSpec, error)
+func (ClientHelloID).Str() string
+func CustomFingerprint(name, version string, factory func() (*ClientHelloSpec, error)) ClientHelloID
+func Dial(network, addr string, config *tls.Config, id ClientHelloID) (*UConn, error)
+func DialContext(ctx context.Context, network, addr string, config *tls.Config, id ClientHelloID) (*UConn, error)
+func ExportProfile(id ClientHelloID) (*Profile, error)
+func Fingerprints() []string
+func JA3(raw []byte) (text, hash string, err error)
+func JA4(raw []byte) (string, error)
+func NewPRNGSeed() ([32]byte, error)
+func ParseClientHello(raw []byte) (*ClientHelloSpec, error)
+func ParseFingerprint(name string) (ClientHelloID, error)
+func ParseProfile(data []byte) (*Profile, error)
+func QUICClient(config *tls.QUICConfig, id ClientHelloID) *QUICConn
+func SeededRandomized(seed [32]byte, weights *RandomizedWeights) ClientHelloID
+func SpecFromJA3(ja3 string, o JA3SpecOptions) (*ClientHelloSpec, error)
+func UClient(conn net.Conn, config *tls.Config, id ClientHelloID) *UConn
+internal/tls: func (*ALPNExtension).ID() uint16
+internal/tls: func (*ApplicationSettingsExtension).ID() uint16
+internal/tls: func (*ClientHelloContext).EphemeralKey(group CurveID) *ecdh.PrivateKey
+internal/tls: func (*ClientHelloSpec).Clone() *ClientHelloSpec
+internal/tls: func (*ClientHelloSpec).Validate() error
+internal/tls: func (*CompressCertificateExtension).ID() uint16
+internal/tls: func (*CookieExtension).ID() uint16
+internal/tls: func (*EarlyDataExtension).ID() uint16
+internal/tls: func (*EncryptedClientHelloExtension).ID() uint16
+internal/tls: func (*ExtendedMasterSecretExtension).ID() uint16
+internal/tls: func (*GenericExtension).ID() uint16
+internal/tls: func (*KeyShareExtension).ID() uint16
+internal/tls: func (*PSKKeyExchangeModesExtension).ID() uint16
+internal/tls: func (*PreSharedKeyExtension).ID() uint16
+internal/tls: func (*QUICTransportParametersExtension).ID() uint16
+internal/tls: func (*RecordSizeLimitExtension).ID() uint16
+internal/tls: func (*RenegotiationInfoExtension).ID() uint16
+internal/tls: func (*SCTExtension).ID() uint16
+internal/tls: func (*SNIExtension).ID() uint16
+internal/tls: func (*SessionTicketExtension).ID() uint16
+internal/tls: func (*SignatureAlgorithmsCertExtension).ID() uint16
+internal/tls: func (*SignatureAlgorithmsExtension).ID() uint16
+internal/tls: func (*StatusRequestExtension).ID() uint16
+internal/tls: func (*SupportedCurvesExtension).ID() uint16
+internal/tls: func (*SupportedPointsExtension).ID() uint16
+internal/tls: func (*SupportedVersionsExtension).ID() uint16
+internal/tls: func (*TrustAnchorsExtension).ID() uint16
+internal/tls: func (*UtlsGREASEExtension).ID() uint16
+internal/tls: func (*UtlsPaddingExtension).ID() uint16
+internal/tls: func (CurveID).String() string
+internal/tls: func (SignatureScheme).String() string
+internal/tls: type ALPNExtension struct{ AlpnProtocols []string }
+internal/tls: type ApplicationSettingsExtension struct{ SupportedProtocols []string; CodePoint uint16; Settings []byte }
+internal/tls: type CertCompressionAlgo uint16
+internal/tls: type ClientHelloContext struct{ Raw []byte; Random []byte; SessionID []byte; PSK bool }
+internal/tls: type ClientHelloSpec struct{ CipherSuites []uint16; CompressionMethods []uint8; Extensions []TLSExtension; TLSVersMin uint16; TLSVersMax uint16 }
+internal/tls: type CompressCertificateExtension struct{ Algorithms []CertCompressionAlgo }
+internal/tls: type CookieExtension struct{  }
+internal/tls: type CurveID uint16
+internal/tls: type EarlyDataExtension struct{  }
+internal/tls: type EncryptedClientHelloExtension struct{ GREASE bool; GREASECipherSuites []HPKESymmetricCipherSuite; GREASEPayloadLengths []uint16 }
+internal/tls: type ExtendedMasterSecretExtension struct{  }
+internal/tls: type FragmentOptions struct{ Records bool; Segments bool; SplitAtSNI bool; MaxPieceSize int; Delay time.Duration }
+internal/tls: type GenericExtension struct{ Id uint16; Data []byte }
+internal/tls: type HPKESymmetricCipherSuite struct{ KDF uint16; AEAD uint16 }
+internal/tls: type KeyShareEntry struct{ Group CurveID; Data []byte }
+internal/tls: type KeyShareExtension struct{ KeyShares []KeyShareEntry; ReuseClassicalFromHybrid bool }
+internal/tls: type PSKKeyExchangeModesExtension struct{ Modes []uint8 }
+internal/tls: type PreSharedKeyExtension struct{  }
+internal/tls: type QUICTransportParametersExtension struct{  }
+internal/tls: type RecordLayerState struct{ Version uint16; CipherSuite uint16; ReadTrafficSecret []byte; WriteTrafficSecret []byte; ReadKey []byte; ReadIV []byte; WriteKey []byte; WriteIV []byte; ReadSeq uint64; WriteSeq uint64; Plaintext []byte; RawInput []byte; Conn net.Conn }
+internal/tls: type RecordSizeLimitExtension struct{ Limit uint16 }
+internal/tls: type RenegotiationInfoExtension struct{  }
+internal/tls: type SCTExtension struct{  }
+internal/tls: type SNIExtension struct{ ServerName string }
+internal/tls: type SessionTicketExtension struct{  }
+internal/tls: type SignatureAlgorithmsCertExtension struct{ SupportedSignatureAlgorithms []SignatureScheme }
+internal/tls: type SignatureAlgorithmsExtension struct{ SupportedSignatureAlgorithms []SignatureScheme }
+internal/tls: type SignatureScheme uint16
+internal/tls: type StatusRequestExtension struct{  }
+internal/tls: type SupportedCurvesExtension struct{ Curves []CurveID }
+internal/tls: type SupportedPointsExtension struct{ SupportedPoints []uint8 }
+internal/tls: type SupportedVersionsExtension struct{ Versions []uint16 }
+internal/tls: type TLSExtension interface { ID() uint16 apply(b *helloBuild) error render(r *helloRenderer, m *clientHelloMsg, slot int) (body []byte, emit bool, err error) clone() TLSExtension }
+internal/tls: type TrustAnchorsExtension struct{ TrustAnchorIDs [][]byte }
+internal/tls: type UtlsGREASEExtension struct{ Value uint16; Body []byte }
+internal/tls: type UtlsPaddingExtension struct{ GetPaddingLen func(clientHelloUnpaddedLen int) (paddingLen int, willPad bool) }
+type ALPNExtension = itls.ALPNExtension
+type ApplicationSettingsExtension = itls.ApplicationSettingsExtension
+type CertCompressionAlgo = itls.CertCompressionAlgo
+type ClientHelloContext = itls.ClientHelloContext
+type ClientHelloID struct{ Client string; Version string }
+type ClientHelloSpec = itls.ClientHelloSpec
+type ClientSessionParams struct{ Version uint16; CipherSuite uint16; Secret []byte; Ticket []byte; ExtendedMasterSecret bool; CreatedAt time.Time; AgeAdd uint32; Lifetime time.Duration }
+type CompressCertificateExtension = itls.CompressCertificateExtension
+type ConnectionState = tls.ConnectionState
+type CookieExtension = itls.CookieExtension
+type CurveID = itls.CurveID
+type Dialer struct{ NetDialer interface { DialContext(ctx context.Context, network, addr string) (net.Conn, error) }; Config *tls.Config; ClientHelloID ClientHelloID; ClientHelloHook func(*ClientHelloContext) error }
+type EarlyDataExtension = itls.EarlyDataExtension
+type EncryptedClientHelloExtension = itls.EncryptedClientHelloExtension
+type ExtendedMasterSecretExtension = itls.ExtendedMasterSecretExtension
+type FragmentOptions = itls.FragmentOptions
+type GenericExtension = itls.GenericExtension
+type HPKESymmetricCipherSuite = itls.HPKESymmetricCipherSuite
+type JA3SpecOptions struct{ SignatureAlgorithms []SignatureScheme; ALPN []string; Versions []uint16; KeyShareGroups []CurveID; CertCompression []CertCompressionAlgo }
+type KeyShareEntry = itls.KeyShareEntry
+type KeyShareExtension = itls.KeyShareExtension
+type PSKKeyExchangeModesExtension = itls.PSKKeyExchangeModesExtension
+type PreSharedKeyExtension = itls.PreSharedKeyExtension
+type Profile struct{ Client string; Version string; Shuffle string; Spec *ClientHelloSpec }
+type QUICConn struct{  }
+type QUICTransportParametersExtension = itls.QUICTransportParametersExtension
+type RandomizedWeights struct{ ALPN float64; TLS13 float64; PostQuantum float64; FirstShareP256 float64; CertCompression float64; ShuffleExtensions float64; GREASE float64; Padding float64 }
+type RecordLayerState = itls.RecordLayerState
+type RecordSizeLimitExtension = itls.RecordSizeLimitExtension
+type RenegotiationInfoExtension = itls.RenegotiationInfoExtension
+type SCTExtension = itls.SCTExtension
+type SNIExtension = itls.SNIExtension
+type SessionTicketExtension = itls.SessionTicketExtension
+type SignatureAlgorithmsCertExtension = itls.SignatureAlgorithmsCertExtension
+type SignatureAlgorithmsExtension = itls.SignatureAlgorithmsExtension
+type SignatureScheme = itls.SignatureScheme
+type StatusRequestExtension = itls.StatusRequestExtension
+type SupportedCurvesExtension = itls.SupportedCurvesExtension
+type SupportedPointsExtension = itls.SupportedPointsExtension
+type SupportedVersionsExtension = itls.SupportedVersionsExtension
+type TLSExtension = itls.TLSExtension
+type Transport struct{ ClientHelloID ClientHelloID; TLSConfig *tls.Config; ClientHelloHook func(*ClientHelloContext) error; Fragmentation *FragmentOptions; DialContext func(ctx context.Context, network, addr string) (net.Conn, error); Proxy func(*http.Request) (*url.URL, error); IdleConnTimeout time.Duration; MaxIdleConns int; MaxIdleConnsPerHost int; MaxConnsPerHost int; ResponseHeaderTimeout time.Duration; TLSHandshakeTimeout time.Duration }
+type TrustAnchorsExtension = itls.TrustAnchorsExtension
+type UConn struct{  }
+type UtlsGREASEExtension = itls.UtlsGREASEExtension
+type UtlsPaddingExtension = itls.UtlsPaddingExtension
+var BoringPaddingStyle
+var DefaultWeights
+var ErrExporterUnavailable
+var ErrHandedOff
+var ErrHookWithECH
+var ErrNoSpec
+var HelloAndroid_11_OkHttp
+var HelloChrome_155
+var HelloChrome_156
+var HelloChrome_Auto
+var HelloCustom
+var HelloEdge_Auto
+var HelloFirefox_148
+var HelloFirefox_158
+var HelloFirefox_Auto
+var HelloGolang
+var HelloIOS_14
+var HelloIOS_Auto
+var HelloQQ_11_1
+var HelloQQ_Auto
+var HelloRandomized
+var HelloRandomizedALPN
+var HelloRandomizedNoALPN
+var HelloSafari_26_3
+var HelloSafari_27
+var HelloSafari_Auto
