@@ -224,7 +224,7 @@ type SupportedCurvesExtension = itls.SupportedCurvesExtension
 type SupportedPointsExtension = itls.SupportedPointsExtension
 type SupportedVersionsExtension = itls.SupportedVersionsExtension
 type TLSExtension = itls.TLSExtension
-type Transport struct{ ClientHelloID ClientHelloID; TLSConfig *tls.Config; ClientHelloHook func(*ClientHelloContext) error; Fragmentation *FragmentOptions; DialContext func(ctx context.Context, network, addr string) (net.Conn, error); Proxy func(*http.Request) (*url.URL, error); IdleConnTimeout time.Duration; MaxIdleConns int; MaxIdleConnsPerHost int; MaxConnsPerHost int; ResponseHeaderTimeout time.Duration; TLSHandshakeTimeout time.Duration }
+type Transport struct{ ClientHelloID ClientHelloID; TLSConfig *tls.Config; ClientHelloHook func(*ClientHelloContext) error; Fragmentation *FragmentOptions; DialContext func(ctx context.Context, network, addr string) (net.Conn, error); Proxy func(*http.Request) (*url.URL, error); IdleConnTimeout time.Duration; MaxIdleConns int; MaxIdleConnsPerHost int; MaxConnsPerHost int; ResponseHeaderTimeout time.Duration; TLSHandshakeTimeout time.Duration; MaxProxyRoutes int }
 type TrustAnchorsExtension = itls.TrustAnchorsExtension
 type UConn struct{  }
 type UtlsGREASEExtension = itls.UtlsGREASEExtension
