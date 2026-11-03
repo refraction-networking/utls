@@ -5,7 +5,7 @@
 package tls
 
 import (
-	"github.com/refraction-networking/utls/internal/godebug"
+	"github.com/refraction-networking/utls/v2/internal/godebug"
 	"slices"
 	_ "unsafe" // for linkname
 )

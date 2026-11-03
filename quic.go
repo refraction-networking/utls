@@ -10,7 +10,7 @@ import (
 	"errors"
 	"sync"
 
-	itls "github.com/refraction-networking/utls/internal/tls"
+	itls "github.com/refraction-networking/utls/v2/internal/tls"
 )
 
 // QUICConn is a QUIC client TLS connection with a uTLS ClientHello. It is the

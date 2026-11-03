@@ -10,7 +10,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
-	"github.com/refraction-networking/utls/internal/boring"
+	"github.com/refraction-networking/utls/v2/internal/boring"
 	"crypto/mldsa"
 	"crypto/rsa"
 	"crypto/x509"

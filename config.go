@@ -26,7 +26,7 @@ import (
 	"crypto/tls"
 	"errors"
 
-	itls "github.com/refraction-networking/utls/internal/tls"
+	itls "github.com/refraction-networking/utls/v2/internal/tls"
 )
 
 // ConnectionState is the standard library's crypto/tls.ConnectionState.

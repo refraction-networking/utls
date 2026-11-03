@@ -9,7 +9,7 @@ import (
 	"reflect"
 	"testing"
 
-	itls "github.com/refraction-networking/utls/internal/tls"
+	itls "github.com/refraction-networking/utls/v2/internal/tls"
 )
 
 // These tests are the maintainability guardrail for the crypto/tls interop

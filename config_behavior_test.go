@@ -19,7 +19,7 @@ import (
 
 	"golang.org/x/crypto/cryptobyte"
 
-	itls "github.com/refraction-networking/utls/internal/tls"
+	itls "github.com/refraction-networking/utls/v2/internal/tls"
 )
 
 // The field inventory (config_fields_test.go) only proves every field was

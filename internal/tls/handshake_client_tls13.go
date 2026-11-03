@@ -10,7 +10,7 @@ import (
 	"crypto"
 	"crypto/hkdf"
 	"crypto/hmac"
-	"github.com/refraction-networking/utls/internal/tls13"
+	"github.com/refraction-networking/utls/v2/internal/tls13"
 	"crypto/rsa"
 	"crypto/subtle"
 	"errors"

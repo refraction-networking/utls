@@ -3,7 +3,7 @@
 @@ -11,8 +11,6 @@
  	"crypto/des"
  	"crypto/hmac"
- 	"github.com/refraction-networking/utls/internal/boring"
+ 	"github.com/refraction-networking/utls/v2/internal/boring"
 -	fipsaes "crypto/internal/fips140/aes"
 -	"crypto/internal/fips140/aes/gcm"
  	"crypto/rc4"
@@ -248,7 +248,7 @@
  	"crypto/elliptic"
 -	internalrand "crypto/internal/rand"
  	"crypto/rand"
- 	"github.com/refraction-networking/utls/internal/fips140tls"
+ 	"github.com/refraction-networking/utls/v2/internal/fips140tls"
  	"crypto/x509"
 @@ -1416,9 +1415,10 @@
  func benchmarkHandshakeServer(b *testing.B, version uint16, cipherSuite uint16, curve CurveID, cert []byte, key crypto.PrivateKey) {

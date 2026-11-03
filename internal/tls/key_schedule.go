@@ -9,7 +9,7 @@ import (
 	"crypto/ecdh"
 	"crypto/fips140"
 	"crypto/hmac"
-	"github.com/refraction-networking/utls/internal/tls13"
+	"github.com/refraction-networking/utls/v2/internal/tls13"
 	"crypto/mlkem"
 	"errors"
 	"hash"

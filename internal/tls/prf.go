@@ -7,7 +7,7 @@ package tls
 import (
 	"crypto"
 	"crypto/hmac"
-	"github.com/refraction-networking/utls/internal/tls12"
+	"github.com/refraction-networking/utls/v2/internal/tls12"
 	"crypto/md5"
 	"crypto/sha1"
 	"crypto/sha256"

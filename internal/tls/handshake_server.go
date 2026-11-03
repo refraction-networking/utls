@@ -12,7 +12,7 @@ import (
 	"crypto/mldsa"
 	"crypto/rsa"
 	"crypto/subtle"
-	"github.com/refraction-networking/utls/internal/fips140tls"
+	"github.com/refraction-networking/utls/v2/internal/fips140tls"
 	"crypto/x509"
 	"errors"
 	"fmt"

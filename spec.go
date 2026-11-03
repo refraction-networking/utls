@@ -8,7 +8,7 @@ import (
 	"crypto/tls"
 	"time"
 
-	itls "github.com/refraction-networking/utls/internal/tls"
+	itls "github.com/refraction-networking/utls/v2/internal/tls"
 )
 
 // ClientHelloSpec describes a ClientHello's shape; see the type documentation

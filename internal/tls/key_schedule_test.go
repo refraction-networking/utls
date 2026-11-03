@@ -6,7 +6,7 @@ package tls
 
 import (
 	"bytes"
-	"github.com/refraction-networking/utls/internal/tls13"
+	"github.com/refraction-networking/utls/v2/internal/tls13"
 	"crypto/sha256"
 	"encoding/hex"
 	"strings"

@@ -10,7 +10,7 @@ import (
 	"crypto/hkdf"
 	fips140 "hash"
 
-	"github.com/refraction-networking/utls/internal/byteorder"
+	"github.com/refraction-networking/utls/v2/internal/byteorder"
 )
 
 // We don't set the service indicator in this package but we delegate that to

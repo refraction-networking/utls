@@ -12,7 +12,7 @@ import (
 	"net"
 	"time"
 
-	itls "github.com/refraction-networking/utls/internal/tls"
+	itls "github.com/refraction-networking/utls/v2/internal/tls"
 )
 
 // UConn is a TLS client connection whose ClientHello is rendered from a

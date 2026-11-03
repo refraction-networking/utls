@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/refraction-networking/utls/internal/tls13"
+	"github.com/refraction-networking/utls/v2/internal/tls13"
 )
 
 // UConn is a crypto/tls client *Conn whose ClientHello is rendered from a

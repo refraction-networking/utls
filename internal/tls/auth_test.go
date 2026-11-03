@@ -7,10 +7,10 @@ package tls
 import (
 	"crypto"
 	"crypto/fips140"
-	"github.com/refraction-networking/utls/internal/cryptotest"
+	"github.com/refraction-networking/utls/v2/internal/cryptotest"
 	"crypto/mldsa"
-	"github.com/refraction-networking/utls/internal/fips140tls"
-	"github.com/refraction-networking/utls/internal/testenv"
+	"github.com/refraction-networking/utls/v2/internal/fips140tls"
+	"github.com/refraction-networking/utls/v2/internal/testenv"
 	"strconv"
 	"testing"
 )

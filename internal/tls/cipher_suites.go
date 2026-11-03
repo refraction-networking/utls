@@ -10,7 +10,7 @@ import (
 	"crypto/cipher"
 	"crypto/des"
 	"crypto/hmac"
-	"github.com/refraction-networking/utls/internal/boring"
+	"github.com/refraction-networking/utls/v2/internal/boring"
 	"crypto/rc4"
 	"crypto/sha1"
 	"crypto/sha256"
