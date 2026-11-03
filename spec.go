@@ -1,4 +1,4 @@
-// Copyright 2024 The uTLS Authors. All rights reserved.
+// Copyright 2026 The uTLS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -6,27 +6,24 @@ package utls
 
 import (
 	"crypto/tls"
+	"time"
 
 	itls "github.com/refraction-networking/utls/internal/tls"
 )
 
-// ClientHelloSpec fully describes the wire shape of a ClientHello: the cipher
-// suites, compression methods, and the ordered list of extensions. A
-// fingerprint is a function that returns one. Build your own for a custom
-// fingerprint, or obtain one from a preset via ClientHelloID.Spec.
+// ClientHelloSpec describes a ClientHello's shape; see the type documentation
+// in internal/tls for how a spec and the Config combine (versions, cipher
+// suites, groups, ALPN, SNI, session tickets). Specs are copied when attached
+// to a connection.
 type ClientHelloSpec = itls.ClientHelloSpec
 
-// TLSExtension is one ClientHello extension. Concrete types below cover the
-// common extensions; GenericExtension carries anything else verbatim.
-//
-// The interface has unexported methods on purpose: new extension kinds are
-// added inside uTLS (so they can wire into the handshake), while downstream
-// composes the provided types and reaches for GenericExtension for the rest.
-// This is deliberate — it is what lets the extension set evolve without
-// breaking downstream, the central lesson of the v1 API.
+// TLSExtension is one ClientHello extension slot. Its methods are unexported:
+// extension kinds are defined by uTLS (so they integrate with the handshake);
+// use GenericExtension for opaque extensions.
 type TLSExtension = itls.TLSExtension
 
-// Concrete extension types, re-exported from the renderer.
+// Extension types. Handshake-owned content (SNI name, key shares, PSK, cookie,
+// ECH payload, session ticket) is always rendered from the live handshake.
 type (
 	SNIExtension                     = itls.SNIExtension
 	SupportedVersionsExtension       = itls.SupportedVersionsExtension
@@ -46,6 +43,13 @@ type (
 	RecordSizeLimitExtension         = itls.RecordSizeLimitExtension
 	KeyShareExtension                = itls.KeyShareExtension
 	KeyShareEntry                    = itls.KeyShareEntry
+	EncryptedClientHelloExtension    = itls.EncryptedClientHelloExtension
+	HPKESymmetricCipherSuite         = itls.HPKESymmetricCipherSuite
+	PreSharedKeyExtension            = itls.PreSharedKeyExtension
+	EarlyDataExtension               = itls.EarlyDataExtension
+	CookieExtension                  = itls.CookieExtension
+	QUICTransportParametersExtension = itls.QUICTransportParametersExtension
+	TrustAnchorsExtension            = itls.TrustAnchorsExtension
 	UtlsGREASEExtension              = itls.UtlsGREASEExtension
 	UtlsPaddingExtension             = itls.UtlsPaddingExtension
 	GenericExtension                 = itls.GenericExtension
@@ -60,16 +64,19 @@ const (
 	CertCompressionZstd   = itls.CertCompressionZstd
 )
 
-// GREASE_PLACEHOLDER marks a slot (cipher, group, version, extension) that the
-// renderer fills with a fresh GREASE value per connection (RFC 8701).
+// ALPS code points for ApplicationSettingsExtension.CodePoint.
+const (
+	ALPSCodepointOld uint16 = 17513
+	ALPSCodepointNew uint16 = 17613
+)
+
+// GREASE_PLACEHOLDER marks a slot (cipher, group, version, signature scheme,
+// key share) the renderer fills with a per-connection GREASE value.
 const GREASE_PLACEHOLDER = itls.GREASEPlaceholder
 
-// BoringPaddingStyle is the default padding heuristic (BoringSSL's): pad the
-// ClientHello to at least 512 bytes when it would otherwise be 256–511.
+// BoringPaddingStyle is BoringSSL's padding heuristic.
 var BoringPaddingStyle = itls.BoringPaddingStyle
 
-// Re-exported standard constants, so a spec reads naturally without importing
-// crypto/tls alongside utls.
 const (
 	VersionTLS10 = tls.VersionTLS10
 	VersionTLS11 = tls.VersionTLS11
@@ -77,8 +84,6 @@ const (
 	VersionTLS13 = tls.VersionTLS13
 )
 
-// Named groups (uTLS-typed, sourced from the internal mirror so they match the
-// extension field types).
 const (
 	X25519         CurveID = itls.X25519
 	CurveP256      CurveID = itls.CurveP256
@@ -87,7 +92,6 @@ const (
 	X25519MLKEM768 CurveID = itls.X25519MLKEM768
 )
 
-// Signature schemes (subset commonly used in fingerprints).
 const (
 	PKCS1WithSHA256        SignatureScheme = itls.PKCS1WithSHA256
 	PKCS1WithSHA384        SignatureScheme = itls.PKCS1WithSHA384
@@ -101,9 +105,11 @@ const (
 	Ed25519                SignatureScheme = itls.Ed25519
 	PKCS1WithSHA1          SignatureScheme = itls.PKCS1WithSHA1
 	ECDSAWithSHA1          SignatureScheme = itls.ECDSAWithSHA1
+	MLDSA44                SignatureScheme = itls.MLDSA44
+	MLDSA65                SignatureScheme = itls.MLDSA65
+	MLDSA87                SignatureScheme = itls.MLDSA87
 )
 
-// Cipher suite IDs commonly used in fingerprints (re-exported from crypto/tls).
 const (
 	TLS_AES_128_GCM_SHA256                        = tls.TLS_AES_128_GCM_SHA256
 	TLS_AES_256_GCM_SHA384                        = tls.TLS_AES_256_GCM_SHA384
@@ -112,13 +118,38 @@ const (
 	TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256         = tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
 	TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384       = tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
 	TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384         = tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
-	TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256 = tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305
-	TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256   = tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305
+	TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256 = tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
+	TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256   = tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
 	TLS_RSA_WITH_AES_128_GCM_SHA256               = tls.TLS_RSA_WITH_AES_128_GCM_SHA256
 	TLS_RSA_WITH_AES_256_GCM_SHA384               = tls.TLS_RSA_WITH_AES_256_GCM_SHA384
 	TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA          = tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
+	TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA          = tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
 	TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA            = tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
 	TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA            = tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
+	TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256       = tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
+	TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256         = tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
 	TLS_RSA_WITH_AES_128_CBC_SHA                  = tls.TLS_RSA_WITH_AES_128_CBC_SHA
 	TLS_RSA_WITH_AES_256_CBC_SHA                  = tls.TLS_RSA_WITH_AES_256_CBC_SHA
+	TLS_RSA_WITH_AES_128_CBC_SHA256               = tls.TLS_RSA_WITH_AES_128_CBC_SHA256
+	TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA           = tls.TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
+	TLS_RSA_WITH_3DES_EDE_CBC_SHA                 = tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA
 )
+
+// ClientSessionParams describes a session to resume out of band (for example a
+// ticket a server will accept because both sides derive it from a shared
+// secret). Version is VersionTLS12 or VersionTLS13.
+//
+//   - TLS 1.2: Secret is the 48-byte master secret; Ticket the session ticket.
+//   - TLS 1.3: Secret is the resumption PSK (hash-size bytes); Ticket the PSK
+//     identity; AgeAdd the ticket_age_add.
+type ClientSessionParams struct {
+	Version              uint16
+	CipherSuite          uint16
+	Secret               []byte
+	Ticket               []byte
+	ExtendedMasterSecret bool
+	CreatedAt            time.Time
+	AgeAdd               uint32
+	Lifetime             time.Duration
+}
+

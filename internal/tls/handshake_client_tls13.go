@@ -140,6 +140,9 @@ func (hs *clientHandshakeStateTLS13) handshake() error {
 	if err := hs.readServerFinished(); err != nil {
 		return err
 	}
+	if err := hs.uSendClientEncryptedExtensions(); err != nil { // [uTLS] ALPS
+		return err
+	}
 	if err := hs.sendClientCertificate(); err != nil {
 		return err
 	}
@@ -471,12 +474,10 @@ func (hs *clientHandshakeStateTLS13) processServerHello() error {
 func (hs *clientHandshakeStateTLS13) establishHandshakeKeys() error {
 	c := hs.c
 
-	// [uTLS] A spec may offer several key shares; use the private key that
-	// matches the group the server actually selected, and expose the server's
-	// key share and ServerHello for schemes that derive a secret from it.
+	// [uTLS] A spec may offer several key shares: use the private key for the
+	// group the server selected, and expose the server's share.
 	if c.uconn != nil {
-		c.uconn.serverHelloRaw = hs.serverHello.original
-		c.uconn.serverKeyShare = hs.serverHello.serverShare
+		c.uconn.setServerHello(hs.serverHello.original, hs.serverHello.serverShare)
 		if k := c.uconn.keyShareKeyForGroup(hs.serverHello.serverShare.group); k != nil {
 			hs.keyShareKeys = k
 		}
@@ -631,6 +632,9 @@ func (hs *clientHandshakeStateTLS13) readServerCertificate() error {
 		}
 	}
 
+	if msg, err = c.uDecompressCertificate(msg); err != nil { // [uTLS] RFC 8879
+		return err
+	}
 	certMsg, ok := msg.(*certificateMsgTLS13)
 	if !ok {
 		c.sendAlert(alertUnexpectedMessage)

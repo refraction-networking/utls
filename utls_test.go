@@ -1,170 +1,177 @@
-// Copyright 2024 The uTLS Authors. All rights reserved.
+// Copyright 2026 The uTLS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
 package utls
 
 import (
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
+	"context"
 	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"math/big"
+	"errors"
 	"net"
+	"reflect"
+	"strings"
 	"testing"
-	"time"
 )
 
-// testServer starts a standard crypto/tls server on loopback with a fresh
-// self-signed cert, so the tests exercise uTLS-client ↔ stdlib-server interop.
-func testServer(t *testing.T, cfg *tls.Config) (addr string, roots *x509.CertPool) {
-	t.Helper()
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tmpl := &x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject:      pkix.Name{CommonName: "utls.test"},
-		DNSNames:     []string{"utls.test"},
-		NotBefore:    time.Now().Add(-time.Hour),
-		NotAfter:     time.Now().Add(time.Hour),
-		KeyUsage:     x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-	}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	leaf, _ := x509.ParseCertificate(der)
-	roots = x509.NewCertPool()
-	roots.AddCert(leaf)
-
-	if cfg == nil {
-		cfg = &tls.Config{}
-	}
-	cfg.Certificates = []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: key, Leaf: leaf}}
-
-	ln, err := tls.Listen("tcp", "127.0.0.1:0", cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { ln.Close() })
-	go func() {
-		for {
-			c, err := ln.Accept()
-			if err != nil {
-				return
-			}
-			go func(c net.Conn) {
-				defer c.Close()
-				tc := c.(*tls.Conn)
-				if tc.Handshake() == nil {
-					tc.Write([]byte("hi"))
-				}
-			}(c)
-		}
-	}()
-	return ln.Addr().String(), roots
+func allPresets() []ClientHelloID {
+	return []ClientHelloID{HelloChrome_Auto, HelloChrome_155, HelloEdge_Auto, HelloFirefox_Auto, HelloSafari_Auto,
+		HelloIOS_Auto, HelloAndroid_11_OkHttp, HelloQQ_Auto, HelloRandomized, HelloRandomizedALPN, HelloRandomizedNoALPN, HelloGolang}
 }
 
-func TestDialPresetsInterop(t *testing.T) {
-	addr, roots := testServer(t, &tls.Config{NextProtos: []string{"h2", "http/1.1"}})
-
-	presets := []struct {
-		name string
-		id   ClientHelloID
-		min  uint16
-	}{
-		{"Chrome", HelloChrome_Auto, VersionTLS13},
-		{"Firefox", HelloFirefox_Auto, VersionTLS13},
-		{"Safari", HelloSafari_Auto, VersionTLS13},
-		{"Golang", HelloGolang, VersionTLS12},
+func TestPresetsInterop(t *testing.T) {
+	for _, id := range allPresets() {
+		for _, max := range []uint16{tls.VersionTLS13, tls.VersionTLS12} {
+			t.Run(id.Str()+"/"+map[uint16]string{tls.VersionTLS13: "tls13", tls.VersionTLS12: "tls12"}[max], func(t *testing.T) {
+				scfg := serverConfig(t)
+				scfg.MaxVersion = max
+				r := handshakeStd(t, id, clientConfig(t), scfg, nil)
+				r.ok(t)
+				st := r.uc.ConnectionState()
+				if !st.HandshakeComplete || len(st.PeerCertificates) == 0 {
+					t.Fatal("incomplete state")
+				}
+			})
+		}
 	}
-	for _, p := range presets {
-		t.Run(p.name, func(t *testing.T) {
-			cfg := &tls.Config{ServerName: "utls.test", RootCAs: roots, NextProtos: []string{"h2", "http/1.1"}}
-			uc, err := Dial("tcp", addr, cfg, p.id)
-			if err != nil {
-				t.Fatalf("Dial %s: %v", p.name, err)
-			}
-			defer uc.Close()
-			cs := uc.ConnectionState()
-			if !cs.HandshakeComplete {
-				t.Fatal("handshake not complete")
-			}
-			if cs.Version < p.min {
-				t.Errorf("version = %x, want >= %x", cs.Version, p.min)
-			}
-			if cs.NegotiatedProtocol != "h2" {
-				t.Errorf("ALPN = %q, want h2", cs.NegotiatedProtocol)
-			}
-			buf := make([]byte, 2)
-			if _, err := uc.Read(buf); err != nil {
-				t.Fatalf("read: %v", err)
-			}
-			if string(buf) != "hi" {
-				t.Errorf("read %q, want hi", buf)
+}
+
+func TestPresetsHelloRetryRequest(t *testing.T) {
+	for _, id := range allPresets() {
+		spec, _ := id.Spec()
+		if id == HelloAndroid_11_OkHttp || (spec != nil && !hasExtension(spec, 51)) {
+			continue // TLS 1.2-only fingerprints
+		}
+		t.Run(id.Str(), func(t *testing.T) {
+			scfg := serverConfig(t)
+			scfg.CurvePreferences = []tls.CurveID{tls.CurveP384}
+			r := handshakeStd(t, id, clientConfig(t), scfg, nil)
+			r.ok(t)
+			if !r.uc.ConnectionState().HelloRetryRequest {
+				t.Skip("server did not need HelloRetryRequest (P-384 share offered)")
 			}
 		})
 	}
 }
 
-func TestParseFingerprint(t *testing.T) {
-	for _, tc := range []struct {
-		in   string
-		want string
-	}{
-		{"", "Chrome-Auto"},
-		{"chrome", "Chrome-Auto"},
-		{"Chrome-Auto", "Chrome-Auto"},
-		{"FIREFOX", "Firefox-Auto"},
-		{"safari", "Safari-Auto"},
-		{"golang", "Golang-Auto"},
-		{"none", "Golang-Auto"},
-		{"edge", "Edge-Auto"},
-	} {
-		got, err := ParseFingerprint(tc.in)
-		if err != nil {
-			t.Errorf("ParseFingerprint(%q): %v", tc.in, err)
-			continue
+func TestNoSilentFallback(t *testing.T) {
+	for name, id := range map[string]ClientHelloID{"custom": HelloCustom, "zero": {}, "foreign": {Client: "Chrome", Version: "999"}} {
+		c1, c2 := net.Pipe()
+		rec := &recConn{Conn: c1}
+		go func() { b := make([]byte, 1); c2.Read(b); c2.Close() }()
+		uc := UClient(rec, clientConfig(t), id)
+		err := uc.Handshake()
+		if err == nil || len(rec.written()) != 0 {
+			t.Fatalf("%s: err=%v written=%d", name, err, len(rec.written()))
 		}
-		if got.Str() != tc.want {
-			t.Errorf("ParseFingerprint(%q) = %q, want %q", tc.in, got.Str(), tc.want)
+		if name != "foreign" && !errors.Is(err, ErrNoSpec) {
+			t.Fatalf("%s: err=%v, want ErrNoSpec", name, err)
 		}
+		c1.Close()
 	}
-	if _, err := ParseFingerprint("nonsense"); err == nil {
-		t.Error("expected error for unknown fingerprint")
+	bad := CustomFingerprint("Broken", "1", func() (*ClientHelloSpec, error) { return nil, errors.New("boom") })
+	c1, _ := net.Pipe()
+	if err := UClient(c1, clientConfig(t), bad).Handshake(); err == nil || !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("factory error not reported: %v", err)
 	}
 }
 
-func TestClientHelloHookEndToEnd(t *testing.T) {
-	addr, roots := testServer(t, nil)
-	cfg := &tls.Config{ServerName: "utls.test", RootCAs: roots}
-	raw, err := net.Dial("tcp", addr)
+func TestApplyPreset(t *testing.T) {
+	spec, _ := HelloFirefox_Auto.Spec()
+	r := handshakeStd(t, HelloCustom, clientConfig(t), serverConfig(t), func(uc *UConn) {
+		if err := uc.ApplyPreset(spec); err != nil {
+			t.Fatal(err)
+		}
+	})
+	r.ok(t)
+	if err := r.uc.ApplyPreset(spec); err == nil {
+		t.Fatal("ApplyPreset after the handshake was accepted")
+	}
+	if err := UClient(nil, nil, HelloCustom).ApplyPreset(&ClientHelloSpec{}); err == nil {
+		t.Fatal("invalid spec accepted")
+	}
+}
+
+func TestSpecsAreFresh(t *testing.T) {
+	a, _ := HelloChrome_Auto.Spec()
+	b, _ := HelloChrome_Auto.Spec()
+	for i := range a.Extensions {
+		for j := range b.Extensions {
+			// Zero-size structs may share an address; only stateful ones matter.
+			if reflect.TypeOf(a.Extensions[i]).Elem().Size() > 0 && a.Extensions[i] == b.Extensions[j] {
+				t.Fatal("presets share extension objects")
+			}
+		}
+	}
+}
+
+func TestParseFingerprint(t *testing.T) {
+	for name, want := range map[string]ClientHelloID{
+		"": HelloChrome_Auto, "chrome": HelloChrome_Auto, "Chrome-155": HelloChrome_155, "FIREFOX": HelloFirefox_Auto,
+		"safari": HelloSafari_Auto, "ios": HelloIOS_Auto, "edge": HelloEdge_Auto, "android": HelloAndroid_11_OkHttp,
+		"qq": HelloQQ_Auto, "golang": HelloGolang, "none": HelloGolang, "randomized": HelloRandomized,
+		"randomizednoalpn": HelloRandomizedNoALPN,
+	} {
+		got, err := ParseFingerprint(name)
+		if err != nil || got != want {
+			t.Errorf("ParseFingerprint(%q) = %v, %v; want %v", name, got.Str(), err, want.Str())
+		}
+	}
+	if _, err := ParseFingerprint("360"); err == nil || !strings.Contains(err.Error(), "NPN") {
+		t.Errorf("360: %v", err)
+	}
+	if _, err := ParseFingerprint("netscape"); err == nil {
+		t.Error("unknown name accepted")
+	}
+	if len(Fingerprints()) < 10 {
+		t.Errorf("Fingerprints() = %v", Fingerprints())
+	}
+}
+
+func TestDialContextCancel(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	uc := UClient(raw, cfg, HelloChrome_Auto)
-	var ran bool
-	uc.SetClientHelloHook(func(h *ClientHelloContext) error {
-		ran = true
-		if h.EphemeralKey(X25519) == nil {
-			t.Error("no X25519 ephemeral key available to hook")
+	defer ln.Close()
+	go func() {
+		c, err := ln.Accept()
+		if err == nil {
+			defer c.Close()
+			b := make([]byte, 4096)
+			c.Read(b) // read the hello, never answer
+			select {}
 		}
-		// Overwrite session_id with a marker (REALITY-style).
-		for i := range h.SessionID {
-			h.SessionID[i] = 0x42
-		}
-		return nil
-	})
-	if err := uc.Handshake(); err != nil {
-		t.Fatalf("handshake: %v", err)
+	}()
+	ctx, cancel := context.WithCancel(context.Background())
+	errc := make(chan error, 1)
+	go func() {
+		_, err := DialContext(ctx, "tcp", ln.Addr().String(), clientConfig(t), HelloChrome_Auto)
+		errc <- err
+	}()
+	cancel()
+	if err := <-errc; err == nil {
+		t.Fatal("dial succeeded after cancel")
 	}
-	defer uc.Close()
-	if !ran {
-		t.Fatal("hook did not run")
+}
+
+func TestCustomFingerprintFactories(t *testing.T) {
+	nilID := CustomFingerprint("Nil", "1", nil)
+	if _, err := nilID.Spec(); err == nil {
+		t.Fatal("nil factory accepted")
 	}
+	c1, _ := net.Pipe()
+	if err := UClient(c1, clientConfig(t), nilID).Handshake(); err == nil {
+		t.Fatal("nil factory handshake accepted")
+	}
+	nilSpec := CustomFingerprint("NilSpec", "1", func() (*ClientHelloSpec, error) { return nil, nil })
+	if _, err := nilSpec.Spec(); err == nil {
+		t.Fatal("nil spec accepted")
+	}
+	a := CustomFingerprint("A", "1", chrome155Spec)
+	b := CustomFingerprint("A", "1", chrome155Spec)
+	if a == b || a != a {
+		t.Fatal("custom IDs must compare by identity")
+	}
+	handshakeStd(t, a, clientConfig(t), serverConfig(t), nil).ok(t)
 }

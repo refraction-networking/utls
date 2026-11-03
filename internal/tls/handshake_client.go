@@ -204,17 +204,16 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, *keySharePrivateKeys, *echCli
 		}
 	}
 
-	// [uTLS] If a ClientHelloSpec is attached, render the hello from it. This
-	// rewrites the logical fields, generates the spec's key shares, and sets
-	// hello.original to the exact wire bytes. A UConn with no spec (e.g. the
-	// HelloGolang passthrough) falls through to the standard hello.
-	// See internal/tls/u_conn.go.
-	if c.uconn != nil && c.uconn.spec != nil {
-		ksk, err := c.uconn.buildClientHello(hello)
+	// [uTLS] Build the logical ClientHello from the attached ClientHelloSpec
+	// and attach its renderer (u_conn.go prepareHello).
+	if c.uconn != nil {
+		ksk, err := c.uconn.prepareHello(c, hello, keyShareKeys)
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		keyShareKeys = ksk
+		if ksk != nil {
+			keyShareKeys = ksk
+		}
 	}
 
 	return hello, keyShareKeys, ech, nil
@@ -247,7 +246,7 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 		return err
 	}
 
-	session, earlySecret, binderKey, err := c.loadSession(hello)
+	session, earlySecret, binderKey, err := c.uLoadSession(hello) // [uTLS] spec-aware session stage + ClientHello hook
 	if err != nil {
 		return err
 	}
@@ -321,6 +320,9 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 		c.sendAlert(alertUnexpectedMessage)
 		return unexpectedMessageError(serverHello, msg)
 	}
+	if c.uconn != nil { // [uTLS] expose the ServerHello
+		c.uconn.setServerHello(serverHello.original, keyShare{})
+	}
 
 	if err := c.pickTLSVersion(serverHello); err != nil {
 		return err
@@ -329,7 +331,7 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 	// If we are negotiating a protocol version that's lower than what we
 	// support, check for the server downgrade canaries.
 	// See RFC 8446, Section 4.1.3.
-	maxVers := c.config.maxSupportedVersion(roleClient, c.quic != nil)
+	maxVers := c.uMaxOfferedVersion(c.config.maxSupportedVersion(roleClient, c.quic != nil)) // [uTLS] versions the spec offered
 	tls12Downgrade := string(serverHello.random[24:]) == downgradeCanaryTLS12
 	tls11Downgrade := string(serverHello.random[24:]) == downgradeCanaryTLS11
 	if maxVers == VersionTLS13 && c.vers <= VersionTLS12 && (tls12Downgrade || tls11Downgrade) ||

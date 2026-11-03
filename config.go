@@ -1,59 +1,52 @@
-// Copyright 2024 The uTLS Authors. All rights reserved.
+// Copyright 2026 The uTLS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package utls is a drop-in TLS client that lets you control the exact bytes of
-// the ClientHello — to mimic a browser's TLS fingerprint — while speaking to
-// the standard library everywhere else.
+// Package utls is a TLS client that controls the exact shape of the
+// ClientHello (to match a browser's TLS fingerprint) while speaking the
+// standard library's types everywhere else.
 //
-// The design goal is maintainability across Go releases. uTLS carries a
-// mechanically-synced copy of crypto/tls internally (see internal/ and
-// upstream/), but the public API you import here is hand-written and stable: it
-// takes the standard *crypto/tls.Config and returns the standard
-// crypto/tls.ConnectionState, so a uTLS connection plugs into net/http,
-// x/net/http2 and the rest of the ecosystem without type juggling.
-//
-// Start with a fingerprint and a dialer:
+// The public API takes a standard *crypto/tls.Config and returns standard
+// crypto/tls.ConnectionState values, so a uTLS connection plugs into net/http,
+// x/net/http2 and the rest of the ecosystem. Internally, uTLS carries a
+// mechanically synced copy of crypto/tls (see internal/ and upstream/).
 //
 //	conn, err := utls.Dial("tcp", "example.com:443", &tls.Config{ServerName: "example.com"}, utls.HelloChrome_Auto)
 //
 // or wrap an existing net.Conn:
 //
 //	uc := utls.UClient(rawConn, &tls.Config{ServerName: host}, utls.HelloChrome_Auto)
-//	err := uc.Handshake()
+//	err := uc.HandshakeContext(ctx)
+//
+// The rules for how a fingerprint (ClientHelloSpec) and the Config combine are
+// documented on ClientHelloSpec and in docs/API_DESIGN.md.
 package utls
 
 import (
 	"crypto/tls"
-	"crypto/x509"
+	"errors"
 
 	itls "github.com/refraction-networking/utls/internal/tls"
 )
 
-// ConnectionState is the standard library's crypto/tls.ConnectionState. uTLS
-// deliberately returns the standard type so connections interoperate with
-// net/http and anything else that inspects TLS state.
+// ConnectionState is the standard library's crypto/tls.ConnectionState.
 type ConnectionState = tls.ConnectionState
 
-// CurveID names a TLS named group. It is uTLS's own type (identical in value
-// to crypto/tls.CurveID) because the extension types a spec is built from use
-// it; convert to/from crypto/tls.CurveID with ordinary uint16 conversion.
+// CurveID names a TLS named group (same values as crypto/tls.CurveID).
 type CurveID = itls.CurveID
 
-// SignatureScheme names a TLS signature scheme, uTLS's own type for the same
-// reason as CurveID.
+// SignatureScheme names a TLS signature scheme (same values as crypto/tls).
 type SignatureScheme = itls.SignatureScheme
 
-// fromStdConfig converts a standard *crypto/tls.Config into the internal config
-// the mirrored handshake uses. It copies every client-relevant field; the
-// fields it does not carry over are enumerated (and justified) in
-// config_fields_test.go, whose reflection test fails if crypto/tls grows a
-// field this converter has not considered. That turns a silent drop into a
-// caught-at-CI error — the maintainability guarantee behind the v2 redesign.
+// fromStdConfig converts a standard *crypto/tls.Config for the internal
+// handshake. Every exported field is either converted here or listed with a
+// reason in config_fields_test.go (which fails when a Go release adds one);
+// behavior is covered by config_behavior_test.go.
 func fromStdConfig(c *tls.Config) *itls.Config {
 	if c == nil {
 		return &itls.Config{}
 	}
+	c = c.Clone()
 	ic := &itls.Config{
 		Rand:                           c.Rand,
 		Time:                           c.Time,
@@ -68,41 +61,32 @@ func fromStdConfig(c *tls.Config) *itls.Config {
 		DynamicRecordSizingDisabled:    c.DynamicRecordSizingDisabled,
 		KeyLogWriter:                   c.KeyLogWriter,
 		VerifyPeerCertificate:          c.VerifyPeerCertificate,
-		ClientAuth:                     itls.ClientAuthType(c.ClientAuth),
-		ClientCAs:                      c.ClientCAs,
-		PreferServerCipherSuites:       c.PreferServerCipherSuites,
 		Renegotiation:                  itls.RenegotiationSupport(c.Renegotiation),
 		EncryptedClientHelloConfigList: c.EncryptedClientHelloConfigList,
 	}
-	// CurvePreferences: []tls.CurveID and []itls.CurveID are distinct named
-	// types over uint16; convert elementwise.
-	if len(c.CurvePreferences) > 0 {
-		ic.CurvePreferences = make([]itls.CurveID, len(c.CurvePreferences))
-		for i, g := range c.CurvePreferences {
-			ic.CurvePreferences[i] = itls.CurveID(g)
-		}
+	for _, g := range c.CurvePreferences {
+		ic.CurvePreferences = append(ic.CurvePreferences, itls.CurveID(g))
 	}
-	// Client certificates.
-	if len(c.Certificates) > 0 {
-		ic.Certificates = make([]itls.Certificate, len(c.Certificates))
-		for i := range c.Certificates {
-			ic.Certificates[i] = stdToInternalCertificate(c.Certificates[i])
-		}
+	for i := range c.Certificates {
+		ic.Certificates = append(ic.Certificates, stdToInternalCertificate(c.Certificates[i]))
 	}
-	// Callbacks that take uTLS-typed arguments are wrapped so a caller's
-	// standard-typed callback still works.
-	if c.VerifyConnection != nil {
-		vc := c.VerifyConnection
-		ic.VerifyConnection = func(ics itls.ConnectionState) error {
-			return vc(toStdConnectionState(ics))
-		}
+	if c.ClientSessionCache != nil {
+		ic.ClientSessionCache = stdSessionCache{c.ClientSessionCache}
 	}
-	if c.GetClientCertificate != nil {
-		gcc := c.GetClientCertificate
+	if vc := c.VerifyConnection; vc != nil {
+		ic.VerifyConnection = func(ics itls.ConnectionState) error { return vc(toStdConnectionState(ics)) }
+	}
+	if rv := c.EncryptedClientHelloRejectionVerify; rv != nil {
+		ic.EncryptedClientHelloRejectionVerify = func(ics itls.ConnectionState) error { return rv(toStdConnectionState(ics)) }
+	}
+	if gcc := c.GetClientCertificate; gcc != nil {
 		ic.GetClientCertificate = func(cri *itls.CertificateRequestInfo) (*itls.Certificate, error) {
 			std, err := gcc(toStdCertificateRequestInfo(cri))
 			if err != nil {
 				return nil, err
+			}
+			if std == nil {
+				std = &tls.Certificate{} // crypto/tls: an empty certificate sends none
 			}
 			ic := stdToInternalCertificate(*std)
 			return &ic, nil
@@ -133,41 +117,26 @@ func convertSigSchemes[T ~uint16](in []T) []itls.SignatureScheme {
 	return out
 }
 
-// toStdConnectionState converts the internal ConnectionState to the standard
-// one. Fields are enumerated in config_fields_test.go with the same CI guard.
+// toStdConnectionState converts the internal ConnectionState (see
+// internal/tls/u_stdcompat.go for the exporter bridge).
 func toStdConnectionState(cs itls.ConnectionState) tls.ConnectionState {
-	// NOTE: ExportKeyingMaterial on the returned value will not work: the
-	// exporter is held in an unexported field that cannot be copied across the
-	// type boundary. Call (*utls.UConn).ExportKeyingMaterial instead.
-	return tls.ConnectionState{
-		Version:                     cs.Version,
-		HandshakeComplete:           cs.HandshakeComplete,
-		DidResume:                   cs.DidResume,
-		CipherSuite:                 cs.CipherSuite,
-		CurveID:                     tls.CurveID(cs.CurveID),
-		NegotiatedProtocol:          cs.NegotiatedProtocol,
-		NegotiatedProtocolIsMutual:  cs.NegotiatedProtocolIsMutual,
-		ServerName:                  cs.ServerName,
-		PeerCertificates:            cs.PeerCertificates,
-		VerifiedChains:              cs.VerifiedChains,
-		SignedCertificateTimestamps: cs.SignedCertificateTimestamps,
-		OCSPResponse:                cs.OCSPResponse,
-		TLSUnique:                   cs.TLSUnique,
-		ECHAccepted:                 cs.ECHAccepted,
-		HelloRetryRequest:           cs.HelloRetryRequest,
-		LocalCertificate:            cs.LocalCertificate,
-	}
+	return itls.StdConnectionState(cs)
 }
 
 func toStdCertificateRequestInfo(cri *itls.CertificateRequestInfo) *tls.CertificateRequestInfo {
 	if cri == nil {
 		return nil
 	}
-	return &tls.CertificateRequestInfo{
-		AcceptableCAs:    cri.AcceptableCAs,
-		SignatureSchemes: stdSigSchemes(cri.SignatureSchemes),
-		Version:          cri.Version,
+	return itls.StdCertificateRequestInfo(cri)
+}
+
+// configError reports Config features this build cannot honor faithfully,
+// before any I/O.
+func configError(c *tls.Config) error {
+	if c != nil && c.GetClientCertificate != nil && !itls.StdContextBridgeOK() {
+		return errors.New("utls: GetClientCertificate is unsupported with this Go release (CertificateRequestInfo.Context cannot be provided); see internal/tls/u_stdcompat.go")
 	}
+	return nil
 }
 
 func stdSigSchemes(in []itls.SignatureScheme) []tls.SignatureScheme {
@@ -181,4 +150,74 @@ func stdSigSchemes(in []itls.SignatureScheme) []tls.SignatureScheme {
 	return out
 }
 
-var _ = x509.NewCertPool
+// stdSessionCache adapts a standard tls.ClientSessionCache. Sessions cross the
+// boundary through crypto/tls's public, versioned session encoding
+// (ClientSessionState.ResumptionState, SessionState.Bytes, ParseSessionState
+// and NewResumptionState), so one cache can be shared with crypto/tls clients.
+// A session that cannot be converted is treated as a cache miss.
+type stdSessionCache struct{ std tls.ClientSessionCache }
+
+func (s stdSessionCache) Get(key string) (*itls.ClientSessionState, bool) {
+	cs, ok := s.std.Get(key)
+	if !ok || cs == nil {
+		return nil, false
+	}
+	ics, err := stdToInternalSession(cs)
+	if err != nil {
+		return nil, false
+	}
+	return ics, true
+}
+
+func (s stdSessionCache) Put(key string, cs *itls.ClientSessionState) {
+	if cs == nil {
+		s.std.Put(key, nil)
+		return
+	}
+	std, err := internalToStdSession(cs)
+	if err != nil {
+		return
+	}
+	s.std.Put(key, std)
+}
+
+func stdToInternalSession(cs *tls.ClientSessionState) (*itls.ClientSessionState, error) {
+	ticket, st, err := cs.ResumptionState()
+	if err != nil {
+		return nil, err
+	}
+	if st == nil {
+		return nil, errNoSession
+	}
+	b, err := st.Bytes()
+	if err != nil {
+		return nil, err
+	}
+	ist, err := itls.ParseSessionState(b)
+	if err != nil {
+		return nil, err
+	}
+	return itls.NewResumptionState(ticket, ist)
+}
+
+var errNoSession = errors.New("utls: session state is empty")
+
+func internalToStdSession(cs *itls.ClientSessionState) (*tls.ClientSessionState, error) {
+	ticket, st, err := cs.ResumptionState()
+	if err != nil {
+		return nil, err
+	}
+	if st == nil {
+		return nil, errNoSession
+	}
+	b, err := st.Bytes()
+	if err != nil {
+		return nil, err
+	}
+	sst, err := tls.ParseSessionState(b)
+	if err != nil {
+		return nil, err
+	}
+	return tls.NewResumptionState(ticket, sst)
+}
+

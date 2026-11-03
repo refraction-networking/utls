@@ -811,7 +811,11 @@ func (hs *serverHandshakeStateTLS13) sendServerParameters() error {
 		}
 	}
 
-	if _, err := hs.c.writeHandshakeRecord(encryptedExtensions, hs.transcript); err != nil {
+	var eeMsg handshakeMessage = encryptedExtensions
+	if hs.c.userver != nil { // [uTLS] test peer (u_testpeer.go)
+		eeMsg = hs.c.userver.encryptedExtensions(hs, encryptedExtensions)
+	}
+	if _, err := hs.c.writeHandshakeRecord(eeMsg, hs.transcript); err != nil {
 		return err
 	}
 
@@ -852,7 +856,11 @@ func (hs *serverHandshakeStateTLS13) sendServerCertificate() error {
 	certMsg.scts = hs.clientHello.scts && len(hs.cert.SignedCertificateTimestamps) > 0
 	certMsg.ocspStapling = hs.clientHello.ocspStapling && len(hs.cert.OCSPStaple) > 0
 
-	if _, err := hs.c.writeHandshakeRecord(certMsg, hs.transcript); err != nil {
+	var certOut handshakeMessage = certMsg
+	if hs.c.userver != nil { // [uTLS] test peer (u_testpeer.go)
+		certOut = hs.c.userver.certificate(hs, certMsg)
+	}
+	if _, err := hs.c.writeHandshakeRecord(certOut, hs.transcript); err != nil {
 		return err
 	}
 
@@ -954,6 +962,12 @@ func (hs *serverHandshakeStateTLS13) shouldSendSessionTickets() bool {
 
 func (hs *serverHandshakeStateTLS13) sendSessionTickets() error {
 	c := hs.c
+
+	if c.userver != nil { // [uTLS] test peer: read client EncryptedExtensions (ALPS) first (u_testpeer.go)
+		if err := c.userver.readClientEncryptedExtensions(hs); err != nil {
+			return err
+		}
+	}
 
 	hs.clientFinished = hs.suite.finishedHash(c.in.trafficSecret, hs.transcript)
 	finishedMsg := &finishedMsg{

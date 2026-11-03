@@ -25,7 +25,8 @@ import (
 // A Conn represents a secured connection.
 // It implements the net.Conn interface.
 type Conn struct {
-	uconn *UConn // [uTLS] non-nil when this Conn's ClientHello is spec-rendered
+	uconn   *UConn        // [uTLS] client whose ClientHello is rendered from a spec (u_conn.go)
+	userver *uServerHooks // [uTLS] test-peer server hooks (u_testpeer.go)
 
 	// constant
 	conn        net.Conn
@@ -684,12 +685,15 @@ func (c *Conn) readRecordOrCCS(expectChangeCipherSpec bool) error {
 	}
 
 	// Process message.
+	if c.uRecordTooLarge(n, -1) { // [uTLS] record_size_limit (RFC 8449), TLS 1.3 inner plaintext
+		return c.in.setErrorLocked(c.sendAlert(alertRecordOverflow))
+	}
 	record := c.rawInput.Next(recordHeaderLen + n)
 	data, typ, err := c.in.decrypt(record)
 	if err != nil {
 		return c.in.setErrorLocked(c.sendAlert(err.(alert)))
 	}
-	if len(data) > maxPlaintext {
+	if len(data) > maxPlaintext || c.uRecordTooLarge(-1, len(data)) { // [uTLS] record_size_limit, TLS 1.2
 		return c.in.setErrorLocked(c.sendAlert(alertRecordOverflow))
 	}
 
@@ -1007,7 +1011,7 @@ func (c *Conn) writeRecordLocked(typ recordType, data []byte) (int, error) {
 	var n int
 	for len(data) > 0 {
 		m := len(data)
-		if maxPayload := c.maxPayloadSizeForWrite(typ); m > maxPayload {
+		if maxPayload := c.uLimitPayload(c.maxPayloadSizeForWrite(typ)); m > maxPayload { // [uTLS] record_size_limit
 			m = maxPayload
 		}
 
@@ -1170,6 +1174,10 @@ func (c *Conn) unmarshalHandshakeMessage(data []byte, transcript transcriptHash)
 		m = new(endOfEarlyDataMsg)
 	case typeKeyUpdate:
 		m = new(keyUpdateMsg)
+	case typeCompressedCertificate: // [uTLS] RFC 8879, only if offered (u_negotiate.go)
+		if m = c.uCompressedCertificateMsg(); m == nil {
+			return nil, c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
+		}
 	default:
 		return nil, c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
 	}
@@ -1181,6 +1189,9 @@ func (c *Conn) unmarshalHandshakeMessage(data []byte, transcript transcriptHash)
 
 	if !m.unmarshal(data) {
 		return nil, c.in.setErrorLocked(c.sendAlert(alertDecodeError))
+	}
+	if err := c.uObserveHandshake(data); err != nil { // [uTLS] ALPS, record_size_limit (u_negotiate.go)
+		return nil, c.in.setErrorLocked(err)
 	}
 
 	if transcript != nil {

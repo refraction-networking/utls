@@ -70,6 +70,7 @@ func readUint24LengthPrefixed(s *cryptobyte.String, out *[]byte) bool {
 }
 
 type clientHelloMsg struct {
+	uRender                          *helloRenderer // [uTLS] non-nil for spec-rendered client hellos
 	original                         []byte
 	vers                             uint16
 	random                           []byte
@@ -103,6 +104,9 @@ type clientHelloMsg struct {
 }
 
 func (m *clientHelloMsg) marshalMsg(echInner bool) ([]byte, error) {
+	if echInner && m.uRender != nil { // [uTLS] EncodedClientHelloInner in the spec's shape
+		return m.uRender.marshal(m, true)
+	}
 	var exts cryptobyte.Builder
 	if len(m.serverName) > 0 {
 		// RFC 6066, Section 3
@@ -375,12 +379,8 @@ func (m *clientHelloMsg) marshalMsg(echInner bool) ([]byte, error) {
 }
 
 func (m *clientHelloMsg) marshal() ([]byte, error) {
-	// [uTLS] When the uTLS renderer has set the exact wire bytes (original),
-	// send them verbatim so the fingerprint on the wire matches the transcript.
-	// crypto/tls only sets original when parsing a received message, so a
-	// normally-built client hello (original == nil) is unaffected.
-	if m.original != nil {
-		return m.original, nil
+	if m.uRender != nil { // [uTLS] render in the spec's shape from the current fields (u_spec.go)
+		return m.uRender.marshal(m, false)
 	}
 	return m.marshalMsg(false)
 }
@@ -694,6 +694,7 @@ func (m *clientHelloMsg) originalBytes() []byte {
 
 func (m *clientHelloMsg) clone() *clientHelloMsg {
 	return &clientHelloMsg{
+		uRender:                          m.uRender, // [uTLS]
 		original:                         slices.Clone(m.original),
 		vers:                             m.vers,
 		random:                           slices.Clone(m.random),
