@@ -1,526 +1,227 @@
-// Copyright 2023 The Go Authors. All rights reserved.
+// Copyright 2026 The uTLS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package tls
+package utls
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
-	"fmt"
-	"net"
+	"sync"
+
+	itls "github.com/refraction-networking/utls/v2/internal/tls"
 )
 
-// QUICEncryptionLevel represents a QUIC encryption level used to transmit
-// handshake messages.
-type QUICEncryptionLevel int
-
-const (
-	QUICEncryptionLevelInitial = QUICEncryptionLevel(iota)
-	QUICEncryptionLevelEarly
-	QUICEncryptionLevelHandshake
-	QUICEncryptionLevelApplication
-)
-
-func (l QUICEncryptionLevel) String() string {
-	switch l {
-	case QUICEncryptionLevelInitial:
-		return "Initial"
-	case QUICEncryptionLevelEarly:
-		return "Early"
-	case QUICEncryptionLevelHandshake:
-		return "Handshake"
-	case QUICEncryptionLevelApplication:
-		return "Application"
-	default:
-		return fmt.Sprintf("QUICEncryptionLevel(%v)", int(l))
-	}
-}
-
-// A QUICConn represents a connection which uses a QUIC implementation as the underlying
-// transport as described in RFC 9001.
+// QUICConn is a QUIC client TLS connection with a uTLS ClientHello. It is the
+// counterpart of *crypto/tls.QUICConn and speaks only standard crypto/tls
+// types (QUICConfig, QUICEvent, QUICEncryptionLevel, SessionState,
+// ConnectionState), so a QUIC implementation drives it exactly as it drives
+// tls.QUICClient: Start, then loop on NextEvent / HandleData.
 //
-// Methods of QUICConn are not safe for concurrent use.
+// The built-in presets are TCP fingerprints; a browser's QUIC ClientHello
+// differs (for example, it lists only TLS 1.3). For QUIC fidelity, apply a
+// QUIC spec with ApplyPreset that contains a QUICTransportParametersExtension
+// slot; without one the transport parameters are appended at the end of the
+// extensions, before padding.
 type QUICConn struct {
-	conn *Conn
+	q       *itls.QUICConn
+	u       *itls.UConn
+	id      ClientHelloID
+	initErr error // config or fingerprint error, reported by Start
 
-	sessionTicketSent bool
+	mu sync.Mutex
+	// sessions from the latest QUICResumeSession / QUICStoreSession events,
+	// so edits the application makes to the std copies (EarlyData, Extra)
+	// reach the handshake.
+	resume *sessionPair
+	stored map[*tls.SessionState]*itls.SessionState
 }
 
-// A QUICConfig configures a [QUICConn].
-type QUICConfig struct {
-	TLSConfig *Config
-
-	// EnableSessionEvents may be set to true to enable the
-	// [QUICStoreSession] and [QUICResumeSession] events for client connections.
-	// When this event is enabled, sessions are not automatically
-	// stored in the client session cache.
-	// The application should use [QUICConn.StoreSession] to store sessions.
-	EnableSessionEvents bool
-
-	// ClientHelloInfoConn is the net.Conn to use for the ClientHelloInfo.Conn field.
-	ClientHelloInfoConn net.Conn
+type sessionPair struct {
+	std *tls.SessionState
+	in  *itls.SessionState
 }
 
-// A QUICEventKind is a type of operation on a QUIC connection.
-type QUICEventKind int
-
-const (
-	// QUICNoEvent indicates that there are no events available.
-	QUICNoEvent QUICEventKind = iota
-
-	// QUICSetReadSecret and QUICSetWriteSecret provide the read and write
-	// secrets for a given encryption level.
-	// QUICEvent.Level, QUICEvent.Data, and QUICEvent.Suite are set.
-	//
-	// Secrets for the Initial encryption level are derived from the initial
-	// destination connection ID, and are not provided by the QUICConn.
-	QUICSetReadSecret
-	QUICSetWriteSecret
-
-	// QUICWriteData provides data to send to the peer in CRYPTO frames.
-	// QUICEvent.Data is set.
-	QUICWriteData
-
-	// QUICTransportParameters provides the peer's QUIC transport parameters.
-	// QUICEvent.Data is set.
-	QUICTransportParameters
-
-	// QUICTransportParametersRequired indicates that the caller must provide
-	// QUIC transport parameters to send to the peer. The caller should set
-	// the transport parameters with QUICConn.SetTransportParameters and call
-	// QUICConn.NextEvent again.
-	//
-	// If transport parameters are set before calling QUICConn.Start, the
-	// connection will never generate a QUICTransportParametersRequired event.
-	QUICTransportParametersRequired
-
-	// QUICRejectedEarlyData indicates that the server rejected 0-RTT data even
-	// if we offered it. It's returned before QUICEncryptionLevelApplication
-	// keys are returned.
-	// This event only occurs on client connections.
-	QUICRejectedEarlyData
-
-	// QUICHandshakeDone indicates that the TLS handshake has completed.
-	QUICHandshakeDone
-
-	// QUICResumeSession indicates that a client is attempting to resume a previous session.
-	// [QUICEvent.SessionState] is set.
-	//
-	// For client connections, this event occurs when the session ticket is selected.
-	// For server connections, this event occurs when receiving the client's session ticket.
-	//
-	// The application may set [QUICEvent.SessionState.EarlyData] to false before the
-	// next call to [QUICConn.NextEvent] to decline 0-RTT even if the session supports it.
-	QUICResumeSession
-
-	// QUICStoreSession indicates that the server has provided state permitting
-	// the client to resume the session.
-	// [QUICEvent.SessionState] is set.
-	// The application should use [QUICConn.StoreSession] session to store the [SessionState].
-	// The application may modify the [SessionState] before storing it.
-	// This event only occurs on client connections.
-	QUICStoreSession
-
-	// QUICErrorEvent indicates that a fatal error has occurred.
-	// The handshake cannot proceed and the connection must be closed.
-	// QUICEvent.Err is set.
-	QUICErrorEvent
-)
-
-// A QUICEvent is an event occurring on a QUIC connection.
-//
-// The type of event is specified by the Kind field.
-// The contents of the other fields are kind-specific.
-type QUICEvent struct {
-	Kind QUICEventKind
-
-	// Set for QUICSetReadSecret, QUICSetWriteSecret, and QUICWriteData.
-	Level QUICEncryptionLevel
-
-	// Set for QUICTransportParameters, QUICSetReadSecret, QUICSetWriteSecret, and QUICWriteData.
-	// The contents are owned by crypto/tls, and are valid until the next NextEvent call.
-	Data []byte
-
-	// Set for QUICSetReadSecret and QUICSetWriteSecret.
-	Suite uint16
-
-	// Set for QUICResumeSession and QUICStoreSession.
-	SessionState *SessionState
-
-	// Set for QUICErrorEvent.
-	// The error will wrap AlertError.
-	Err error
-}
-
-type quicState struct {
-	events    []QUICEvent
-	nextEvent int
-
-	// eventArr is a statically allocated event array, large enough to handle
-	// the usual maximum number of events resulting from a single call: transport
-	// parameters, Initial data, Early read secret, Handshake write and read
-	// secrets, Handshake data, Application write secret, Application data.
-	eventArr [8]QUICEvent
-
-	started  bool
-	signalc  chan struct{}   // handshake data is available to be read
-	blockedc chan struct{}   // handshake is waiting for data, closed when done
-	ctx      context.Context // handshake context
-	cancel   context.CancelFunc
-
-	waitingForDrain bool
-	errorReturned   bool
-
-	// readbuf is shared between HandleData and the handshake goroutine.
-	// HandshakeCryptoData passes ownership to the handshake goroutine by
-	// reading from signalc, and reclaims ownership by reading from blockedc.
-	readbuf []byte
-
-	transportParams []byte // to send to the peer
-
-	enableSessionEvents bool
-	clientHelloInfoConn net.Conn
-}
-
-// QUICClient returns a new TLS client side connection using QUICTransport as the
-// underlying transport. The config cannot be nil.
-func QUICClient(config *QUICConfig) *QUICConn {
-	return newQUICConn(Client(nil, config.TLSConfig), config)
-}
-
-// QUICServer returns a new TLS server side connection using QUICTransport as the
-// underlying transport. The config cannot be nil.
-func QUICServer(config *QUICConfig) *QUICConn {
-	return newQUICConn(Server(nil, config.TLSConfig), config)
-}
-
-func newQUICConn(conn *Conn, config *QUICConfig) *QUICConn {
-	conn.quic = &quicState{
-		signalc:             make(chan struct{}),
-		blockedc:            make(chan struct{}),
-		enableSessionEvents: config.EnableSessionEvents,
-		clientHelloInfoConn: config.ClientHelloInfoConn,
+// QUICClient returns a uTLS QUIC client connection with fingerprint id. config
+// and config.TLSConfig must not be nil; config.TLSConfig.MinVersion must allow
+// TLS 1.3 (QUIC requires it). Errors from id or the config are reported by
+// Start.
+func QUICClient(config *tls.QUICConfig, id ClientHelloID) *QUICConn {
+	spec, golang, err := id.resolve()
+	var tcfg *tls.Config
+	ecfg := false
+	if config != nil {
+		tcfg = config.TLSConfig
+		ecfg = config.EnableSessionEvents
 	}
-	conn.quic.events = conn.quic.eventArr[:0]
-	return &QUICConn{
-		conn: conn,
+	if config == nil || tcfg == nil {
+		err = errors.New("utls: QUICClient requires a QUICConfig with a TLSConfig")
+		tcfg = &tls.Config{InsecureSkipVerify: true}
+	} else if cerr := configError(tcfg); cerr != nil {
+		err = cerr
 	}
+	q, u := itls.NewUQUICConn(&itls.QUICConfig{TLSConfig: fromStdConfig(tcfg), EnableSessionEvents: ecfg}, spec, golang, err)
+	return &QUICConn{q: q, u: u, id: id, initErr: err, stored: map[*tls.SessionState]*itls.SessionState{}}
 }
 
-// Start starts the client or server handshake protocol.
-// It may produce connection events, which may be read with [QUICConn.NextEvent].
-//
-// Start must be called at most once.
+// ApplyPreset sets the ClientHelloSpec (for HelloCustom or to override the
+// preset). It must be called before Start.
+func (q *QUICConn) ApplyPreset(spec *ClientHelloSpec) error {
+	if spec == nil {
+		return errors.New("utls: nil ClientHelloSpec")
+	}
+	return q.u.SetSpec(spec)
+}
+
+// SetClientHelloHook installs a ClientHello hook; see
+// (*UConn).SetClientHelloHook. It must be called before Start.
+func (q *QUICConn) SetClientHelloHook(h func(*ClientHelloContext) error) error {
+	return q.u.SetClientHelloHook(h)
+}
+
+// SetSession makes the handshake offer cs; see (*UConn).SetSession.
+func (q *QUICConn) SetSession(cs *tls.ClientSessionState) error {
+	if cs == nil {
+		return errors.New("utls: nil session")
+	}
+	ics, err := stdToInternalSession(cs)
+	if err != nil {
+		return err
+	}
+	return q.u.SetSession(ics)
+}
+
+// Start starts the client handshake; see tls.QUICConn.Start. A config or
+// fingerprint error is returned here; other handshake errors (including
+// ErrNoSpec for HelloCustom without ApplyPreset) surface as with crypto/tls,
+// from HandleData or a QUICErrorEvent.
 func (q *QUICConn) Start(ctx context.Context) error {
-	if q.conn.quic.started {
-		return quicError(errors.New("tls: Start called more than once"))
+	if q.initErr != nil {
+		return q.initErr
 	}
-	q.conn.quic.started = true
-	go q.conn.HandshakeContext(ctx)
-	if _, ok := <-q.conn.quic.blockedc; !ok {
-		return q.conn.handshakeErr
-	}
-	return nil
+	return itls.StdError(q.q.Start(ctx))
 }
 
-// NextEvent returns the next event occurring on the connection.
-// It returns an event with a Kind of [QUICNoEvent] when no events are available.
-func (q *QUICConn) NextEvent() QUICEvent {
-	qs := q.conn.quic
-	if last := qs.nextEvent - 1; last >= 0 && len(qs.events[last].Data) > 0 {
-		// Write over some of the previous event's data,
-		// to catch callers erroneously retaining it.
-		qs.events[last].Data[0] = 0
+// NextEvent returns the next event; see tls.QUICConn.NextEvent. Event data is
+// valid until the next call to NextEvent.
+func (q *QUICConn) NextEvent() tls.QUICEvent {
+	q.syncResume()
+	e := q.q.NextEvent()
+	out := tls.QUICEvent{
+		Kind:  tls.QUICEventKind(e.Kind),
+		Level: tls.QUICEncryptionLevel(e.Level),
+		Data:  e.Data,
+		Suite: e.Suite,
 	}
-	if qs.nextEvent >= len(qs.events) && qs.waitingForDrain {
-		qs.waitingForDrain = false
-		<-qs.signalc
-		<-qs.blockedc
+	if e.Err != nil {
+		out.Err = itls.StdError(e.Err)
 	}
-	if err := q.conn.handshakeErr; err != nil {
-		if qs.errorReturned {
-			return QUICEvent{Kind: QUICNoEvent}
+	if e.SessionState != nil {
+		if std := stdSessionState(e.SessionState); std != nil {
+			out.SessionState = std
+			q.mu.Lock()
+			switch e.Kind {
+			case itls.QUICResumeSession:
+				q.resume = &sessionPair{std, e.SessionState}
+			case itls.QUICStoreSession:
+				q.stored[std] = e.SessionState
+			}
+			q.mu.Unlock()
 		}
-		qs.errorReturned = true
-		qs.events = nil
-		qs.nextEvent = 0
-		return QUICEvent{Kind: QUICErrorEvent, Err: q.conn.handshakeErr}
 	}
-	if qs.nextEvent >= len(qs.events) {
-		qs.events = qs.events[:0]
-		qs.nextEvent = 0
-		return QUICEvent{Kind: QUICNoEvent}
+	return out
+}
+
+// syncResume copies the application's edits of the last QUICResumeSession
+// session back before the handshake resumes.
+func (q *QUICConn) syncResume() {
+	q.mu.Lock()
+	p := q.resume
+	q.resume = nil
+	q.mu.Unlock()
+	if p != nil {
+		p.in.EarlyData = p.std.EarlyData
+		p.in.Extra = cloneExtra(p.std.Extra)
 	}
-	e := qs.events[qs.nextEvent]
-	qs.events[qs.nextEvent] = QUICEvent{} // zero out references to data
-	qs.nextEvent++
-	return e
+}
+
+// HandleData handles handshake bytes received from the peer; see
+// tls.QUICConn.HandleData.
+func (q *QUICConn) HandleData(level tls.QUICEncryptionLevel, data []byte) error {
+	q.syncResume()
+	return itls.StdError(q.q.HandleData(itls.QUICEncryptionLevel(level), data))
+}
+
+// SetTransportParameters sets the transport parameters to send; see
+// tls.QUICConn.SetTransportParameters.
+func (q *QUICConn) SetTransportParameters(params []byte) {
+	q.q.SetTransportParameters(params)
+}
+
+// StoreSession stores a session from a QUICStoreSession event in the
+// ClientSessionCache, including edits to its Extra and EarlyData fields; see
+// tls.QUICConn.StoreSession.
+func (q *QUICConn) StoreSession(session *tls.SessionState) error {
+	if session == nil {
+		return errors.New("utls: nil session")
+	}
+	q.mu.Lock()
+	in := q.stored[session]
+	delete(q.stored, session)
+	q.mu.Unlock()
+	if in == nil {
+		b, err := session.Bytes()
+		if err != nil {
+			return err
+		}
+		if in, err = itls.ParseSessionState(b); err != nil {
+			return err
+		}
+	}
+	in.EarlyData = session.EarlyData
+	in.Extra = cloneExtra(session.Extra)
+	return itls.StdError(q.q.StoreSession(in))
+}
+
+// SendSessionTicket is not available on a client connection.
+func (q *QUICConn) SendSessionTicket(tls.QUICSessionTicketOptions) error {
+	return errors.New("utls: SendSessionTicket called on a client connection")
+}
+
+// ConnectionState returns the standard connection state.
+func (q *QUICConn) ConnectionState() tls.ConnectionState {
+	return toStdConnectionState(q.q.ConnectionState())
 }
 
 // Close closes the connection and stops any in-progress handshake.
-func (q *QUICConn) Close() error {
-	if q.conn.quic.ctx == nil {
-		return nil // never started
-	}
-	q.conn.quic.cancel()
-	<-q.conn.quic.signalc
-	for range q.conn.quic.blockedc {
-		// Wait for the handshake goroutine to return.
-	}
-	return q.conn.handshakeErr
-}
+func (q *QUICConn) Close() error { return q.q.Close() }
 
-// HandleData handles handshake bytes received from the peer.
-// It may produce connection events, which may be read with [QUICConn.NextEvent].
-func (q *QUICConn) HandleData(level QUICEncryptionLevel, data []byte) error {
-	c := q.conn
-	if c.in.level != level {
-		return quicError(c.in.setErrorLocked(errors.New("tls: handshake data received at wrong level")))
-	}
-	c.quic.readbuf = data
-	<-c.quic.signalc
-	_, ok := <-c.quic.blockedc
-	if ok {
-		// The handshake goroutine is waiting for more data.
+// ClientHelloID returns the fingerprint the connection was created with.
+func (q *QUICConn) ClientHelloID() ClientHelloID { return q.id }
+
+// ClientHelloRaw returns the last ClientHello sent.
+func (q *QUICConn) ClientHelloRaw() []byte { return q.u.ClientHelloRaw() }
+
+func stdSessionState(s *itls.SessionState) *tls.SessionState {
+	b, err := s.Bytes()
+	if err != nil {
 		return nil
 	}
-	// The handshake goroutine has exited.
-	c.handshakeMutex.Lock()
-	defer c.handshakeMutex.Unlock()
-	c.hand.Write(c.quic.readbuf)
-	c.quic.readbuf = nil
-	for q.conn.hand.Len() >= 4 && q.conn.handshakeErr == nil {
-		b := q.conn.hand.Bytes()
-		n := int(b[1])<<16 | int(b[2])<<8 | int(b[3])
-		if n > maxHandshake {
-			q.conn.handshakeErr = fmt.Errorf("tls: handshake message of length %d bytes exceeds maximum of %d bytes", n, maxHandshake)
-			break
-		}
-		if len(b) < 4+n {
-			return nil
-		}
-		if err := q.conn.handlePostHandshakeMessage(); err != nil {
-			q.conn.handshakeErr = err
-		}
-	}
-	if q.conn.handshakeErr != nil {
-		return quicError(q.conn.handshakeErr)
-	}
-	return nil
-}
-
-type QUICSessionTicketOptions struct {
-	// EarlyData specifies whether the ticket may be used for 0-RTT.
-	EarlyData bool
-	Extra     [][]byte
-}
-
-// SendSessionTicket sends a session ticket to the client.
-// It produces connection events, which may be read with [QUICConn.NextEvent].
-// Currently, it can only be called once.
-func (q *QUICConn) SendSessionTicket(opts QUICSessionTicketOptions) error {
-	c := q.conn
-	if c.config.SessionTicketsDisabled {
+	std, err := tls.ParseSessionState(b)
+	if err != nil {
 		return nil
 	}
-	if !c.isHandshakeComplete.Load() {
-		return quicError(errors.New("tls: SendSessionTicket called before handshake completed"))
-	}
-	if c.isClient {
-		return quicError(errors.New("tls: SendSessionTicket called on the client"))
-	}
-	if q.sessionTicketSent {
-		return quicError(errors.New("tls: SendSessionTicket called multiple times"))
-	}
-	q.sessionTicketSent = true
-	return quicError(c.sendSessionTicket(opts.EarlyData, opts.Extra))
+	return std
 }
 
-// StoreSession stores a session previously received in a QUICStoreSession event
-// in the ClientSessionCache.
-// The application may process additional events or modify the SessionState
-// before storing the session.
-func (q *QUICConn) StoreSession(session *SessionState) error {
-	c := q.conn
-	if !c.isClient {
-		return quicError(errors.New("tls: StoreSessionTicket called on the server"))
-	}
-	cacheKey := c.clientSessionCacheKey()
-	if cacheKey == "" {
+func cloneExtra(x [][]byte) [][]byte {
+	if x == nil {
 		return nil
 	}
-	cs := &ClientSessionState{session: session}
-	c.config.ClientSessionCache.Put(cacheKey, cs)
-	return nil
-}
-
-// ConnectionState returns basic TLS details about the connection.
-func (q *QUICConn) ConnectionState() ConnectionState {
-	return q.conn.ConnectionState()
-}
-
-// SetTransportParameters sets the transport parameters to send to the peer.
-//
-// Server connections may delay setting the transport parameters until after
-// receiving the client's transport parameters. See [QUICTransportParametersRequired].
-func (q *QUICConn) SetTransportParameters(params []byte) {
-	if params == nil {
-		params = []byte{}
+	out := make([][]byte, len(x))
+	for i, b := range x {
+		out[i] = append([]byte(nil), b...)
 	}
-	q.conn.quic.transportParams = params
-	if q.conn.quic.started {
-		<-q.conn.quic.signalc
-		<-q.conn.quic.blockedc
-	}
-}
-
-// quicError ensures err is an AlertError.
-// If err is not already, quicError wraps it with alertInternalError.
-func quicError(err error) error {
-	if err == nil {
-		return nil
-	}
-	if _, ok := errors.AsType[AlertError](err); ok {
-		return err
-	}
-	a, ok := errors.AsType[alert](err)
-	if !ok {
-		a = alertInternalError
-	}
-	// Return an error wrapping the original error and an AlertError.
-	// Truncate the text of the alert to 0 characters.
-	return fmt.Errorf("%w%.0w", err, AlertError(a))
-}
-
-func (c *Conn) quicReadHandshakeBytes(n int) error {
-	for c.hand.Len() < n {
-		if err := c.quicWaitForSignal(); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (c *Conn) quicSetReadSecret(level QUICEncryptionLevel, suite uint16, secret []byte) error {
-	// Ensure that there are no buffered handshake messages before changing the
-	// read keys, since that can cause messages to be parsed that were encrypted
-	// using old keys which are no longer appropriate.
-	// TODO(roland): we should merge this check with the similar one in setReadTrafficSecret.
-	if c.hand.Len() != 0 {
-		c.sendAlert(alertUnexpectedMessage)
-		return errors.New("tls: handshake buffer not empty before setting read traffic secret")
-	}
-	c.quic.events = append(c.quic.events, QUICEvent{
-		Kind:  QUICSetReadSecret,
-		Level: level,
-		Suite: suite,
-		Data:  secret,
-	})
-	return nil
-}
-
-func (c *Conn) quicSetWriteSecret(level QUICEncryptionLevel, suite uint16, secret []byte) {
-	c.quic.events = append(c.quic.events, QUICEvent{
-		Kind:  QUICSetWriteSecret,
-		Level: level,
-		Suite: suite,
-		Data:  secret,
-	})
-}
-
-func (c *Conn) quicWriteCryptoData(level QUICEncryptionLevel, data []byte) {
-	var last *QUICEvent
-	if len(c.quic.events) > 0 {
-		last = &c.quic.events[len(c.quic.events)-1]
-	}
-	if last == nil || last.Kind != QUICWriteData || last.Level != level {
-		c.quic.events = append(c.quic.events, QUICEvent{
-			Kind:  QUICWriteData,
-			Level: level,
-		})
-		last = &c.quic.events[len(c.quic.events)-1]
-	}
-	last.Data = append(last.Data, data...)
-}
-
-func (c *Conn) quicResumeSession(session *SessionState) error {
-	c.quic.events = append(c.quic.events, QUICEvent{
-		Kind:         QUICResumeSession,
-		SessionState: session,
-	})
-	c.quic.waitingForDrain = true
-	for c.quic.waitingForDrain {
-		if err := c.quicWaitForSignal(); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (c *Conn) quicStoreSession(session *SessionState) {
-	c.quic.events = append(c.quic.events, QUICEvent{
-		Kind:         QUICStoreSession,
-		SessionState: session,
-	})
-}
-
-func (c *Conn) quicSetTransportParameters(params []byte) {
-	c.quic.events = append(c.quic.events, QUICEvent{
-		Kind: QUICTransportParameters,
-		Data: params,
-	})
-}
-
-func (c *Conn) quicGetTransportParameters() ([]byte, error) {
-	if c.quic.transportParams == nil {
-		c.quic.events = append(c.quic.events, QUICEvent{
-			Kind: QUICTransportParametersRequired,
-		})
-	}
-	for c.quic.transportParams == nil {
-		if err := c.quicWaitForSignal(); err != nil {
-			return nil, err
-		}
-	}
-	return c.quic.transportParams, nil
-}
-
-func (c *Conn) quicHandshakeComplete() {
-	c.quic.events = append(c.quic.events, QUICEvent{
-		Kind: QUICHandshakeDone,
-	})
-}
-
-func (c *Conn) quicRejectedEarlyData() {
-	c.quic.events = append(c.quic.events, QUICEvent{
-		Kind: QUICRejectedEarlyData,
-	})
-}
-
-// quicWaitForSignal notifies the QUICConn that handshake progress is blocked,
-// and waits for a signal that the handshake should proceed.
-//
-// The handshake may become blocked waiting for handshake bytes
-// or for the user to provide transport parameters.
-func (c *Conn) quicWaitForSignal() error {
-	// Drop the handshake mutex while blocked to allow the user
-	// to call ConnectionState before the handshake completes.
-	c.handshakeMutex.Unlock()
-	defer c.handshakeMutex.Lock()
-	// Send on blockedc to notify the QUICConn that the handshake is blocked.
-	// Exported methods of QUICConn wait for the handshake to become blocked
-	// before returning to the user.
-	c.quic.blockedc <- struct{}{}
-	// The QUICConn reads from signalc to notify us that the handshake may
-	// be able to proceed. (The QUICConn reads, because we close signalc to
-	// indicate that the handshake has completed.)
-	c.quic.signalc <- struct{}{}
-	if c.quic.ctx.Err() != nil {
-		// The connection has been canceled.
-		return c.sendAlertLocked(alertCloseNotify)
-	}
-	c.hand.Write(c.quic.readbuf)
-	c.quic.readbuf = nil
-	return nil
+	return out
 }

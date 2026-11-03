@@ -1,0 +1,318 @@
+--- a/internal/tls/cipher_suites.go
++++ b/internal/tls/cipher_suites.go
+@@ -11,8 +11,6 @@
+ 	"crypto/des"
+ 	"crypto/hmac"
+ 	"github.com/refraction-networking/utls/v2/internal/boring"
+-	fipsaes "crypto/internal/fips140/aes"
+-	"crypto/internal/fips140/aes/gcm"
+ 	"crypto/rc4"
+ 	"crypto/sha1"
+ 	"crypto/sha256"
+@@ -519,7 +517,9 @@
+ 		aead, err = boring.NewGCMTLS(aes)
+ 	} else {
+ 		boring.Unreachable()
+-		aead, err = gcm.NewGCMForTLS12(aes.(*fipsaes.Block))
++		// [uTLS] Not a FIPS build: use crypto/cipher's AES-GCM instead of the
++		// crypto/internal/fips140 module (unimportable outside GOROOT).
++		aead, err = cipher.NewGCM(aes)
+ 	}
+ 	if err != nil {
+ 		panic(err)
+@@ -553,7 +553,9 @@
+ 		aead, err = boring.NewGCMTLS13(aes)
+ 	} else {
+ 		boring.Unreachable()
+-		aead, err = gcm.NewGCMForTLS13(aes.(*fipsaes.Block))
++		// [uTLS] Not a FIPS build: use crypto/cipher's AES-GCM instead of the
++		// crypto/internal/fips140 module (unimportable outside GOROOT).
++		aead, err = cipher.NewGCM(aes)
+ 	}
+ 	if err != nil {
+ 		panic(err)
+--- a/internal/tls/conn.go
++++ b/internal/tls/conn.go
+@@ -25,6 +25,9 @@
+ // A Conn represents a secured connection.
+ // It implements the net.Conn interface.
+ type Conn struct {
++	uconn   *UConn        // [uTLS] client whose ClientHello is rendered from a spec (u_conn.go)
++	userver *uServerHooks // [uTLS] test-peer server hooks (u_testpeer.go)
++
+ 	// constant
+ 	conn        net.Conn
+ 	isClient    bool
+@@ -682,12 +685,15 @@
+ 	}
+ 
+ 	// Process message.
++	if c.uRecordTooLarge(n, -1) { // [uTLS] record_size_limit (RFC 8449), TLS 1.3 inner plaintext
++		return c.in.setErrorLocked(c.sendAlert(alertRecordOverflow))
++	}
+ 	record := c.rawInput.Next(recordHeaderLen + n)
+ 	data, typ, err := c.in.decrypt(record)
+ 	if err != nil {
+ 		return c.in.setErrorLocked(c.sendAlert(err.(alert)))
+ 	}
+-	if len(data) > maxPlaintext {
++	if len(data) > maxPlaintext || c.uRecordTooLarge(-1, len(data)) { // [uTLS] record_size_limit, TLS 1.2
+ 		return c.in.setErrorLocked(c.sendAlert(alertRecordOverflow))
+ 	}
+ 
+@@ -949,6 +955,11 @@
+ 		c.sendBuf = append(c.sendBuf, data...)
+ 		return len(data), nil
+ 	}
++	if c.uFragmentPending() { // [uTLS] ClientHello fragmentation
++		n, err := c.uconn.writeFragmented(c.conn, data)
++		c.bytesSent += int64(n)
++		return n, err
++	}
+ 
+ 	n, err := c.conn.Write(data)
+ 	c.bytesSent += int64(n)
+@@ -1005,7 +1016,7 @@
+ 	var n int
+ 	for len(data) > 0 {
+ 		m := len(data)
+-		if maxPayload := c.maxPayloadSizeForWrite(typ); m > maxPayload {
++		if maxPayload := c.uLimitPayload(c.maxPayloadSizeForWrite(typ)); m > maxPayload { // [uTLS] record_size_limit
+ 			m = maxPayload
+ 		}
+ 
+@@ -1168,6 +1179,10 @@
+ 		m = new(endOfEarlyDataMsg)
+ 	case typeKeyUpdate:
+ 		m = new(keyUpdateMsg)
++	case typeCompressedCertificate: // [uTLS] RFC 8879, only if offered (u_negotiate.go)
++		if m = c.uCompressedCertificateMsg(); m == nil {
++			return nil, c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
++		}
+ 	default:
+ 		return nil, c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
+ 	}
+@@ -1180,6 +1195,9 @@
+ 	if !m.unmarshal(data) {
+ 		return nil, c.in.setErrorLocked(c.sendAlert(alertDecodeError))
+ 	}
++	if err := c.uObserveHandshake(data); err != nil { // [uTLS] ALPS, record_size_limit (u_negotiate.go)
++		return nil, c.in.setErrorLocked(err)
++	}
+ 
+ 	if transcript != nil {
+ 		transcript.Write(data)
+--- a/internal/tls/handshake_client.go
++++ b/internal/tls/handshake_client.go
+@@ -204,6 +204,18 @@
+ 		}
+ 	}
+ 
++	// [uTLS] Build the logical ClientHello from the attached ClientHelloSpec
++	// and attach its renderer (u_conn.go prepareHello).
++	if c.uconn != nil {
++		ksk, err := c.uconn.prepareHello(c, hello, keyShareKeys)
++		if err != nil {
++			return nil, nil, nil, err
++		}
++		if ksk != nil {
++			keyShareKeys = ksk
++		}
++	}
++
+ 	return hello, keyShareKeys, ech, nil
+ }
+ 
+@@ -234,7 +246,7 @@
+ 		return err
+ 	}
+ 
+-	session, earlySecret, binderKey, err := c.loadSession(hello)
++	session, earlySecret, binderKey, err := c.uLoadSession(hello) // [uTLS] spec-aware session stage + ClientHello hook
+ 	if err != nil {
+ 		return err
+ 	}
+@@ -308,6 +320,9 @@
+ 		c.sendAlert(alertUnexpectedMessage)
+ 		return unexpectedMessageError(serverHello, msg)
+ 	}
++	if c.uconn != nil { // [uTLS] expose the ServerHello
++		c.uconn.setServerHello(serverHello.original, keyShare{})
++	}
+ 
+ 	if err := c.pickTLSVersion(serverHello); err != nil {
+ 		return err
+@@ -316,7 +331,7 @@
+ 	// If we are negotiating a protocol version that's lower than what we
+ 	// support, check for the server downgrade canaries.
+ 	// See RFC 8446, Section 4.1.3.
+-	maxVers := c.config.maxSupportedVersion(roleClient, c.quic != nil)
++	maxVers := c.uMaxOfferedVersion(c.config.maxSupportedVersion(roleClient, c.quic != nil)) // [uTLS] versions the spec offered
+ 	tls12Downgrade := string(serverHello.random[24:]) == downgradeCanaryTLS12
+ 	tls11Downgrade := string(serverHello.random[24:]) == downgradeCanaryTLS11
+ 	if maxVers == VersionTLS13 && c.vers <= VersionTLS12 && (tls12Downgrade || tls11Downgrade) ||
+@@ -520,6 +535,10 @@
+ 		c.sendAlert(alertProtocolVersion)
+ 		return fmt.Errorf("tls: server selected unsupported protocol version %x", peerVersion)
+ 	}
++	if err := c.uCheckOfferedVersion(serverHello, vers); err != nil { // [uTLS] the spec's offered versions
++		c.sendAlert(alertProtocolVersion)
++		return err
++	}
+ 
+ 	c.vers = vers
+ 	c.haveVers = true
+@@ -1062,7 +1081,11 @@
+ 	session.ticket = hs.ticket
+ 
+ 	cs := &ClientSessionState{session: session}
+-	c.config.ClientSessionCache.Put(cacheKey, cs)
++	// [uTLS] A fingerprint advertises session_ticket on the wire even when the
++	// application set no ClientSessionCache, so there may be nothing to save to.
++	if c.config.ClientSessionCache != nil {
++		c.config.ClientSessionCache.Put(cacheKey, cs)
++	}
+ 	return nil
+ }
+ 
+--- a/internal/tls/handshake_client_tls13.go
++++ b/internal/tls/handshake_client_tls13.go
+@@ -140,6 +140,9 @@
+ 	if err := hs.readServerFinished(); err != nil {
+ 		return err
+ 	}
++	if err := hs.uSendClientEncryptedExtensions(); err != nil { // [uTLS] ALPS
++		return err
++	}
+ 	if err := hs.sendClientCertificate(); err != nil {
+ 		return err
+ 	}
+@@ -471,6 +474,15 @@
+ func (hs *clientHandshakeStateTLS13) establishHandshakeKeys() error {
+ 	c := hs.c
+ 
++	// [uTLS] A spec may offer several key shares: use the private key for the
++	// group the server selected, and expose the server's share.
++	if c.uconn != nil {
++		c.uconn.setServerHello(hs.serverHello.original, hs.serverHello.serverShare)
++		if k := c.uconn.keyShareKeyForGroup(hs.serverHello.serverShare.group); k != nil {
++			hs.keyShareKeys = k
++		}
++	}
++
+ 	ke, err := keyExchangeForCurveID(hs.serverHello.serverShare.group)
+ 	if err != nil {
+ 		c.sendAlert(alertInternalError)
+@@ -620,6 +632,9 @@
+ 		}
+ 	}
+ 
++	if msg, err = c.uDecompressCertificate(msg); err != nil { // [uTLS] RFC 8879
++		return err
++	}
+ 	certMsg, ok := msg.(*certificateMsgTLS13)
+ 	if !ok {
+ 		c.sendAlert(alertUnexpectedMessage)
+--- a/internal/tls/handshake_messages.go
++++ b/internal/tls/handshake_messages.go
+@@ -70,6 +70,7 @@
+ }
+ 
+ type clientHelloMsg struct {
++	uRender                          *helloRenderer // [uTLS] non-nil for spec-rendered client hellos
+ 	original                         []byte
+ 	vers                             uint16
+ 	random                           []byte
+@@ -103,6 +104,9 @@
+ }
+ 
+ func (m *clientHelloMsg) marshalMsg(echInner bool) ([]byte, error) {
++	if echInner && m.uRender != nil { // [uTLS] EncodedClientHelloInner in the spec's shape
++		return m.uRender.marshal(m, true)
++	}
+ 	var exts cryptobyte.Builder
+ 	if len(m.serverName) > 0 {
+ 		// RFC 6066, Section 3
+@@ -375,6 +379,9 @@
+ }
+ 
+ func (m *clientHelloMsg) marshal() ([]byte, error) {
++	if m.uRender != nil { // [uTLS] render in the spec's shape from the current fields (u_spec.go)
++		return m.uRender.marshal(m, false)
++	}
+ 	return m.marshalMsg(false)
+ }
+ 
+@@ -687,6 +694,7 @@
+ 
+ func (m *clientHelloMsg) clone() *clientHelloMsg {
+ 	return &clientHelloMsg{
++		uRender:                          m.uRender, // [uTLS]
+ 		original:                         slices.Clone(m.original),
+ 		vers:                             m.vers,
+ 		random:                           slices.Clone(m.random),
+--- a/internal/tls/handshake_server_test.go
++++ b/internal/tls/handshake_server_test.go
+@@ -10,7 +10,6 @@
+ 	"crypto"
+ 	"crypto/ecdh"
+ 	"crypto/elliptic"
+-	internalrand "crypto/internal/rand"
+ 	"crypto/rand"
+ 	"github.com/refraction-networking/utls/v2/internal/fips140tls"
+ 	"crypto/x509"
+@@ -1416,9 +1415,10 @@
+ func benchmarkHandshakeServer(b *testing.B, version uint16, cipherSuite uint16, curve CurveID, cert []byte, key crypto.PrivateKey) {
+ 	config := testConfigServer.Clone()
+ 
+-	// cryptotest.SetGlobalRandom does not support *testing.B
+-	internalrand.SetTestingReader(zeroSource{})
+-	defer internalrand.SetTestingReader(nil)
++	// [uTLS] Public testing/cryptotest.SetGlobalRandom supports only *testing.T,
++	// and crypto/internal/rand (the std seam it uses for *testing.B) is not
++	// importable here. The benchmark therefore runs with real randomness.
++	_ = zeroSource{}
+ 
+ 	config.CipherSuites = []uint16{cipherSuite}
+ 	config.CurvePreferences = []CurveID{curve}
+--- a/internal/tls/handshake_server_tls13.go
++++ b/internal/tls/handshake_server_tls13.go
+@@ -811,7 +811,11 @@
+ 		}
+ 	}
+ 
+-	if _, err := hs.c.writeHandshakeRecord(encryptedExtensions, hs.transcript); err != nil {
++	var eeMsg handshakeMessage = encryptedExtensions
++	if hs.c.userver != nil { // [uTLS] test peer (u_testpeer.go)
++		eeMsg = hs.c.userver.encryptedExtensions(hs, encryptedExtensions)
++	}
++	if _, err := hs.c.writeHandshakeRecord(eeMsg, hs.transcript); err != nil {
+ 		return err
+ 	}
+ 
+@@ -852,7 +856,11 @@
+ 	certMsg.scts = hs.clientHello.scts && len(hs.cert.SignedCertificateTimestamps) > 0
+ 	certMsg.ocspStapling = hs.clientHello.ocspStapling && len(hs.cert.OCSPStaple) > 0
+ 
+-	if _, err := hs.c.writeHandshakeRecord(certMsg, hs.transcript); err != nil {
++	var certOut handshakeMessage = certMsg
++	if hs.c.userver != nil { // [uTLS] test peer (u_testpeer.go)
++		certOut = hs.c.userver.certificate(hs, certMsg)
++	}
++	if _, err := hs.c.writeHandshakeRecord(certOut, hs.transcript); err != nil {
+ 		return err
+ 	}
+ 
+@@ -955,6 +963,12 @@
+ func (hs *serverHandshakeStateTLS13) sendSessionTickets() error {
+ 	c := hs.c
+ 
++	if c.userver != nil { // [uTLS] test peer: read client EncryptedExtensions (ALPS) first (u_testpeer.go)
++		if err := c.userver.readClientEncryptedExtensions(hs); err != nil {
++			return err
++		}
++	}
++
+ 	hs.clientFinished = hs.suite.finishedHash(c.in.trafficSecret, hs.transcript)
+ 	finishedMsg := &finishedMsg{
+ 		verifyData: hs.clientFinished,

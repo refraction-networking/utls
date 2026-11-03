@@ -1,0 +1,12 @@
+# Line endings: every checkout gets the committed bytes, LF, on every platform
+# (including Windows with core.autocrlf=true). The API snapshot, JSON profile
+# goldens, the generated crypto/tls mirror and upstream/utls.patch are compared
+# byte for byte, and Go sources are gofmt'ed with LF.
+* text=auto eol=lf
+
+# Byte-exact fixtures are never converted.
+*.png binary
+*.pem -text
+*.hex -text
+internal/tls/testdata/** -text
+upstream/utls.patch -text

@@ -1,0 +1,17 @@
+# Import path rewrites applied to every mirrored .go file.
+#
+# Format: <upstream import path>  <replacement>
+# "@MODULE@" expands to the module path from go.mod.
+#
+# Upstream crypto/tls imports a few std-internal packages that cannot be
+# imported from outside GOROOT. Each is replaced by a uTLS-owned shim (see
+# internal/README.md) or by an equivalent public package.
+crypto/tls/internal/fips140tls     @MODULE@/internal/fips140tls
+crypto/internal/fips140/tls13      @MODULE@/internal/tls13
+crypto/internal/fips140/tls12      @MODULE@/internal/tls12
+crypto/internal/boring             @MODULE@/internal/boring
+crypto/internal/cryptotest         @MODULE@/internal/cryptotest
+internal/godebug                   @MODULE@/internal/godebug
+internal/testenv                   @MODULE@/internal/testenv
+internal/byteorder                 @MODULE@/internal/byteorder
+internal/cpu                       golang.org/x/sys/cpu

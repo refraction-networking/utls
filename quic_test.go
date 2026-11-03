@@ -1,808 +1,239 @@
-// Copyright 2023 The Go Authors. All rights reserved.
+// Copyright 2026 The uTLS Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package tls
+package utls
 
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"errors"
-	"fmt"
-	"net"
-	"reflect"
-	"strings"
-	"sync"
 	"testing"
 )
 
-type testQUICConn struct {
-	t                 *testing.T
-	conn              *QUICConn
-	readSecret        map[QUICEncryptionLevel]suiteSecret
-	writeSecret       map[QUICEncryptionLevel]suiteSecret
-	ticketOpts        QUICSessionTicketOptions
-	onResumeSession   func(*SessionState)
-	gotParams         []byte
-	gotError          error
-	earlyDataRejected bool
-	complete          bool
+// quicSide abstracts the client (uTLS) and server (crypto/tls) QUIC conns.
+type quicSide interface {
+	NextEvent() tls.QUICEvent
+	HandleData(tls.QUICEncryptionLevel, []byte) error
+	SetTransportParameters([]byte)
 }
 
-func newTestQUICClient(t *testing.T, config *QUICConfig) *testQUICConn {
-	q := &testQUICConn{
-		t:    t,
-		conn: QUICClient(config),
-	}
-	t.Cleanup(func() {
-		q.conn.Close()
-	})
-	return q
+type quicPeer struct {
+	conn      quicSide
+	gotParams []byte
+	complete  bool
+	onStore   func(*tls.SessionState)
+	onResume  func(*tls.SessionState)
+	early     bool // saw an Early write secret
 }
 
-func newTestQUICServer(t *testing.T, config *QUICConfig) *testQUICConn {
-	q := &testQUICConn{
-		t:    t,
-		conn: QUICServer(config),
-	}
-	t.Cleanup(func() {
-		q.conn.Close()
-	})
-	return q
-}
-
-type suiteSecret struct {
-	suite  uint16
-	secret []byte
-}
-
-func (q *testQUICConn) setReadSecret(level QUICEncryptionLevel, suite uint16, secret []byte) {
-	if _, ok := q.writeSecret[level]; !ok && level != QUICEncryptionLevelEarly {
-		q.t.Errorf("SetReadSecret for level %v called before SetWriteSecret", level)
-	}
-	if level == QUICEncryptionLevelApplication && !q.complete {
-		q.t.Errorf("SetReadSecret for level %v called before HandshakeComplete", level)
-	}
-	if _, ok := q.readSecret[level]; ok {
-		q.t.Errorf("SetReadSecret for level %v called twice", level)
-	}
-	if q.readSecret == nil {
-		q.readSecret = map[QUICEncryptionLevel]suiteSecret{}
-	}
-	switch level {
-	case QUICEncryptionLevelHandshake,
-		QUICEncryptionLevelEarly,
-		QUICEncryptionLevelApplication:
-		q.readSecret[level] = suiteSecret{suite, secret}
-	default:
-		q.t.Errorf("SetReadSecret for unexpected level %v", level)
-	}
-}
-
-func (q *testQUICConn) setWriteSecret(level QUICEncryptionLevel, suite uint16, secret []byte) {
-	if _, ok := q.writeSecret[level]; ok {
-		q.t.Errorf("SetWriteSecret for level %v called twice", level)
-	}
-	if q.writeSecret == nil {
-		q.writeSecret = map[QUICEncryptionLevel]suiteSecret{}
-	}
-	switch level {
-	case QUICEncryptionLevelHandshake,
-		QUICEncryptionLevelEarly,
-		QUICEncryptionLevelApplication:
-		q.writeSecret[level] = suiteSecret{suite, secret}
-	default:
-		q.t.Errorf("SetWriteSecret for unexpected level %v", level)
-	}
-}
-
-var errTransportParametersRequired = errors.New("transport parameters required")
-
-func runTestQUICConnection(ctx context.Context, cli, srv *testQUICConn, onEvent func(e QUICEvent, src, dst *testQUICConn) bool) error {
-	a, b := cli, srv
-	for _, c := range []*testQUICConn{a, b} {
-		if !c.conn.conn.quic.started {
-			if err := c.conn.Start(ctx); err != nil {
-				return err
-			}
-		}
-	}
-	idleCount := 0
-	for {
-		e := a.conn.NextEvent()
-		if onEvent != nil && onEvent(e, a, b) {
-			continue
-		}
-		if a.gotError != nil && e.Kind != QUICNoEvent {
-			return fmt.Errorf("unexpected event %v after QUICErrorEvent", e.Kind)
-		}
-		switch e.Kind {
-		case QUICNoEvent:
-			idleCount++
-			if idleCount == 2 {
-				if !a.complete || !b.complete {
-					return errors.New("handshake incomplete")
+// runQUIC shuttles CRYPTO data between client and server until both finish.
+func runQUIC(t *testing.T, cli, srv *quicPeer) error {
+	t.Helper()
+	for i := 0; i < 100 && !(cli.complete && srv.complete); i++ {
+		progressed := false
+		for _, p := range []struct{ from, to *quicPeer }{{cli, srv}, {srv, cli}} {
+			for {
+				e := p.from.conn.NextEvent()
+				if e.Kind == tls.QUICNoEvent {
+					break
 				}
-				return nil
-			}
-			a, b = b, a
-		case QUICSetReadSecret:
-			a.setReadSecret(e.Level, e.Suite, e.Data)
-		case QUICSetWriteSecret:
-			a.setWriteSecret(e.Level, e.Suite, e.Data)
-		case QUICWriteData:
-			if err := b.conn.HandleData(e.Level, e.Data); err != nil {
-				return err
-			}
-		case QUICTransportParameters:
-			a.gotParams = e.Data
-			if a.gotParams == nil {
-				a.gotParams = []byte{}
-			}
-		case QUICTransportParametersRequired:
-			return errTransportParametersRequired
-		case QUICHandshakeDone:
-			a.complete = true
-			if a == srv {
-				if err := srv.conn.SendSessionTicket(srv.ticketOpts); err != nil {
-					return err
+				progressed = true
+				switch e.Kind {
+				case tls.QUICWriteData:
+					if err := p.to.conn.HandleData(e.Level, bytes.Clone(e.Data)); err != nil {
+						return err
+					}
+				case tls.QUICTransportParameters:
+					p.from.gotParams = bytes.Clone(e.Data)
+				case tls.QUICTransportParametersRequired:
+					p.from.conn.SetTransportParameters([]byte("srv-params"))
+				case tls.QUICHandshakeDone:
+					p.from.complete = true
+				case tls.QUICStoreSession:
+					if p.from.onStore != nil {
+						p.from.onStore(e.SessionState)
+					}
+				case tls.QUICResumeSession:
+					if p.from.onResume != nil {
+						p.from.onResume(e.SessionState)
+					}
+				case tls.QUICSetWriteSecret:
+					if e.Level == tls.QUICEncryptionLevelEarly {
+						p.from.early = true
+					}
+				case tls.QUICErrorEvent:
+					return e.Err
 				}
 			}
-		case QUICStoreSession:
-			if a != cli {
-				return errors.New("unexpected QUICStoreSession event received by server")
-			}
-			a.conn.StoreSession(e.SessionState)
-		case QUICResumeSession:
-			if a.onResumeSession != nil {
-				a.onResumeSession(e.SessionState)
-			}
-		case QUICRejectedEarlyData:
-			a.earlyDataRejected = true
-		case QUICErrorEvent:
-			if e.Err == nil {
-				return errors.New("unexpected QUICErrorEvent with no Err")
-			}
-			a.gotError = e.Err
 		}
-		if e.Kind != QUICNoEvent {
-			idleCount = 0
+		if !progressed {
+			return errors.New("QUIC handshake stalled")
 		}
 	}
+	return nil
 }
 
-func TestQUICConnection(t *testing.T) {
-	clientConfig := &QUICConfig{TLSConfig: testConfigClient.Clone()}
-	clientConfig.TLSConfig.MinVersion = VersionTLS13
-	serverConfig := &QUICConfig{TLSConfig: testConfigServer.Clone()}
-	serverConfig.TLSConfig.MinVersion = VersionTLS13
-
-	cli := newTestQUICClient(t, clientConfig)
-	cli.conn.SetTransportParameters(nil)
-
-	srv := newTestQUICServer(t, serverConfig)
-	srv.conn.SetTransportParameters(nil)
-
-	if err := runTestQUICConnection(context.Background(), cli, srv, nil); err != nil {
-		t.Fatalf("error during connection handshake: %v", err)
+func quicServer(t *testing.T, scfg *tls.Config) *tls.QUICConn {
+	s := tls.QUICServer(&tls.QUICConfig{TLSConfig: scfg, EnableSessionEvents: true})
+	s.SetTransportParameters([]byte("srv-params"))
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatal(err)
 	}
-
-	if _, ok := cli.readSecret[QUICEncryptionLevelHandshake]; !ok {
-		t.Errorf("client has no Handshake secret")
-	}
-	if _, ok := cli.readSecret[QUICEncryptionLevelApplication]; !ok {
-		t.Errorf("client has no Application secret")
-	}
-	if _, ok := srv.readSecret[QUICEncryptionLevelHandshake]; !ok {
-		t.Errorf("server has no Handshake secret")
-	}
-	if _, ok := srv.readSecret[QUICEncryptionLevelApplication]; !ok {
-		t.Errorf("server has no Application secret")
-	}
-	for _, level := range []QUICEncryptionLevel{QUICEncryptionLevelHandshake, QUICEncryptionLevelApplication} {
-		if _, ok := cli.readSecret[level]; !ok {
-			t.Errorf("client has no %v read secret", level)
-		}
-		if _, ok := srv.readSecret[level]; !ok {
-			t.Errorf("server has no %v read secret", level)
-		}
-		if !reflect.DeepEqual(cli.readSecret[level], srv.writeSecret[level]) {
-			t.Errorf("client read secret does not match server write secret for level %v", level)
-		}
-		if !reflect.DeepEqual(cli.writeSecret[level], srv.readSecret[level]) {
-			t.Errorf("client write secret does not match server read secret for level %v", level)
-		}
-	}
+	return s
 }
 
-func TestQUICVersions(t *testing.T) {
-	for _, tc := range []struct {
-		name      string
-		clientMin uint16
-		clientMax uint16
-		serverMin uint16
-		serverMax uint16
-		wantErr   bool
-	}{
-		{
-			name: "defaults",
-		},
-		{
-			name:      "MinVersion TLS 1.2",
-			clientMin: VersionTLS12,
-			serverMin: VersionTLS12,
-		},
-		{
-			name:      "MinVersion TLS 1.3",
-			clientMin: VersionTLS13,
-			serverMin: VersionTLS13,
-		},
-		{
-			name:      "client MaxVersion TLS 1.2",
-			clientMax: VersionTLS12,
-			wantErr:   true,
-		},
-		{
-			name:      "server MaxVersion TLS 1.2",
-			serverMax: VersionTLS12,
-			wantErr:   true,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			client := testConfigClient.Clone()
-			client.MinVersion = tc.clientMin
-			client.MaxVersion = tc.clientMax
-			server := testConfigServer.Clone()
-			server.MinVersion = tc.serverMin
-			server.MaxVersion = tc.serverMax
+// quicChromeSpec is a TLS-1.3-only spec with a transport parameters slot.
+func quicChromeSpec() (*ClientHelloSpec, error) {
+	s, err := HelloChrome_155.Spec()
+	if err != nil {
+		return nil, err
+	}
+	for i, e := range s.Extensions {
+		if v, ok := e.(*SupportedVersionsExtension); ok {
+			v.Versions = []uint16{GREASE_PLACEHOLDER, VersionTLS13}
+		}
+		if _, ok := e.(*SessionTicketExtension); ok {
+			s.Extensions[i] = &QUICTransportParametersExtension{}
+		}
+	}
+	s.TLSVersMin = VersionTLS13
+	return s, nil
+}
 
-			cli := newTestQUICClient(t, &QUICConfig{TLSConfig: client})
-			cli.conn.SetTransportParameters(nil)
-			srv := newTestQUICServer(t, &QUICConfig{TLSConfig: server})
-			srv.conn.SetTransportParameters(nil)
-			err := runTestQUICConnection(context.Background(), cli, srv, nil)
-			if tc.wantErr == (err == nil) {
-				t.Errorf("got err=%v, wantErr=%v", err, tc.wantErr)
+func TestQUICClientHandshake(t *testing.T) {
+	quicID := CustomFingerprint("ChromeQUIC", "test", quicChromeSpec)
+	for _, id := range []ClientHelloID{quicID, HelloGolang} {
+		t.Run(id.Str(), func(t *testing.T) {
+			cache := tls.NewLRUClientSessionCache(4)
+			ccfg := clientConfig(t)
+			ccfg.MinVersion = tls.VersionTLS13
+			ccfg.NextProtos = []string{"h3"}
+			ccfg.ClientSessionCache = cache
+			c := QUICClient(&tls.QUICConfig{TLSConfig: ccfg, EnableSessionEvents: true}, id)
+			c.SetTransportParameters([]byte("cli-params"))
+			if err := c.Start(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			scfg := serverConfig(t) // shared: same ticket keys for resumption
+			scfg.MinVersion = tls.VersionTLS13
+			scfg.NextProtos = []string{"h3"}
+			s := quicServer(t, scfg)
+			stored := 0
+			cli := &quicPeer{conn: c, onStore: func(ss *tls.SessionState) {
+				if ss == nil {
+					t.Error("nil session in QUICStoreSession")
+					return
+				}
+				ss.Extra = append(ss.Extra, []byte("quic-app-state"))
+				ss.EarlyData = true
+				if err := c.StoreSession(ss); err != nil {
+					t.Error(err)
+				}
+				stored++
+			}}
+			srv := &quicPeer{conn: s}
+			if err := runQUIC(t, cli, srv); err != nil {
+				t.Fatal(err)
+			}
+			if string(cli.gotParams) != "srv-params" || string(srv.gotParams) != "cli-params" {
+				t.Fatalf("transport params %q / %q", cli.gotParams, srv.gotParams)
+			}
+			st := c.ConnectionState()
+			if st.Version != tls.VersionTLS13 || st.NegotiatedProtocol != "h3" || len(st.PeerCertificates) == 0 {
+				t.Fatalf("state %+v", st)
+			}
+			if id == quicID {
+				h := parseHelloFields(t, c.ClientHelloRaw())
+				if h.extIDs[len(h.extIDs)-1] == 57 || !contains(h.extIDs, 57) {
+					t.Fatalf("transport parameters not in the spec slot: %v", h.extIDs)
+				}
+			}
+			// The server sends a ticket after the handshake; feed it.
+			for e := s.NextEvent(); e.Kind != tls.QUICNoEvent; e = s.NextEvent() {
+				if e.Kind == tls.QUICWriteData {
+					if err := c.HandleData(e.Level, e.Data); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			if err := s.SendSessionTicket(tls.QUICSessionTicketOptions{EarlyData: true}); err != nil {
+				t.Fatal(err)
+			}
+			for e := s.NextEvent(); e.Kind != tls.QUICNoEvent; e = s.NextEvent() {
+				if e.Kind == tls.QUICWriteData {
+					if err := c.HandleData(e.Level, e.Data); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			for e := c.NextEvent(); e.Kind != tls.QUICNoEvent; e = c.NextEvent() {
+				if e.Kind == tls.QUICStoreSession {
+					cli.onStore(e.SessionState)
+				}
+			}
+			if stored == 0 {
+				t.Fatal("no QUICStoreSession")
+			}
+
+			// Resume: the session (with the app's Extra) comes back.
+			c2 := QUICClient(&tls.QUICConfig{TLSConfig: ccfg, EnableSessionEvents: true}, id)
+			c2.SetTransportParameters([]byte("cli-params"))
+			if err := c2.Start(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			var resumed *tls.SessionState
+			cli2 := &quicPeer{conn: c2, onResume: func(ss *tls.SessionState) { resumed = ss }}
+			srv2 := &quicPeer{conn: quicServer(t, scfg)}
+			if err := runQUIC(t, cli2, srv2); err != nil {
+				t.Fatal(err)
+			}
+			if resumed == nil || len(resumed.Extra) == 0 || string(resumed.Extra[len(resumed.Extra)-1]) != "quic-app-state" {
+				t.Fatalf("resumed session %+v", resumed)
+			}
+			if !c2.ConnectionState().DidResume {
+				t.Fatal("did not resume")
+			}
+			if !cli2.early {
+				t.Fatal("0-RTT write secret not offered for an EarlyData session")
 			}
 		})
 	}
 }
 
-func TestQUICSessionResumption(t *testing.T) {
-	clientConfig := &QUICConfig{TLSConfig: testConfigClient.Clone()}
-	clientConfig.TLSConfig.MinVersion = VersionTLS13
-	clientConfig.TLSConfig.ClientSessionCache = NewLRUClientSessionCache(1)
-
-	serverConfig := &QUICConfig{TLSConfig: testConfigServer.Clone()}
-	serverConfig.TLSConfig.MinVersion = VersionTLS13
-
-	cli := newTestQUICClient(t, clientConfig)
-	cli.conn.SetTransportParameters(nil)
-	srv := newTestQUICServer(t, serverConfig)
-	srv.conn.SetTransportParameters(nil)
-	if err := runTestQUICConnection(context.Background(), cli, srv, nil); err != nil {
-		t.Fatalf("error during first connection handshake: %v", err)
+func TestQUICClientErrors(t *testing.T) {
+	if err := QUICClient(nil, HelloChrome_Auto).Start(context.Background()); err == nil {
+		t.Fatal("nil config accepted")
 	}
-	if cli.conn.ConnectionState().DidResume {
-		t.Errorf("first connection unexpectedly used session resumption")
+	ccfg := clientConfig(t)
+	ccfg.MinVersion = tls.VersionTLS13
+	c := QUICClient(&tls.QUICConfig{TLSConfig: ccfg}, HelloCustom)
+	c.SetTransportParameters(nil)
+	err := c.Start(context.Background())
+	for e := c.NextEvent(); err == nil && e.Kind != tls.QUICNoEvent; e = c.NextEvent() {
+		err = e.Err
 	}
-
-	cli2 := newTestQUICClient(t, clientConfig)
-	cli2.conn.SetTransportParameters(nil)
-	srv2 := newTestQUICServer(t, serverConfig)
-	srv2.conn.SetTransportParameters(nil)
-	if err := runTestQUICConnection(context.Background(), cli2, srv2, nil); err != nil {
-		t.Fatalf("error during second connection handshake: %v", err)
+	if !errors.Is(err, ErrNoSpec) {
+		t.Fatalf("HelloCustom without spec: %v", err)
 	}
-	if !cli2.conn.ConnectionState().DidResume {
-		t.Errorf("second connection did not use session resumption")
+	if ae := (tls.AlertError(0)); !errors.As(err, &ae) {
+		t.Fatalf("QUIC error does not wrap tls.AlertError: %T", err)
 	}
-
-	clientConfig.TLSConfig.SessionTicketsDisabled = true
-	cli3 := newTestQUICClient(t, clientConfig)
-	cli3.conn.SetTransportParameters(nil)
-	srv3 := newTestQUICServer(t, serverConfig)
-	srv3.conn.SetTransportParameters(nil)
-	if err := runTestQUICConnection(context.Background(), cli3, srv3, nil); err != nil {
-		t.Fatalf("error during third connection handshake: %v", err)
+	bad := CustomFingerprint("Broken", "1", func() (*ClientHelloSpec, error) { return nil, errors.New("boom") })
+	if err := QUICClient(&tls.QUICConfig{TLSConfig: ccfg}, bad).Start(context.Background()); err == nil {
+		t.Fatal("broken factory accepted by Start")
 	}
-	if cli3.conn.ConnectionState().DidResume {
-		t.Errorf("third connection unexpectedly used session resumption")
+	if err := QUICClient(&tls.QUICConfig{TLSConfig: ccfg}, HelloChrome_Auto).SendSessionTicket(tls.QUICSessionTicketOptions{}); err == nil {
+		t.Fatal("SendSessionTicket on a client accepted")
 	}
 }
 
-func TestQUICFragmentaryData(t *testing.T) {
-	clientConfig := &QUICConfig{TLSConfig: testConfigClient.Clone()}
-	clientConfig.TLSConfig.MinVersion = VersionTLS13
-	clientConfig.TLSConfig.ClientSessionCache = NewLRUClientSessionCache(1)
-
-	serverConfig := &QUICConfig{TLSConfig: testConfigServer.Clone()}
-	serverConfig.TLSConfig.MinVersion = VersionTLS13
-
-	cli := newTestQUICClient(t, clientConfig)
-	cli.conn.SetTransportParameters(nil)
-	srv := newTestQUICServer(t, serverConfig)
-	srv.conn.SetTransportParameters(nil)
-	onEvent := func(e QUICEvent, src, dst *testQUICConn) bool {
-		if e.Kind == QUICWriteData {
-			// Provide the data one byte at a time.
-			for i := range e.Data {
-				if err := dst.conn.HandleData(e.Level, e.Data[i:i+1]); err != nil {
-					t.Errorf("HandleData: %v", err)
-					break
-				}
-			}
+func contains(s []uint16, v uint16) bool {
+	for _, x := range s {
+		if x == v {
 			return true
 		}
-		return false
 	}
-	if err := runTestQUICConnection(context.Background(), cli, srv, onEvent); err != nil {
-		t.Fatalf("error during first connection handshake: %v", err)
-	}
-}
-
-func TestQUICPostHandshakeClientAuthentication(t *testing.T) {
-	// RFC 9001, Section 4.4.
-	clientConfig := &QUICConfig{TLSConfig: testConfigClient.Clone()}
-	clientConfig.TLSConfig.MinVersion = VersionTLS13
-	serverConfig := &QUICConfig{TLSConfig: testConfigServer.Clone()}
-	serverConfig.TLSConfig.MinVersion = VersionTLS13
-	cli := newTestQUICClient(t, clientConfig)
-	cli.conn.SetTransportParameters(nil)
-	srv := newTestQUICServer(t, serverConfig)
-	srv.conn.SetTransportParameters(nil)
-	if err := runTestQUICConnection(context.Background(), cli, srv, nil); err != nil {
-		t.Fatalf("error during connection handshake: %v", err)
-	}
-
-	certReq := new(certificateRequestMsgTLS13)
-	certReq.ocspStapling = true
-	certReq.scts = true
-	certReq.supportedSignatureAlgorithms = supportedSignatureAlgorithms(VersionTLS13, VersionTLS13)
-	certReqBytes, err := certReq.marshal()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := cli.conn.HandleData(QUICEncryptionLevelApplication, append([]byte{
-		byte(typeCertificateRequest),
-		byte(0), byte(0), byte(len(certReqBytes)),
-	}, certReqBytes...)); err == nil {
-		t.Fatalf("post-handshake authentication request: got no error, want one")
-	}
-}
-
-func TestQUICPostHandshakeKeyUpdate(t *testing.T) {
-	// RFC 9001, Section 6.
-	clientConfig := &QUICConfig{TLSConfig: testConfigClient.Clone()}
-	clientConfig.TLSConfig.MinVersion = VersionTLS13
-	serverConfig := &QUICConfig{TLSConfig: testConfigServer.Clone()}
-	serverConfig.TLSConfig.MinVersion = VersionTLS13
-	cli := newTestQUICClient(t, clientConfig)
-	cli.conn.SetTransportParameters(nil)
-	srv := newTestQUICServer(t, serverConfig)
-	srv.conn.SetTransportParameters(nil)
-	if err := runTestQUICConnection(context.Background(), cli, srv, nil); err != nil {
-		t.Fatalf("error during connection handshake: %v", err)
-	}
-
-	keyUpdate := new(keyUpdateMsg)
-	keyUpdateBytes, err := keyUpdate.marshal()
-	if err != nil {
-		t.Fatal(err)
-	}
-	expectedErr := "unexpected key update message"
-	if err = cli.conn.HandleData(QUICEncryptionLevelApplication, keyUpdateBytes); err == nil {
-		t.Fatalf("key update request: expected error from post-handshake key update, got nil")
-	} else if !strings.Contains(err.Error(), expectedErr) {
-		t.Fatalf("key update request: got error %v, expected substring %q", err, expectedErr)
-	}
-}
-
-func TestQUICPostHandshakeMessageTooLarge(t *testing.T) {
-	clientConfig := &QUICConfig{TLSConfig: testConfigClient.Clone()}
-	clientConfig.TLSConfig.MinVersion = VersionTLS13
-	serverConfig := &QUICConfig{TLSConfig: testConfigServer.Clone()}
-	serverConfig.TLSConfig.MinVersion = VersionTLS13
-	cli := newTestQUICClient(t, clientConfig)
-	cli.conn.SetTransportParameters(nil)
-	srv := newTestQUICServer(t, serverConfig)
-	srv.conn.SetTransportParameters(nil)
-	if err := runTestQUICConnection(context.Background(), cli, srv, nil); err != nil {
-		t.Fatalf("error during connection handshake: %v", err)
-	}
-
-	size := maxHandshake + 1
-	if err := cli.conn.HandleData(QUICEncryptionLevelApplication, []byte{
-		byte(typeNewSessionTicket),
-		byte(size >> 16),
-		byte(size >> 8),
-		byte(size),
-	}); err == nil {
-		t.Fatalf("%v-byte post-handshake message: got no error, want one", size)
-	}
-}
-
-func TestQUICHandshakeError(t *testing.T) {
-	clientConfig := &QUICConfig{TLSConfig: testConfigClient.Clone()}
-	clientConfig.TLSConfig.MinVersion = VersionTLS13
-	clientConfig.TLSConfig.InsecureSkipVerify = false
-	clientConfig.TLSConfig.ServerName = "name"
-
-	serverConfig := &QUICConfig{TLSConfig: testConfigServer.Clone()}
-	serverConfig.TLSConfig.MinVersion = VersionTLS13
-
-	cli := newTestQUICClient(t, clientConfig)
-	cli.conn.SetTransportParameters(nil)
-	srv := newTestQUICServer(t, serverConfig)
-	srv.conn.SetTransportParameters(nil)
-	err := runTestQUICConnection(context.Background(), cli, srv, nil)
-	if !errors.Is(err, AlertError(alertBadCertificate)) {
-		t.Errorf("connection handshake terminated with error %q, want alertBadCertificate", err)
-	}
-	if _, ok := errors.AsType[*CertificateVerificationError](err); !ok {
-		t.Errorf("connection handshake terminated with error %q, want CertificateVerificationError", err)
-	}
-
-	ev := cli.conn.NextEvent()
-	if ev.Kind != QUICErrorEvent {
-		t.Errorf("client.NextEvent: no QUICErrorEvent, want one")
-	}
-	if ev.Err != err {
-		t.Errorf("client.NextEvent: want same error returned by Start, got %v", ev.Err)
-	}
-}
-
-// Test that we can report an error produced by the GetEncryptedClientHelloKeys function.
-func TestQUICECHKeyError(t *testing.T) {
-	getECHKeysError := errors.New("error returned by GetEncryptedClientHelloKeys")
-	clientConfig := &QUICConfig{TLSConfig: testConfigClient.Clone()}
-	clientConfig.TLSConfig.MinVersion = VersionTLS13
-	clientConfig.TLSConfig.NextProtos = []string{"h3"}
-	serverConfig := &QUICConfig{TLSConfig: testConfigServer.Clone()}
-	serverConfig.TLSConfig.MinVersion = VersionTLS13
-	serverConfig.TLSConfig.NextProtos = []string{"h3"}
-	serverConfig.TLSConfig.GetEncryptedClientHelloKeys = func(*ClientHelloInfo) ([]EncryptedClientHelloKey, error) {
-		return nil, getECHKeysError
-	}
-	cli := newTestQUICClient(t, clientConfig)
-	cli.conn.SetTransportParameters(nil)
-	srv := newTestQUICServer(t, serverConfig)
-
-	if err := runTestQUICConnection(context.Background(), cli, srv, nil); err != errTransportParametersRequired {
-		t.Fatalf("handshake with no client parameters: %v; want errTransportParametersRequired", err)
-	}
-	srv.conn.SetTransportParameters(nil)
-	if err := runTestQUICConnection(context.Background(), cli, srv, nil); err == nil {
-		t.Fatalf("handshake with GetEncryptedClientHelloKeys errors: nil, want error")
-	}
-	if srv.gotError == nil {
-		t.Fatalf("after GetEncryptedClientHelloKeys error, server did not see QUICErrorEvent")
-	}
-	if _, ok := errors.AsType[AlertError](srv.gotError); !ok {
-		t.Errorf("connection handshake terminated with error %T, want AlertError", srv.gotError)
-	}
-	if !errors.Is(srv.gotError, getECHKeysError) {
-		t.Errorf("connection handshake terminated with error %v, want error returned by GetEncryptedClientHelloKeys", srv.gotError)
-	}
-}
-
-// Test that QUICConn.ConnectionState can be used during the handshake,
-// and that it reports the application protocol as soon as it has been
-// negotiated.
-func TestQUICConnectionState(t *testing.T) {
-	clientConfig := &QUICConfig{TLSConfig: testConfigClient.Clone()}
-	clientConfig.TLSConfig.MinVersion = VersionTLS13
-	clientConfig.TLSConfig.NextProtos = []string{"h3"}
-	serverConfig := &QUICConfig{TLSConfig: testConfigServer.Clone()}
-	serverConfig.TLSConfig.MinVersion = VersionTLS13
-	serverConfig.TLSConfig.NextProtos = []string{"h3"}
-	cli := newTestQUICClient(t, clientConfig)
-	cli.conn.SetTransportParameters(nil)
-	srv := newTestQUICServer(t, serverConfig)
-	srv.conn.SetTransportParameters(nil)
-	onEvent := func(e QUICEvent, src, dst *testQUICConn) bool {
-		cliCS := cli.conn.ConnectionState()
-		if _, ok := cli.readSecret[QUICEncryptionLevelApplication]; ok {
-			if want, got := cliCS.NegotiatedProtocol, "h3"; want != got {
-				t.Errorf("cli.ConnectionState().NegotiatedProtocol = %q, want %q", want, got)
-			}
-		}
-		srvCS := srv.conn.ConnectionState()
-		if _, ok := srv.readSecret[QUICEncryptionLevelHandshake]; ok {
-			if want, got := srvCS.NegotiatedProtocol, "h3"; want != got {
-				t.Errorf("srv.ConnectionState().NegotiatedProtocol = %q, want %q", want, got)
-			}
-		}
-		return false
-	}
-	if err := runTestQUICConnection(context.Background(), cli, srv, onEvent); err != nil {
-		t.Fatalf("error during connection handshake: %v", err)
-	}
-}
-
-func TestQUICStartContextPropagation(t *testing.T) {
-	const key = "key"
-	const value = "value"
-	ctx := context.WithValue(context.Background(), key, value)
-	clientConfig := &QUICConfig{TLSConfig: testConfigClient.Clone()}
-	clientConfig.TLSConfig.MinVersion = VersionTLS13
-	serverConfig := &QUICConfig{TLSConfig: testConfigServer.Clone()}
-	serverConfig.TLSConfig.MinVersion = VersionTLS13
-	calls := 0
-	serverConfig.TLSConfig.GetConfigForClient = func(info *ClientHelloInfo) (*Config, error) {
-		calls++
-		got, _ := info.Context().Value(key).(string)
-		if got != value {
-			t.Errorf("GetConfigForClient context key %q has value %q, want %q", key, got, value)
-		}
-		return nil, nil
-	}
-	cli := newTestQUICClient(t, clientConfig)
-	cli.conn.SetTransportParameters(nil)
-	srv := newTestQUICServer(t, serverConfig)
-	srv.conn.SetTransportParameters(nil)
-	if err := runTestQUICConnection(ctx, cli, srv, nil); err != nil {
-		t.Fatalf("error during connection handshake: %v", err)
-	}
-	if calls != 1 {
-		t.Errorf("GetConfigForClient called %v times, want 1", calls)
-	}
-}
-
-func TestQUICClientHelloInfoConn(t *testing.T) {
-	clientHelloInfoConn, peerConn := net.Pipe()
-	t.Cleanup(func() {
-		clientHelloInfoConn.Close()
-		peerConn.Close()
-	})
-	clientConfig := &QUICConfig{TLSConfig: testConfigClient.Clone()}
-	clientConfig.TLSConfig.MinVersion = VersionTLS13
-	serverConfig := &QUICConfig{
-		TLSConfig:           testConfigServer.Clone(),
-		ClientHelloInfoConn: clientHelloInfoConn,
-	}
-	serverConfig.TLSConfig.MinVersion = VersionTLS13
-	var called bool
-	serverConfig.TLSConfig.GetConfigForClient = func(info *ClientHelloInfo) (*Config, error) {
-		called = true
-		if info.Conn != clientHelloInfoConn {
-			t.Errorf("ClientHelloInfo.Conn = %v, want %v", info.Conn, clientHelloInfoConn)
-		}
-		return nil, nil
-	}
-	cli := newTestQUICClient(t, clientConfig)
-	cli.conn.SetTransportParameters(nil)
-	srv := newTestQUICServer(t, serverConfig)
-	srv.conn.SetTransportParameters(nil)
-	if err := runTestQUICConnection(context.Background(), cli, srv, nil); err != nil {
-		t.Fatalf("error during connection handshake: %v", err)
-	}
-	if !called {
-		t.Fatal("GetConfigForClient was not called")
-	}
-}
-
-func TestQUICContextCancelation(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	clientConfig := &QUICConfig{TLSConfig: testConfigClient.Clone()}
-	clientConfig.TLSConfig.MinVersion = VersionTLS13
-	serverConfig := &QUICConfig{TLSConfig: testConfigServer.Clone()}
-	serverConfig.TLSConfig.MinVersion = VersionTLS13
-	cli := newTestQUICClient(t, clientConfig)
-	cli.conn.SetTransportParameters(nil)
-	srv := newTestQUICServer(t, serverConfig)
-	srv.conn.SetTransportParameters(nil)
-	// Verify that canceling the connection context concurrently does not cause any races.
-	// See https://go.dev/issue/77274.
-	var wg sync.WaitGroup
-	wg.Go(func() {
-		_ = runTestQUICConnection(ctx, cli, srv, nil)
-	})
-	wg.Go(cancel)
-	wg.Wait()
-}
-
-func TestQUICDelayedTransportParameters(t *testing.T) {
-	clientConfig := &QUICConfig{TLSConfig: testConfigClient.Clone()}
-	clientConfig.TLSConfig.MinVersion = VersionTLS13
-	clientConfig.TLSConfig.ClientSessionCache = NewLRUClientSessionCache(1)
-
-	serverConfig := &QUICConfig{TLSConfig: testConfigServer.Clone()}
-	serverConfig.TLSConfig.MinVersion = VersionTLS13
-
-	cliParams := "client params"
-	srvParams := "server params"
-
-	cli := newTestQUICClient(t, clientConfig)
-	srv := newTestQUICServer(t, serverConfig)
-	if err := runTestQUICConnection(context.Background(), cli, srv, nil); err != errTransportParametersRequired {
-		t.Fatalf("handshake with no client parameters: %v; want errTransportParametersRequired", err)
-	}
-	cli.conn.SetTransportParameters([]byte(cliParams))
-	if err := runTestQUICConnection(context.Background(), cli, srv, nil); err != errTransportParametersRequired {
-		t.Fatalf("handshake with no server parameters: %v; want errTransportParametersRequired", err)
-	}
-	srv.conn.SetTransportParameters([]byte(srvParams))
-	if err := runTestQUICConnection(context.Background(), cli, srv, nil); err != nil {
-		t.Fatalf("error during connection handshake: %v", err)
-	}
-
-	if got, want := string(cli.gotParams), srvParams; got != want {
-		t.Errorf("client got transport params: %q, want %q", got, want)
-	}
-	if got, want := string(srv.gotParams), cliParams; got != want {
-		t.Errorf("server got transport params: %q, want %q", got, want)
-	}
-}
-
-func TestQUICEmptyTransportParameters(t *testing.T) {
-	clientConfig := &QUICConfig{TLSConfig: testConfigClient.Clone()}
-	clientConfig.TLSConfig.MinVersion = VersionTLS13
-	serverConfig := &QUICConfig{TLSConfig: testConfigServer.Clone()}
-	serverConfig.TLSConfig.MinVersion = VersionTLS13
-
-	cli := newTestQUICClient(t, clientConfig)
-	cli.conn.SetTransportParameters(nil)
-	srv := newTestQUICServer(t, serverConfig)
-	srv.conn.SetTransportParameters(nil)
-	if err := runTestQUICConnection(context.Background(), cli, srv, nil); err != nil {
-		t.Fatalf("error during connection handshake: %v", err)
-	}
-
-	if cli.gotParams == nil {
-		t.Errorf("client did not get transport params")
-	}
-	if srv.gotParams == nil {
-		t.Errorf("server did not get transport params")
-	}
-	if len(cli.gotParams) != 0 {
-		t.Errorf("client got transport params: %v, want empty", cli.gotParams)
-	}
-	if len(srv.gotParams) != 0 {
-		t.Errorf("server got transport params: %v, want empty", srv.gotParams)
-	}
-}
-
-func TestQUICCanceledWaitingForData(t *testing.T) {
-	clientConfig := &QUICConfig{TLSConfig: testConfigClient.Clone()}
-	clientConfig.TLSConfig.MinVersion = VersionTLS13
-	cli := newTestQUICClient(t, clientConfig)
-	cli.conn.SetTransportParameters(nil)
-	cli.conn.Start(context.Background())
-	for cli.conn.NextEvent().Kind != QUICNoEvent {
-	}
-	err := cli.conn.Close()
-	if !errors.Is(err, alertCloseNotify) {
-		t.Errorf("conn.Close() = %v, want alertCloseNotify", err)
-	}
-}
-
-func TestQUICCanceledWaitingForTransportParams(t *testing.T) {
-	clientConfig := &QUICConfig{TLSConfig: testConfigClient.Clone()}
-	clientConfig.TLSConfig.MinVersion = VersionTLS13
-	cli := newTestQUICClient(t, clientConfig)
-	cli.conn.Start(context.Background())
-	for cli.conn.NextEvent().Kind != QUICTransportParametersRequired {
-	}
-	err := cli.conn.Close()
-	if !errors.Is(err, alertCloseNotify) {
-		t.Errorf("conn.Close() = %v, want alertCloseNotify", err)
-	}
-}
-
-func TestQUICEarlyData(t *testing.T) {
-	clientConfig := &QUICConfig{TLSConfig: testConfigClient.Clone()}
-	clientConfig.TLSConfig.MinVersion = VersionTLS13
-	clientConfig.TLSConfig.ClientSessionCache = NewLRUClientSessionCache(1)
-	clientConfig.TLSConfig.NextProtos = []string{"h3"}
-
-	serverConfig := &QUICConfig{TLSConfig: testConfigServer.Clone()}
-	serverConfig.TLSConfig.MinVersion = VersionTLS13
-	serverConfig.TLSConfig.NextProtos = []string{"h3"}
-
-	cli := newTestQUICClient(t, clientConfig)
-	cli.conn.SetTransportParameters(nil)
-	srv := newTestQUICServer(t, serverConfig)
-	srv.conn.SetTransportParameters(nil)
-	srv.ticketOpts.EarlyData = true
-	if err := runTestQUICConnection(context.Background(), cli, srv, nil); err != nil {
-		t.Fatalf("error during first connection handshake: %v", err)
-	}
-	if cli.conn.ConnectionState().DidResume {
-		t.Errorf("first connection unexpectedly used session resumption")
-	}
-
-	cli2 := newTestQUICClient(t, clientConfig)
-	cli2.conn.SetTransportParameters(nil)
-	srv2 := newTestQUICServer(t, serverConfig)
-	srv2.conn.SetTransportParameters(nil)
-	onEvent := func(e QUICEvent, src, dst *testQUICConn) bool {
-		switch e.Kind {
-		case QUICStoreSession, QUICResumeSession:
-			t.Errorf("with EnableSessionEvents=false, got unexpected event %v", e.Kind)
-		}
-		return false
-	}
-	if err := runTestQUICConnection(context.Background(), cli2, srv2, onEvent); err != nil {
-		t.Fatalf("error during second connection handshake: %v", err)
-	}
-	if !cli2.conn.ConnectionState().DidResume {
-		t.Errorf("second connection did not use session resumption")
-	}
-	cliSecret := cli2.writeSecret[QUICEncryptionLevelEarly]
-	if cliSecret.secret == nil {
-		t.Errorf("client did not receive early data write secret")
-	}
-	srvSecret := srv2.readSecret[QUICEncryptionLevelEarly]
-	if srvSecret.secret == nil {
-		t.Errorf("server did not receive early data read secret")
-	}
-	if cliSecret.suite != srvSecret.suite || !bytes.Equal(cliSecret.secret, srvSecret.secret) {
-		t.Errorf("client early data secret does not match server")
-	}
-}
-
-func TestQUICEarlyDataDeclined(t *testing.T) {
-	t.Run("server", func(t *testing.T) {
-		testQUICEarlyDataDeclined(t, true)
-	})
-	t.Run("client", func(t *testing.T) {
-		testQUICEarlyDataDeclined(t, false)
-	})
-}
-
-func testQUICEarlyDataDeclined(t *testing.T, server bool) {
-	clientConfig := &QUICConfig{TLSConfig: testConfigClient.Clone()}
-	clientConfig.EnableSessionEvents = true
-	clientConfig.TLSConfig.MinVersion = VersionTLS13
-	clientConfig.TLSConfig.ClientSessionCache = NewLRUClientSessionCache(1)
-	clientConfig.TLSConfig.NextProtos = []string{"h3"}
-
-	serverConfig := &QUICConfig{TLSConfig: testConfigServer.Clone()}
-	serverConfig.EnableSessionEvents = true
-	serverConfig.TLSConfig.MinVersion = VersionTLS13
-	serverConfig.TLSConfig.NextProtos = []string{"h3"}
-
-	cli := newTestQUICClient(t, clientConfig)
-	cli.conn.SetTransportParameters(nil)
-	srv := newTestQUICServer(t, serverConfig)
-	srv.conn.SetTransportParameters(nil)
-	srv.ticketOpts.EarlyData = true
-	if err := runTestQUICConnection(context.Background(), cli, srv, nil); err != nil {
-		t.Fatalf("error during first connection handshake: %v", err)
-	}
-	if cli.conn.ConnectionState().DidResume {
-		t.Errorf("first connection unexpectedly used session resumption")
-	}
-
-	cli2 := newTestQUICClient(t, clientConfig)
-	cli2.conn.SetTransportParameters(nil)
-	srv2 := newTestQUICServer(t, serverConfig)
-	srv2.conn.SetTransportParameters(nil)
-	declineEarlyData := func(state *SessionState) {
-		state.EarlyData = false
-	}
-	if server {
-		srv2.onResumeSession = declineEarlyData
-	} else {
-		cli2.onResumeSession = declineEarlyData
-	}
-	if err := runTestQUICConnection(context.Background(), cli2, srv2, nil); err != nil {
-		t.Fatalf("error during second connection handshake: %v", err)
-	}
-	if !cli2.conn.ConnectionState().DidResume {
-		t.Errorf("second connection did not use session resumption")
-	}
-	_, cliEarlyData := cli2.writeSecret[QUICEncryptionLevelEarly]
-	if server {
-		if !cliEarlyData {
-			t.Errorf("client did not receive early data write secret")
-		}
-		if !cli2.earlyDataRejected {
-			t.Errorf("client did not receive QUICEarlyDataRejected")
-		}
-	}
-	if _, srvEarlyData := srv2.readSecret[QUICEncryptionLevelEarly]; srvEarlyData {
-		t.Errorf("server received early data read secret")
-	}
+	return false
 }
