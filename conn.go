@@ -172,6 +172,19 @@ func (c *UConn) NegotiatedApplicationSettings() ([]byte, bool) {
 	return c.u.NegotiatedApplicationSettings()
 }
 
+// RecordLayerState is the TLS 1.3 record-layer state returned by HandOff.
+type RecordLayerState = itls.RecordLayerState
+
+// ErrHandedOff is returned by Read and Write after HandOff.
+var ErrHandedOff = itls.ErrHandedOff
+
+// HandOff detaches the record layer of a completed TLS 1.3 connection (keys,
+// IVs, traffic secrets, sequence numbers, buffered plaintext and undecrypted
+// input, and the transport) for kernel TLS, Vision-style raw splicing or a
+// custom record layer. Afterwards Read and Write return ErrHandedOff and Close
+// sends no close_notify. See RecordLayerState for the contract.
+func (c *UConn) HandOff() (*RecordLayerState, error) { return c.u.HandOff() }
+
 // NetConn returns the underlying connection. Writing to it bypasses TLS.
 func (c *UConn) NetConn() net.Conn { return c.u.NetConn() }
 
