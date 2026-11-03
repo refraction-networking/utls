@@ -60,9 +60,16 @@ sets them, validated at start-up. If a future Go changes those fields, uTLS
 fails explicitly (`ErrExporterUnavailable`; GetClientCertificate configs refused
 before I/O) instead of panicking or passing a nil context.
 
-**Server-side config fields are not converted.** uTLS is a client. Probe-
-resistant servers (REALITY/ShadowTLS-style) are a stock `crypto/tls` server
-plus `ParseClientHello` on the peeked hello (see downstream_test.go).
+**Server-side config fields are not converted.** uTLS v2 is a client.
+Server behaviour belongs to the corresponding server implementation: the
+standard library's crypto/tls for ordinary TLS servers, and the protocol's own
+server for schemes whose server deviates from standard TLS. REALITY is such a
+scheme: its server sends a deliberately modified Ed25519 certificate (the
+signature field carries an HMAC) and always signs CertificateVerify with
+Ed25519, which stock crypto/tls does not do. uTLS's REALITY coverage is
+therefore against the real pinned XTLS/REALITY server in `interop/reality`.
+(The ShadowTLS-style fixture in downstream_test.go only checks the client's
+session-ID authenticator with a peeking test server.)
 
 **No silent fallbacks.** An unusable fingerprint (zero `ClientHelloID`,
 `HelloCustom` without `ApplyPreset`, a failing factory, an invalid spec) fails
