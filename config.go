@@ -220,4 +220,3 @@ func internalToStdSession(cs *itls.ClientSessionState) (*tls.ClientSessionState,
 	}
 	return tls.NewResumptionState(ticket, sst)
 }
-

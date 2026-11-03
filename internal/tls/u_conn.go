@@ -32,7 +32,7 @@ type UConn struct {
 	clientHelloHook func(*ClientHelloContext) error
 	injected        *ClientSessionState
 
-	started  bool // the handshake has begun; configuration is frozen
+	started  bool   // the handshake has begun; configuration is frozen
 	snapshot []byte // last ClientHello rendered for the wire (immutable copy)
 	build    *helloBuild
 	renderer *helloRenderer
@@ -43,8 +43,8 @@ type UConn struct {
 	serverKeyShare keyShare
 
 	// negotiated
-	alpsNegotiated      bool
-	peerALPS            []byte
+	alpsNegotiated        bool
+	peerALPS              []byte
 	peerRecordSizeLimit   int
 	recordLimitNegotiated bool
 }

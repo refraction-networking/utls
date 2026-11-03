@@ -394,3 +394,87 @@ func TestCheckDetectsHandEditWithoutPatch(t *testing.T) {
 
 var _ = io.Discard
 var _ = bytes.Equal
+
+// copyGoroot returns the files of fixture release v as a map.
+func (f *fixture) files(v string) map[string]string {
+	m := map[string]string{}
+	g := f.gorootOf[v]
+	filepath.Walk(g, func(p string, info os.FileInfo, err error) error {
+		if err == nil && !info.IsDir() && !strings.HasSuffix(p, "VERSION") {
+			rel, _ := filepath.Rel(g, p)
+			b, _ := os.ReadFile(p)
+			m[filepath.ToSlash(rel)] = string(b)
+		}
+		return nil
+	})
+	return m
+}
+
+func TestRenameOntoExistingLocalFileIsConflict(t *testing.T) {
+	f := newFixture(t)
+	base := f.files("go1.0.0")
+	f.addGoroot("go1.0.1", base, func(m map[string]string) {
+		m["src/crypto/tls/messages.go"] = m["src/crypto/tls/msgs.go"]
+		delete(m, "src/crypto/tls/msgs.go")
+	})
+	writeFiles(t, f.repo, map[string]string{"internal/tls/messages.go": "package tls // uTLS-authored, must survive\n"})
+	err := f.run("update", "go1.0.1")
+	if err == nil || !strings.Contains(f.read("upstream/UPDATE_STATE"), "add/add (rename") {
+		t.Fatalf("err=%v state=%s", err, f.read("upstream/UPDATE_STATE"))
+	}
+	if f.read("internal/tls/messages.go") != "package tls // uTLS-authored, must survive\n" {
+		t.Fatal("existing local target clobbered")
+	}
+	if !strings.Contains(f.read("internal/tls/msgs.go"), "[uTLS] hunk") {
+		t.Fatal("rename source deleted")
+	}
+}
+
+func TestAmbiguousRenameIsConflict(t *testing.T) {
+	f := newFixture(t)
+	base := f.files("go1.0.0")
+	f.addGoroot("go1.0.1", base, func(m map[string]string) {
+		m["src/crypto/tls/msgs_a.go"] = m["src/crypto/tls/msgs.go"]
+		m["src/crypto/tls/msgs_b.go"] = m["src/crypto/tls/msgs.go"]
+		delete(m, "src/crypto/tls/msgs.go")
+	})
+	err := f.run("update", "go1.0.1")
+	if err == nil || !strings.Contains(f.read("upstream/UPDATE_STATE"), "ambiguous rename: internal/tls/msgs.go") {
+		t.Fatalf("err=%v state=%s", err, f.read("upstream/UPDATE_STATE"))
+	}
+	if !strings.Contains(f.read("internal/tls/msgs.go"), "[uTLS] hunk") {
+		t.Fatal("source with hunks was not preserved")
+	}
+}
+
+func TestRenameWriteFailurePreservesSource(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	f := newFixture(t)
+	base := f.files("go1.0.0")
+	f.addGoroot("go1.0.1", base, func(m map[string]string) {
+		m["src/crypto/tls/messages.go"] = m["src/crypto/tls/msgs.go"]
+		delete(m, "src/crypto/tls/msgs.go")
+	})
+	dir := filepath.Join(f.repo, "internal", "tls")
+	os.Chmod(dir, 0o555)
+	defer os.Chmod(dir, 0o755)
+	err := f.run("update", "go1.0.1")
+	os.Chmod(dir, 0o755)
+	if err == nil {
+		t.Fatal("write failure not reported")
+	}
+	if !strings.Contains(f.read("internal/tls/msgs.go"), "[uTLS] hunk") {
+		t.Fatal("source lost after failed rename")
+	}
+	if v := strings.TrimSpace(f.read("upstream/VERSION")); v != "go1.0.0" {
+		t.Fatalf("VERSION advanced to %s after an aborted update", v)
+	}
+	if err := f.run("check"); err == nil {
+		t.Fatal("check passed after an aborted update")
+	}
+	if err := f.run("finish"); err == nil {
+		t.Fatal("finish accepted an aborted update")
+	}
+}

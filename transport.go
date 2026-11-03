@@ -17,85 +17,80 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/net/http2"
 	"golang.org/x/net/proxy"
 )
 
 // Transport is an http.RoundTripper that makes HTTPS requests with a uTLS
-// fingerprint, speaking HTTP/2 or HTTP/1.1 according to the ALPN protocol the
-// server selects. It is safe for concurrent use and pools connections:
-// HTTP/2 connections in an x/net/http2 Transport, HTTP/1.1 connections in a
-// net/http Transport. Plain http:// requests use net/http without TLS.
+// fingerprint. It is safe for concurrent use; as with net/http.Transport, its
+// fields must not be changed after the first request.
 //
-// Routing: the first request to a host dials one uTLS connection and caches
-// the negotiated protocol for that host; the connection is handed to the
-// matching pool. If a later pooled dial negotiates a different protocol the
-// dial fails (nothing has been sent), the cache is updated and the request is
-// routed again. responses carry resp.TLS from the uTLS connection.
+// It delegates everything but the TLS handshake to net/http: for each proxy
+// route (the result of Proxy for the request) it keeps a net/http.Transport
+// whose DialTLSContext opens the route (direct, HTTP/HTTPS CONNECT or SOCKS5)
+// and performs the uTLS handshake. net/http (Go 1.27.3+) speaks HTTP/2 natively
+// over any connection whose ConnectionState reports "h2", so h1/h2 selection,
+// connection pooling, request retries and body rewinding (GetBody), timeouts,
+// cancellation and resp.TLS are all standard net/http behavior. Connections
+// are never shared between proxy routes (or proxy credentials).
+//
+// Plain http:// requests use a standard net/http.Transport with the same
+// Proxy (standard forward-proxy semantics).
 type Transport struct {
 	// ClientHelloID selects the fingerprint (default HelloChrome_Auto).
 	ClientHelloID ClientHelloID
 	// TLSConfig is the base TLS configuration; ServerName defaults to the
 	// request host. NextProtos, if set, overrides the fingerprint's ALPN list
-	// and must contain only "h2" and/or "http/1.1".
+	// and may contain only "h2" and "http/1.1".
 	TLSConfig *tls.Config
 	// ClientHelloHook, if set, is installed on every connection.
 	ClientHelloHook func(*ClientHelloContext) error
-	// DialContext dials the underlying TCP connection (e.g. through a custom
-	// proxy). Nil uses a net.Dialer.
+	// DialContext dials TCP connections (to the server or the proxy). Nil uses
+	// a net.Dialer.
 	DialContext func(ctx context.Context, network, addr string) (net.Conn, error)
-	// Proxy returns the proxy for a request (http://, https:// via CONNECT, or
-	// socks5://), as net/http.Transport.Proxy; nil means no proxy.
+	// Proxy selects a proxy per request (http://, https://, socks5://,
+	// socks5h://), as net/http.Transport.Proxy; nil means direct.
 	Proxy func(*http.Request) (*url.URL, error)
-	// IdleConnTimeout closes idle connections after this long (default 90s).
-	IdleConnTimeout time.Duration
-	// MaxIdleConnsPerHost for HTTP/1.1 (default 2, as net/http).
-	MaxIdleConnsPerHost int
-	// ResponseHeaderTimeout, if non-zero, bounds the wait for response headers.
+	// Connection pool and timeout settings, as in net/http.Transport.
+	IdleConnTimeout       time.Duration // default 90s
+	MaxIdleConns          int
+	MaxIdleConnsPerHost   int
+	MaxConnsPerHost       int
 	ResponseHeaderTimeout time.Duration
+	TLSHandshakeTimeout   time.Duration // default 10s; bounds proxy setup + uTLS handshake
 
-	once  sync.Once
-	h1    *http.Transport
-	h2    *http2.Transport
-	mu    sync.Mutex
-	proto map[string]string       // host:port -> "h2" | "http/1.1"
-	ready map[string][]pendingConn // probed connections waiting for their pool
+	once   sync.Once
+	mu     sync.Mutex
+	routes map[string]*http.Transport // proxy route ("" = direct) -> transport
+	plain  *http.Transport
 }
-
-type pendingConn struct {
-	c  *UConn
-	at time.Time
-}
-
-const pendingTTL = 30 * time.Second
-
-var errWrongProto = errors.New("utls: connection negotiated a different protocol")
 
 func (t *Transport) init() {
 	t.once.Do(func() {
-		t.proto = map[string]string{}
-		t.ready = map[string][]pendingConn{}
-		idle := t.IdleConnTimeout
-		if idle == 0 {
-			idle = 90 * time.Second
-		}
-		t.h1 = &http.Transport{
-			Proxy:                 nil, // proxying is done in dialTLS / dialPlain
-			DialContext:           t.dialPlainForH1,
-			DialTLSContext:        func(ctx context.Context, network, addr string) (net.Conn, error) { return t.dialFor(ctx, addr, "http/1.1") },
-			ForceAttemptHTTP2:     false,
-			IdleConnTimeout:       idle,
-			MaxIdleConnsPerHost:   t.MaxIdleConnsPerHost,
-			ResponseHeaderTimeout: t.ResponseHeaderTimeout,
-		}
-		t.h2 = &http2.Transport{
-			DialTLSContext: func(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
-				return t.dialFor(ctx, addr, "h2")
-			},
-			IdleConnTimeout: idle,
-			ReadIdleTimeout: idle,
-		}
+		t.routes = map[string]*http.Transport{}
+		t.plain = t.newStd(nil)
+		t.plain.Proxy = t.Proxy
+		t.plain.DialContext = t.baseDial
 	})
+}
+
+func (t *Transport) newStd(dialTLS func(ctx context.Context, network, addr string) (net.Conn, error)) *http.Transport {
+	idle := t.IdleConnTimeout
+	if idle == 0 {
+		idle = 90 * time.Second
+	}
+	p := new(http.Protocols)
+	p.SetHTTP1(true)
+	p.SetHTTP2(true)
+	return &http.Transport{
+		DialTLSContext:        dialTLS,
+		ForceAttemptHTTP2:     true,
+		Protocols:             p,
+		IdleConnTimeout:       idle,
+		MaxIdleConns:          t.MaxIdleConns,
+		MaxIdleConnsPerHost:   t.MaxIdleConnsPerHost,
+		MaxConnsPerHost:       t.MaxConnsPerHost,
+		ResponseHeaderTimeout: t.ResponseHeaderTimeout,
+	}
 }
 
 // RoundTrip implements http.RoundTripper.
@@ -103,103 +98,59 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	t.init()
 	switch req.URL.Scheme {
 	case "http":
-		return t.h1.RoundTrip(req)
+		return t.plain.RoundTrip(req)
 	case "https":
 	default:
+		if req.Body != nil {
+			req.Body.Close()
+		}
 		return nil, fmt.Errorf("utls: unsupported URL scheme %q", req.URL.Scheme)
 	}
-	addr := canonicalAddr(req.URL)
-	for attempt := 0; attempt < 3; attempt++ {
-		p, err := t.protocolFor(req.Context(), req, addr)
-		if err != nil {
+	var pu *url.URL
+	if t.Proxy != nil {
+		var err error
+		if pu, err = t.Proxy(req); err != nil {
+			if req.Body != nil {
+				req.Body.Close()
+			}
 			return nil, err
 		}
-		var resp *http.Response
-		if p == "h2" {
-			resp, err = t.h2.RoundTrip(req)
-		} else {
-			resp, err = t.h1.RoundTrip(req)
-		}
-		if errors.Is(err, errWrongProto) {
-			continue // the dial failed before the request was written: safe to re-route
-		}
-		return resp, err
 	}
-	return nil, errors.New("utls: server keeps changing its negotiated protocol")
+	return t.route(pu).RoundTrip(req)
 }
 
-// protocolFor returns the cached protocol for addr, probing it if unknown.
-func (t *Transport) protocolFor(ctx context.Context, req *http.Request, addr string) (string, error) {
+// route returns the transport for a proxy route, creating it on first use.
+func (t *Transport) route(pu *url.URL) *http.Transport {
+	key := ""
+	if pu != nil {
+		key = pu.String()
+	}
 	t.mu.Lock()
-	p, ok := t.proto[addr]
-	t.mu.Unlock()
-	if ok {
-		return p, nil
+	defer t.mu.Unlock()
+	if rt := t.routes[key]; rt != nil {
+		return rt
 	}
-	c, err := t.dialTLS(ctx, req, addr)
-	if err != nil {
-		return "", err
+	var proxyURL *url.URL
+	if pu != nil {
+		c := *pu
+		proxyURL = &c
 	}
-	p = negotiated(c)
-	t.mu.Lock()
-	t.proto[addr] = p
-	t.ready[addr] = append(t.ready[addr], pendingConn{c, time.Now()})
-	t.mu.Unlock()
-	return p, nil
+	rt := t.newStd(func(ctx context.Context, network, addr string) (net.Conn, error) {
+		return t.dialTLS(ctx, proxyURL, addr)
+	})
+	t.routes[key] = rt
+	return rt
 }
 
-func negotiated(c *UConn) string {
-	if c.ConnectionState().NegotiatedProtocol == "h2" {
-		return "h2"
+// dialTLS opens the route to addr and completes a uTLS handshake.
+func (t *Transport) dialTLS(ctx context.Context, pu *url.URL, addr string) (net.Conn, error) {
+	timeout := t.TLSHandshakeTimeout
+	if timeout == 0 {
+		timeout = 10 * time.Second
 	}
-	return "http/1.1"
-}
-
-// dialFor is the pools' dial function: it hands out a probed connection or
-// dials a new one, and fails (without sending anything) if the negotiated
-// protocol does not match the pool.
-func (t *Transport) dialFor(ctx context.Context, addr, want string) (net.Conn, error) {
-	t.mu.Lock()
-	var c *UConn
-	q := t.ready[addr]
-	for len(q) > 0 {
-		pc := q[0]
-		q = q[1:]
-		if time.Since(pc.at) < pendingTTL && negotiated(pc.c) == want {
-			c = pc.c
-			break
-		}
-		pc.c.Close()
-	}
-	t.ready[addr] = q
-	t.mu.Unlock()
-	if c != nil {
-		return c, nil
-	}
-	req, _ := ctx.Value(requestKey{}).(*http.Request)
-	c, err := t.dialTLS(ctx, req, addr)
-	if err != nil {
-		return nil, err
-	}
-	if got := negotiated(c); got != want {
-		t.mu.Lock()
-		t.proto[addr] = got
-		t.ready[addr] = append(t.ready[addr], pendingConn{c, time.Now()})
-		t.mu.Unlock()
-		return nil, errWrongProto
-	}
-	return c, nil
-}
-
-type requestKey struct{}
-
-// dialTLS dials addr (through the proxy if any) and completes a uTLS handshake.
-func (t *Transport) dialTLS(ctx context.Context, req *http.Request, addr string) (*UConn, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		return nil, err
-	}
-	raw, err := t.dialRaw(ctx, req, addr)
 	if err != nil {
 		return nil, err
 	}
@@ -212,9 +163,12 @@ func (t *Transport) dialTLS(ctx context.Context, req *http.Request, addr string)
 	}
 	for _, p := range cfg.NextProtos {
 		if p != "h2" && p != "http/1.1" {
-			raw.Close()
-			return nil, fmt.Errorf("utls: Transport only speaks h2 and http/1.1, not ALPN %q", p)
+			return nil, fmt.Errorf("utls: Transport speaks only h2 and http/1.1, not ALPN %q", p)
 		}
+	}
+	raw, err := t.dialRoute(ctx, pu, addr)
+	if err != nil {
+		return nil, err
 	}
 	id := t.ClientHelloID
 	if id.isZero() {
@@ -234,10 +188,6 @@ func (t *Transport) dialTLS(ctx context.Context, req *http.Request, addr string)
 	return uc, nil
 }
 
-func (t *Transport) dialPlainForH1(ctx context.Context, network, addr string) (net.Conn, error) {
-	return t.dialRaw(ctx, nil, addr)
-}
-
 func (t *Transport) baseDial(ctx context.Context, network, addr string) (net.Conn, error) {
 	if t.DialContext != nil {
 		return t.DialContext(ctx, network, addr)
@@ -255,19 +205,8 @@ func (f dialerFunc) DialContext(ctx context.Context, network, addr string) (net.
 	return f(ctx, network, addr)
 }
 
-// dialRaw dials addr directly or through the configured proxy.
-func (t *Transport) dialRaw(ctx context.Context, req *http.Request, addr string) (net.Conn, error) {
-	var pu *url.URL
-	if t.Proxy != nil {
-		r := req
-		if r == nil {
-			r = &http.Request{URL: &url.URL{Scheme: "https", Host: addr}}
-		}
-		var err error
-		if pu, err = t.Proxy(r); err != nil {
-			return nil, err
-		}
-	}
+// dialRoute dials addr directly or through proxy pu.
+func (t *Transport) dialRoute(ctx context.Context, pu *url.URL, addr string) (net.Conn, error) {
 	if pu == nil {
 		return t.baseDial(ctx, "tcp", addr)
 	}
@@ -289,8 +228,7 @@ func (t *Transport) dialRaw(ctx context.Context, req *http.Request, addr string)
 
 // dialConnect opens an HTTP CONNECT tunnel to addr through proxy pu.
 func (t *Transport) dialConnect(ctx context.Context, pu *url.URL, addr string) (net.Conn, error) {
-	paddr := canonicalAddr(pu)
-	c, err := t.baseDial(ctx, "tcp", paddr)
+	c, err := t.baseDial(ctx, "tcp", canonicalAddr(pu))
 	if err != nil {
 		return nil, err
 	}
@@ -307,22 +245,24 @@ func (t *Transport) dialConnect(ctx context.Context, pu *url.URL, addr string) (
 		pw, _ := u.Password()
 		creq.Header.Set("Proxy-Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(u.Username()+":"+pw)))
 	}
-	if d, ok := ctx.Deadline(); ok {
-		c.SetDeadline(d)
-	}
 	stop := context.AfterFunc(ctx, func() { c.SetDeadline(time.Unix(1, 0)) })
-	defer stop()
 	if err := creq.Write(c); err != nil {
+		stop()
 		c.Close()
 		return nil, err
 	}
 	br := bufio.NewReader(c)
 	resp, err := http.ReadResponse(br, creq)
 	if err != nil {
+		stop()
 		c.Close()
 		return nil, err
 	}
 	resp.Body.Close()
+	if !stop() {
+		c.Close()
+		return nil, ctx.Err()
+	}
 	if resp.StatusCode != http.StatusOK {
 		c.Close()
 		return nil, fmt.Errorf("utls: proxy CONNECT to %s: %s", addr, resp.Status)
@@ -331,24 +271,17 @@ func (t *Transport) dialConnect(ctx context.Context, pu *url.URL, addr string) (
 		c.Close()
 		return nil, errors.New("utls: proxy sent data before the TLS handshake")
 	}
-	c.SetDeadline(time.Time{})
 	return c, nil
 }
 
-// CloseIdleConnections closes idle pooled connections and probed connections
-// not yet used.
+// CloseIdleConnections closes idle connections on every route.
 func (t *Transport) CloseIdleConnections() {
 	t.init()
-	t.h1.CloseIdleConnections()
-	t.h2.CloseIdleConnections()
+	t.plain.CloseIdleConnections()
 	t.mu.Lock()
-	ready := t.ready
-	t.ready = map[string][]pendingConn{}
-	t.mu.Unlock()
-	for _, q := range ready {
-		for _, pc := range q {
-			pc.c.Close()
-		}
+	defer t.mu.Unlock()
+	for _, rt := range t.routes {
+		rt.CloseIdleConnections()
 	}
 }
 

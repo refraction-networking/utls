@@ -169,11 +169,11 @@ func (p *parsedHello) keyShareGroups() []uint16 {
 }
 
 type uOpts struct {
-	spec      *ClientHelloSpec
-	golang    bool
-	hook      func(*ClientHelloContext) error
-	session   *ClientSessionState
-	peer      *TestPeerOptions
+	spec       *ClientHelloSpec
+	golang     bool
+	hook       func(*ClientHelloContext) error
+	session    *ClientSessionState
+	peer       *TestPeerOptions
 	ccfg, scfg *Config
 }
 
@@ -775,11 +775,15 @@ func TestUNoSpecNeverFallsBack(t *testing.T) {
 
 func TestUSpecValidation(t *testing.T) {
 	cases := map[string]func(*ClientHelloSpec){
-		"duplicate":      func(s *ClientHelloSpec) { s.Extensions = append(s.Extensions, &SNIExtension{}) },
-		"generic psk":    func(s *ClientHelloSpec) { s.Extensions = append(s.Extensions, &GenericExtension{Id: extensionPreSharedKey}) },
-		"explicit share": func(s *ClientHelloSpec) { s.Extensions[11] = &KeyShareExtension{KeyShares: []KeyShareEntry{{Group: X25519, Data: []byte{1}}}} },
-		"no ciphers":     func(s *ClientHelloSpec) { s.CipherSuites = nil },
-		"huge alpn":      func(s *ClientHelloSpec) { s.Extensions[7] = &ALPNExtension{[]string{strings.Repeat("a", 256)}} },
+		"duplicate": func(s *ClientHelloSpec) { s.Extensions = append(s.Extensions, &SNIExtension{}) },
+		"generic psk": func(s *ClientHelloSpec) {
+			s.Extensions = append(s.Extensions, &GenericExtension{Id: extensionPreSharedKey})
+		},
+		"explicit share": func(s *ClientHelloSpec) {
+			s.Extensions[11] = &KeyShareExtension{KeyShares: []KeyShareEntry{{Group: X25519, Data: []byte{1}}}}
+		},
+		"no ciphers": func(s *ClientHelloSpec) { s.CipherSuites = nil },
+		"huge alpn":  func(s *ClientHelloSpec) { s.Extensions[7] = &ALPNExtension{[]string{strings.Repeat("a", 256)}} },
 		"alpn too long": func(s *ClientHelloSpec) {
 			var ps []string
 			for i := 0; i < 400; i++ {
@@ -787,7 +791,7 @@ func TestUSpecValidation(t *testing.T) {
 			}
 			s.Extensions[7] = &ALPNExtension{ps}
 		},
-		"bad compression alg": func(s *ClientHelloSpec) { s.Extensions[15] = &CompressCertificateExtension{[]CertCompressionAlgo{99}} },
+		"bad compression alg":  func(s *ClientHelloSpec) { s.Extensions[15] = &CompressCertificateExtension{[]CertCompressionAlgo{99}} },
 		"no key_share for 1.3": func(s *ClientHelloSpec) { s.Extensions[11] = &GenericExtension{Id: 0xfff0} },
 	}
 	for name, mod := range cases {

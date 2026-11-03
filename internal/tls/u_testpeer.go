@@ -276,4 +276,3 @@ func (h *uServerHooks) readClientEncryptedExtensions(hs *serverHandshakeStateTLS
 	}
 	return nil
 }
-

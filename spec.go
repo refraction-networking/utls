@@ -152,4 +152,3 @@ type ClientSessionParams struct {
 	AgeAdd               uint32
 	Lifetime             time.Duration
 }
-

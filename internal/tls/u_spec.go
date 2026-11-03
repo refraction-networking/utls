@@ -378,7 +378,7 @@ func newHelloRenderer(spec *ClientHelloSpec, b *helloBuild, rand io.Reader) (*he
 	ech = append(ech, 0) // ClientHelloOuter
 	ech = append(ech, byte(suite.KDF>>8), byte(suite.KDF), byte(suite.AEAD>>8), byte(suite.AEAD))
 	ech = append(ech, seed[21]) // config_id
-	ech = append(ech, 0x00, 32)         // enc length
+	ech = append(ech, 0x00, 32) // enc length
 	ech = append(ech, make([]byte, 32)...)
 	ech = append(ech, byte(payloadLen>>8), byte(payloadLen))
 	ech = append(ech, make([]byte, payloadLen)...)

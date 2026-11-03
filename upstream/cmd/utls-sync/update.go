@@ -27,7 +27,7 @@ import (
 //     upstream/UPDATE_STATE and leaves upstream/VERSION unchanged, so neither
 //     `check` nor CI can mistake the tree for a completed update. `finish`
 //     completes the update once the markers are gone and shims are reviewed.
-func (r *repo) update(newV string, w io.Writer) error {
+func (r *repo) update(newV string, w io.Writer) (retErr error) {
 	if _, ok := readOpt(r.up(stateFile)); ok {
 		return errors.New("an update is already in progress; resolve it and run 'finish'")
 	}
@@ -82,7 +82,6 @@ func (r *repo) update(newV string, w io.Writer) error {
 
 	inOld, inNew := set(oldFiles), set(newFiles)
 	local := func(f string) string { return filepath.Join(r.root, filepath.FromSlash(f)) }
-	var conflicts, log []string
 	added := map[string]bool{}
 	for _, f := range newFiles {
 		if !inOld[f] {
@@ -91,28 +90,71 @@ func (r *repo) update(newV string, w io.Writer) error {
 	}
 
 	// Renames: a file deleted upstream whose content mostly reappears in an
-	// added file. Carry local [uTLS] hunks across by merging onto the new name.
+	// added file. Matching is deterministic and must be unambiguous: a near
+	// tie between candidates, or two sources claiming one target, is reported
+	// as a conflict instead of guessed.
 	renamedTo := map[string]string{}
+	var conflicts, log []string
+	claims := map[string][]string{}
+	ambiguous := map[string]bool{}
+	addedSorted := make([]string, 0, len(added))
+	for g := range added {
+		addedSorted = append(addedSorted, g)
+	}
+	sort.Strings(addedSorted)
 	for _, f := range oldFiles {
 		if inNew[f] {
 			continue
 		}
-		ob, _ := os.ReadFile(filepath.Join(oldDir, filepath.FromSlash(f)))
-		best, bestScore := "", 0.0
-		for g := range added {
+		ob, err := os.ReadFile(filepath.Join(oldDir, filepath.FromSlash(f)))
+		if err != nil {
+			return err
+		}
+		best, bestScore, second := "", 0.0, 0.0
+		for _, g := range addedSorted {
 			if filepath.Dir(g) != filepath.Dir(f) {
 				continue
 			}
-			nb, _ := os.ReadFile(filepath.Join(newDir, filepath.FromSlash(g)))
-			if s := similarity(ob, nb); s > bestScore {
-				best, bestScore = g, s
+			nb, err := os.ReadFile(filepath.Join(newDir, filepath.FromSlash(g)))
+			if err != nil {
+				return err
+			}
+			s := similarity(ob, nb)
+			if s > bestScore {
+				best, second, bestScore = g, bestScore, s
+			} else if s > second {
+				second = s
 			}
 		}
-		if bestScore >= 0.6 {
-			renamedTo[f] = best
-			delete(added, best)
+		if bestScore < 0.6 {
+			continue
 		}
+		if bestScore-second < 0.05 {
+			conflicts = append(conflicts, fmt.Sprintf("ambiguous rename: %s matches several new files equally; resolve by hand", f))
+			ambiguous[f] = true
+			continue
+		}
+		claims[best] = append(claims[best], f)
 	}
+	for g, fs := range claims {
+		if len(fs) > 1 {
+			sort.Strings(fs)
+			conflicts = append(conflicts, fmt.Sprintf("ambiguous rename: %s are all similar to new file %s; resolve by hand", strings.Join(fs, ", "), g))
+			for _, f := range fs {
+				ambiguous[f] = true
+			}
+			continue
+		}
+		renamedTo[fs[0]] = g
+		delete(added, g)
+	}
+	// From here on the tree may change: any failure leaves a recorded state.
+	modified := true
+	defer func() {
+		if modified && retErr != nil {
+			os.WriteFile(r.up(stateFile), []byte(fmt.Sprintf("target %s\nfrom %s\naborted %v\n", newV, oldV, retErr)), 0o644)
+		}
+	}()
 
 	for _, f := range unionSorted(oldFiles, newFiles) {
 		o := filepath.Join(oldDir, filepath.FromSlash(f))
@@ -124,34 +166,60 @@ func (r *repo) update(newV string, w io.Writer) error {
 			if !lok {
 				continue
 			}
-			lb, _ := os.ReadFile(l)
-			ob, _ := os.ReadFile(o)
+			lb, err := os.ReadFile(l)
+			if err != nil {
+				return err
+			}
+			ob, err := os.ReadFile(o)
+			if err != nil {
+				return err
+			}
 			if g, ok := renamedTo[f]; ok {
 				nb := filepath.Join(newDir, filepath.FromSlash(g))
+				if _, exists := readOpt(local(g)); exists {
+					conflicts = append(conflicts, fmt.Sprintf("add/add (rename %s -> %s): %s already exists locally; both files kept", f, g, g))
+					continue
+				}
+				tmpOut := local(g) + ".utls-sync-tmp"
+				var clean bool
 				if bytes.Equal(lb, ob) {
-					copyFile(nb, local(g))
-					log = append(log, fmt.Sprintf("renamed  %s -> %s", f, g))
+					if err := copyFile(nb, tmpOut); err != nil {
+						os.Remove(tmpOut)
+						return err
+					}
+					clean = true
 				} else {
-					if err := copyFile(l, local(g)); err != nil {
+					if err := copyFile(l, tmpOut); err != nil {
+						os.Remove(tmpOut)
 						return err
 					}
-					clean, err := merge3(local(g), o, nb, oldV, newV)
-					if err != nil {
+					if clean, err = merge3(tmpOut, o, nb, oldV, newV); err != nil {
+						os.Remove(tmpOut)
 						return err
-					}
-					if clean {
-						log = append(log, fmt.Sprintf("renamed  %s -> %s (merged [uTLS] hunks)", f, g))
-					} else {
-						conflicts = append(conflicts, fmt.Sprintf("content (rename %s -> %s): %s", f, g, g))
 					}
 				}
-				os.Remove(l)
+				modified = true
+				if err := os.Rename(tmpOut, local(g)); err != nil {
+					os.Remove(tmpOut)
+					return err
+				}
+				if err := os.Remove(l); err != nil {
+					return err
+				}
+				if clean {
+					log = append(log, fmt.Sprintf("renamed  %s -> %s", f, g))
+				} else {
+					conflicts = append(conflicts, fmt.Sprintf("content (rename %s -> %s): %s", f, g, g))
+				}
 				continue
 			}
-			if bytes.Equal(lb, ob) {
-				os.Remove(l)
+			if bytes.Equal(lb, ob) && !ambiguous[f] {
+				modified = true
+				if err := os.Remove(l); err != nil {
+					return err
+				}
 				log = append(log, "removed  "+f)
-			} else {
+			} else if !ambiguous[f] {
 				conflicts = append(conflicts, "modify/delete: "+f+" was deleted upstream but carries [uTLS] hunks; move them to a u_*.go file and delete it")
 			}
 		case !inOld[f] && inNew[f]:
@@ -162,6 +230,7 @@ func (r *repo) update(newV string, w io.Writer) error {
 				conflicts = append(conflicts, "add/add: "+f+" exists locally and was added upstream")
 				continue
 			}
+			modified = true
 			if err := copyFile(n, l); err != nil {
 				return err
 			}
@@ -176,6 +245,7 @@ func (r *repo) update(newV string, w io.Writer) error {
 				conflicts = append(conflicts, "modify/delete: "+f+" changed upstream but was deleted locally")
 				continue
 			}
+			modified = true
 			clean, err := merge3(l, o, n, oldV, newV)
 			if err != nil {
 				return err
@@ -206,6 +276,7 @@ func (r *repo) update(newV string, w io.Writer) error {
 	}
 
 	if len(conflicts) > 0 || len(shimChanged) > 0 {
+		modified = false // a conflict state is recorded below, not an abort
 		var st strings.Builder
 		fmt.Fprintf(&st, "target %s\nfrom %s\n", newV, oldV)
 		for _, c := range conflicts {
@@ -242,6 +313,9 @@ func (r *repo) finish(w io.Writer) error {
 	}
 	if target == "" {
 		return errors.New("UPDATE_STATE has no target")
+	}
+	if strings.Contains(string(b), "\naborted ") {
+		return errors.New("the update was aborted by an error; restore the mirror (git checkout -- internal upstream), remove upstream/UPDATE_STATE and re-run update")
 	}
 	files, err := r.mirroredFiles(r.root)
 	if err != nil {

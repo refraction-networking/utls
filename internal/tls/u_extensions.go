@@ -72,7 +72,7 @@ type SNIExtension struct {
 	ServerName string
 }
 
-func (e *SNIExtension) ID() uint16           { return extensionServerName }
+func (e *SNIExtension) ID() uint16          { return extensionServerName }
 func (e *SNIExtension) clone() TLSExtension { c := *e; return &c }
 func (e *SNIExtension) apply(b *helloBuild) error {
 	b.hasSNI = true
@@ -356,7 +356,7 @@ func (e *ApplicationSettingsExtension) render(r *helloRenderer, m *clientHelloMs
 // StatusRequestExtension is status_request (OCSP, RFC 6066).
 type StatusRequestExtension struct{}
 
-func (e *StatusRequestExtension) ID() uint16           { return extensionStatusRequest }
+func (e *StatusRequestExtension) ID() uint16          { return extensionStatusRequest }
 func (e *StatusRequestExtension) clone() TLSExtension { return &StatusRequestExtension{} }
 func (e *StatusRequestExtension) apply(b *helloBuild) error {
 	b.hello.ocspStapling = true
@@ -369,8 +369,8 @@ func (e *StatusRequestExtension) render(r *helloRenderer, m *clientHelloMsg, _ i
 // SCTExtension is signed_certificate_timestamp (RFC 6962).
 type SCTExtension struct{}
 
-func (e *SCTExtension) ID() uint16                 { return extensionSCT }
-func (e *SCTExtension) clone() TLSExtension        { return &SCTExtension{} }
+func (e *SCTExtension) ID() uint16                { return extensionSCT }
+func (e *SCTExtension) clone() TLSExtension       { return &SCTExtension{} }
 func (e *SCTExtension) apply(b *helloBuild) error { b.hello.scts = true; return nil }
 func (e *SCTExtension) render(r *helloRenderer, m *clientHelloMsg, _ int) ([]byte, bool, error) {
 	return nil, m.scts, nil
@@ -417,7 +417,7 @@ func (e *RenegotiationInfoExtension) render(r *helloRenderer, m *clientHelloMsg,
 // otherwise empty. It is omitted when Config.SessionTicketsDisabled is set.
 type SessionTicketExtension struct{}
 
-func (e *SessionTicketExtension) ID() uint16           { return extensionSessionTicket }
+func (e *SessionTicketExtension) ID() uint16          { return extensionSessionTicket }
 func (e *SessionTicketExtension) clone() TLSExtension { return &SessionTicketExtension{} }
 func (e *SessionTicketExtension) apply(b *helloBuild) error {
 	b.hasTicket = true
@@ -563,7 +563,7 @@ type UtlsPaddingExtension struct {
 	GetPaddingLen func(clientHelloUnpaddedLen int) (paddingLen int, willPad bool)
 }
 
-func (e *UtlsPaddingExtension) ID() uint16           { return extensionPadding }
+func (e *UtlsPaddingExtension) ID() uint16          { return extensionPadding }
 func (e *UtlsPaddingExtension) clone() TLSExtension { c := *e; return &c }
 func (e *UtlsPaddingExtension) apply(b *helloBuild) error {
 	return nil
@@ -601,7 +601,7 @@ type GenericExtension struct {
 	Data []byte
 }
 
-func (e *GenericExtension) ID() uint16           { return e.Id }
+func (e *GenericExtension) ID() uint16          { return e.Id }
 func (e *GenericExtension) clone() TLSExtension { return &GenericExtension{e.Id, cloneBytes(e.Data)} }
 func (e *GenericExtension) apply(b *helloBuild) error {
 	switch e.Id {
@@ -754,8 +754,8 @@ func (e *EncryptedClientHelloExtension) render(r *helloRenderer, m *clientHelloM
 // never replayed.
 type PreSharedKeyExtension struct{}
 
-func (e *PreSharedKeyExtension) ID() uint16                 { return extensionPreSharedKey }
-func (e *PreSharedKeyExtension) clone() TLSExtension        { return &PreSharedKeyExtension{} }
+func (e *PreSharedKeyExtension) ID() uint16                { return extensionPreSharedKey }
+func (e *PreSharedKeyExtension) clone() TLSExtension       { return &PreSharedKeyExtension{} }
 func (e *PreSharedKeyExtension) apply(b *helloBuild) error { return nil }
 func (e *PreSharedKeyExtension) render(r *helloRenderer, m *clientHelloMsg, _ int) ([]byte, bool, error) {
 	return nil, false, nil // rendered by the renderer at the end
@@ -766,8 +766,8 @@ func (e *PreSharedKeyExtension) render(r *helloRenderer, m *clientHelloMsg, _ in
 // early_data indications are never replayed.
 type EarlyDataExtension struct{}
 
-func (e *EarlyDataExtension) ID() uint16                 { return extensionEarlyData }
-func (e *EarlyDataExtension) clone() TLSExtension        { return &EarlyDataExtension{} }
+func (e *EarlyDataExtension) ID() uint16                { return extensionEarlyData }
+func (e *EarlyDataExtension) clone() TLSExtension       { return &EarlyDataExtension{} }
 func (e *EarlyDataExtension) apply(b *helloBuild) error { return nil }
 func (e *EarlyDataExtension) render(r *helloRenderer, m *clientHelloMsg, _ int) ([]byte, bool, error) {
 	return nil, m.earlyData, nil
@@ -834,8 +834,8 @@ func (e *TrustAnchorsExtension) render(r *helloRenderer, m *clientHelloMsg, _ in
 // ClientHello (without it, the cookie is placed before padding).
 type CookieExtension struct{}
 
-func (e *CookieExtension) ID() uint16                 { return extensionCookie }
-func (e *CookieExtension) clone() TLSExtension        { return &CookieExtension{} }
+func (e *CookieExtension) ID() uint16                { return extensionCookie }
+func (e *CookieExtension) clone() TLSExtension       { return &CookieExtension{} }
 func (e *CookieExtension) apply(b *helloBuild) error { b.hasCookieSlot = true; return nil }
 func (e *CookieExtension) render(r *helloRenderer, m *clientHelloMsg, _ int) ([]byte, bool, error) {
 	if len(m.cookie) == 0 {
