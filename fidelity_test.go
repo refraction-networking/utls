@@ -9,6 +9,7 @@ import (
 	"crypto/tls"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"slices"
@@ -60,6 +61,32 @@ func parseHelloFields(t *testing.T, raw []byte) *helloFields {
 	return h
 }
 
+// greaseBodies returns the bodies of the GREASE extensions in order.
+func greaseBodies(t *testing.T, raw []byte) []string {
+	t.Helper()
+	body, err := clientHelloBody(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := cryptobyte.String(body[4:])
+	var x, exts cryptobyte.String
+	if !s.Skip(34) || !s.ReadUint8LengthPrefixed(&x) || !s.ReadUint16LengthPrefixed(&x) ||
+		!s.ReadUint8LengthPrefixed(&x) || !s.ReadUint16LengthPrefixed(&exts) {
+		t.Fatal("malformed hello")
+	}
+	var out []string
+	for !exts.Empty() {
+		var id uint16
+		var d cryptobyte.String
+		exts.ReadUint16(&id)
+		exts.ReadUint16LengthPrefixed(&d)
+		if ungrease(id) == GREASE_PLACEHOLDER {
+			out = append(out, hex.EncodeToString(d))
+		}
+	}
+	return out
+}
+
 // u16s returns a uint16 list (after a length prefix of n bytes), ungreased.
 func u16s(d []byte, prefix int) []uint16 {
 	var out []uint16
@@ -102,19 +129,16 @@ func renderHello(t *testing.T, id ClientHelloID, serverName string) []byte {
 	return <-got
 }
 
-func TestChrome155MatchesBrowserCapture(t *testing.T) {
-	hexData, err := os.ReadFile("testdata/chrome155_clienthello.hex")
-	if err != nil {
-		t.Fatal(err)
-	}
-	capture, err := hex.DecodeString(strings.TrimSpace(string(hexData)))
-	if err != nil {
-		t.Fatal(err)
-	}
+// compareChromeCapture checks a Chrome-family render against a capture. It
+// ignores only the per-connection extension permutation, GREASE codepoints,
+// key material and GREASE ECH randomness (the payload length must belong to
+// BoringSSL's 144/176/208/240 family); every other byte is compared.
+func compareChromeCapture(t *testing.T, capture []byte, id ClientHelloID, sni string) {
+	t.Helper()
 	want := parseHelloFields(t, capture)
 	ja4Want, _ := JA4(capture)
 	for i := 0; i < 5; i++ {
-		raw := renderHello(t, HelloChrome_155, "www.example.com")
+		raw := renderHello(t, id, sni)
 		got := parseHelloFields(t, raw)
 		if got.vers != want.vers || got.sidLen != want.sidLen {
 			t.Fatalf("legacy version/session id: %x/%d vs %x/%d", got.vers, got.sidLen, want.vers, want.sidLen)
@@ -130,6 +154,9 @@ func TestChrome155MatchesBrowserCapture(t *testing.T) {
 		}
 		if got.extIDs[0] != GREASE_PLACEHOLDER || got.extIDs[len(got.extIDs)-1] != GREASE_PLACEHOLDER {
 			t.Fatal("GREASE extensions not at the ends")
+		}
+		if g, w := greaseBodies(t, raw), greaseBodies(t, capture); !slices.Equal(g, w) {
+			t.Fatalf("GREASE extension bodies %q, capture %q", g, w)
 		}
 		for id, wb := range want.ext {
 			gb := got.ext[id]
@@ -153,6 +180,9 @@ func TestChrome155MatchesBrowserCapture(t *testing.T) {
 				if l := len(gb) - 42; l != 144 && l != 176 && l != 208 && l != 240 {
 					t.Fatalf("GREASE ECH payload length %d", l)
 				}
+				if l := len(wb) - 42; l != 144 && l != 176 && l != 208 && l != 240 {
+					t.Fatalf("capture GREASE ECH payload length %d outside the family", l)
+				}
 			default:
 				if !bytes.Equal(gb, wb) {
 					t.Fatalf("extension %#04x body differs:\n got %x\nwant %x", id, gb, wb)
@@ -163,6 +193,71 @@ func TestChrome155MatchesBrowserCapture(t *testing.T) {
 			t.Fatalf("JA4 %s, capture %s", ja4, ja4Want)
 		}
 	}
+}
+
+func TestChrome155MatchesBrowserCapture(t *testing.T) {
+	compareChromeCapture(t, loadCapture(t, "chrome155_clienthello.hex"), HelloChrome_155, "www.example.com")
+}
+
+// Chrome 156.0.8078.80 sends the same ClientHello as Chrome 155 (three
+// captures, testdata/chrome156_clienthello.md), so HelloChrome_156 shares
+// the Chrome 155 spec.
+func TestChrome156MatchesBrowserCaptures(t *testing.T) {
+	for i := 0; i < 3; i++ {
+		compareChromeCapture(t, loadCapture(t, fmt.Sprintf("chrome156_clienthello.%d.hex", i)), HelloChrome_156, "utls-capture.test")
+	}
+}
+
+// Safari does not permute extensions: order and every body are exact except
+// GREASE values and key material.
+func TestSafari27MatchesBrowserCaptures(t *testing.T) {
+	for i := 0; i < 3; i++ {
+		capture := loadCapture(t, fmt.Sprintf("safari27_clienthello.%d.hex", i))
+		want := parseHelloFields(t, capture)
+		for j := 0; j < 3; j++ {
+			raw := renderHello(t, HelloSafari_27, "localhost")
+			got := parseHelloFields(t, raw)
+			if len(raw) != len(capture) {
+				t.Errorf("record length %d, capture %d", len(raw), len(capture))
+			}
+			if got.vers != want.vers || got.sidLen != want.sidLen || !slices.Equal(got.ciphers, want.ciphers) ||
+				!slices.Equal(got.extIDs, want.extIDs) {
+				t.Fatalf("header/ciphers/extension order differ:\n got %x %v\nwant %x %v", got.ciphers, got.extIDs, want.ciphers, want.extIDs)
+			}
+			if g, w := greaseBodies(t, raw), greaseBodies(t, capture); !slices.Equal(g, w) {
+				t.Fatalf("GREASE extension bodies %q, capture %q", g, w)
+			}
+			for id, wb := range want.ext {
+				gb := got.ext[id]
+				switch id {
+				case 0x0033:
+					if !slices.Equal(keyShareShape(gb), keyShareShape(wb)) {
+						t.Fatalf("key_share shape %v vs %v", keyShareShape(gb), keyShareShape(wb))
+					}
+				case 0x000a, 0x000d:
+					if !slices.Equal(u16s(gb, 2), u16s(wb, 2)) {
+						t.Fatalf("extension %d: %x vs %x", id, u16s(gb, 2), u16s(wb, 2))
+					}
+				case 0x002b:
+					if !slices.Equal(u16s(gb, 1), u16s(wb, 1)) {
+						t.Fatalf("supported_versions: %x vs %x", gb, wb)
+					}
+				default:
+					if !bytes.Equal(gb, wb) {
+						t.Fatalf("extension %#04x body differs:\n got %x\nwant %x", id, gb, wb)
+					}
+				}
+			}
+			j1, _, _ := JA3(raw)
+			j2, _, _ := JA3(capture)
+			k1, _ := JA4(raw)
+			k2, _ := JA4(capture)
+			if j1 != j2 || k1 != k2 {
+				t.Fatalf("JA3 %s/%s JA4 %s/%s", j1, j2, k1, k2)
+			}
+		}
+	}
+	handshakeStd(t, HelloSafari_27, clientConfig(t), serverConfig(t), nil).ok(t)
 }
 
 func loadCapture(t testing.TB, name string) []byte {
@@ -244,6 +339,9 @@ func TestParseCaptureRoundTrip(t *testing.T) {
 	id := CustomFingerprint("Parsed", "chrome155", func() (*ClientHelloSpec, error) { return spec.Clone(), nil })
 	raw := renderHello(t, id, "www.example.com")
 	got, want := parseHelloFields(t, raw), parseHelloFields(t, capture)
+	if !slices.Equal(greaseBodies(t, raw), greaseBodies(t, capture)) {
+		t.Fatal("parser lost GREASE extension bodies")
+	}
 	if !slices.Equal(got.extIDs, want.extIDs) || !slices.Equal(got.ciphers, want.ciphers) {
 		t.Fatalf("parsed spec does not reproduce order:\n got %v\nwant %v", got.extIDs, want.extIDs)
 	}

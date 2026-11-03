@@ -7,6 +7,10 @@
 // Provenance (see docs/FINGERPRINTS.md):
 //   - Chrome 155: checked against an independent capture of Google Chrome
 //     155.0.8059.40 (testdata/chrome155_clienthello.hex, chrome155_test.go).
+//   - Chrome 156: three captures of Chrome 156.0.8078.80 match the Chrome 155
+//     spec exactly (testdata/chrome156_clienthello.md); 156 reuses it.
+//   - Safari 27: three captures of Safari 27.0.1 match the Safari 26.3 spec
+//     exactly (testdata/safari27_clienthello.md); 27 reuses it.
 //   - Firefox 158: checked against isolated loopback captures of Mozilla
 //     Firefox 158.0 (testdata/firefox158_clienthello*.hex, fidelity_test.go).
 //   - Firefox 148, Safari 26.3, iOS 14, Android 11 OkHttp, QQ 11.1: ported
@@ -31,7 +35,8 @@ var (
 	HelloCustom = ClientHelloID{Client: "Custom", Version: "Auto", kind: kindCustom}
 
 	HelloChrome_155  = register(preset("Chrome", "155", chrome155Spec), "chrome155")
-	HelloChrome_Auto = register(withVersion(HelloChrome_155, "Auto"), "chrome", "chromium", "chrome_pq")
+	HelloChrome_156  = register(preset("Chrome", "156", chrome155Spec), "chrome156")
+	HelloChrome_Auto = register(withVersion(HelloChrome_156, "Auto"), "chrome", "chromium", "chrome_pq")
 	HelloEdge_Auto   = register(preset("Edge", "Auto", chrome155Spec), "edge")
 
 	HelloFirefox_148  = register(preset("Firefox", "148", firefox148Spec), "firefox148")
@@ -39,7 +44,8 @@ var (
 	HelloFirefox_Auto = register(withVersion(HelloFirefox_158, "Auto"), "firefox")
 
 	HelloSafari_26_3 = register(preset("Safari", "26.3", safari263Spec), "safari26")
-	HelloSafari_Auto = register(withVersion(HelloSafari_26_3, "Auto"), "safari")
+	HelloSafari_27   = register(preset("Safari", "27", safari263Spec), "safari27")
+	HelloSafari_Auto = register(withVersion(HelloSafari_27, "Auto"), "safari")
 
 	HelloIOS_14   = register(preset("iOS", "14", ios14Spec), "ios14")
 	HelloIOS_Auto = register(withVersion(HelloIOS_14, "Auto"), "ios")
@@ -289,7 +295,7 @@ func safari263Spec() (*ClientHelloSpec, error) {
 			&PSKKeyExchangeModesExtension{Modes: []uint8{pskModeDHE}},
 			&SupportedVersionsExtension{Versions: []uint16{GREASE_PLACEHOLDER, VersionTLS13, VersionTLS12}},
 			&CompressCertificateExtension{Algorithms: []CertCompressionAlgo{CertCompressionZlib}},
-			&UtlsGREASEExtension{},
+			&UtlsGREASEExtension{Body: []byte{0}}, // BoringSSL: second GREASE extension has a 1-byte body
 		},
 	}, nil
 }
@@ -328,7 +334,7 @@ func ios14Spec() (*ClientHelloSpec, error) {
 			&KeyShareExtension{KeyShares: []KeyShareEntry{{Group: CurveID(GREASE_PLACEHOLDER), Data: []byte{0}}, {Group: X25519}}},
 			&PSKKeyExchangeModesExtension{Modes: []uint8{pskModeDHE}},
 			&SupportedVersionsExtension{Versions: []uint16{GREASE_PLACEHOLDER, VersionTLS13, VersionTLS12, VersionTLS11, VersionTLS10}},
-			&UtlsGREASEExtension{},
+			&UtlsGREASEExtension{Body: []byte{0}},
 			&UtlsPaddingExtension{GetPaddingLen: BoringPaddingStyle},
 		},
 	}, nil
@@ -398,7 +404,7 @@ func qq111Spec() (*ClientHelloSpec, error) {
 			&SupportedVersionsExtension{Versions: []uint16{GREASE_PLACEHOLDER, VersionTLS13, VersionTLS12, VersionTLS11, VersionTLS10}},
 			&CompressCertificateExtension{Algorithms: []CertCompressionAlgo{CertCompressionBrotli}},
 			&ApplicationSettingsExtension{SupportedProtocols: []string{"h2"}},
-			&UtlsGREASEExtension{},
+			&UtlsGREASEExtension{Body: []byte{0}},
 			&UtlsPaddingExtension{GetPaddingLen: BoringPaddingStyle},
 		},
 	}, nil
