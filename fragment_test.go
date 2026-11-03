@@ -6,7 +6,9 @@ package utls
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
+	"io"
 	"net"
 	"strings"
 	"sync"
@@ -210,5 +212,49 @@ func TestFragmentOnlyFirstHello(t *testing.T) {
 				t.Fatal("second ClientHello fragmented")
 			}
 		}
+	}
+}
+
+func TestFragmentDialerAndTransportOptions(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	got := make(chan int, 1)
+	go func() {
+		c, err := ln.Accept()
+		if err != nil {
+			got <- -1
+			return
+		}
+		defer c.Close()
+		c.SetDeadline(time.Now().Add(5 * time.Second))
+		// Count records until the ClientHello is complete.
+		var msg []byte
+		n := 0
+		for len(msg) < 4 || len(msg) < 4+(int(msg[1])<<16|int(msg[2])<<8|int(msg[3])) {
+			hdr := make([]byte, 5)
+			if _, err := io.ReadFull(c, hdr); err != nil {
+				got <- -1
+				return
+			}
+			b := make([]byte, int(hdr[3])<<8|int(hdr[4]))
+			io.ReadFull(c, b)
+			msg = append(msg, b...)
+			n++
+		}
+		got <- n
+	}()
+	d := &Dialer{Config: clientConfig(t), Fragmentation: &FragmentOptions{Records: true, SplitAtSNI: true}}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	d.DialContext(ctx, "tcp", ln.Addr().String()) // server never answers
+	if n := <-got; n != 2 {
+		t.Fatalf("Dialer: ClientHello in %d records, want 2", n)
+	}
+	bad := &Dialer{Config: clientConfig(t), Fragmentation: &FragmentOptions{}}
+	if _, err := bad.DialContext(ctx, "tcp", ln.Addr().String()); err == nil {
+		t.Fatal("invalid Dialer fragmentation accepted")
 	}
 }

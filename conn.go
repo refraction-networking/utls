@@ -228,6 +228,9 @@ type Dialer struct {
 	ClientHelloID ClientHelloID
 	// ClientHelloHook, if set, is installed on every connection.
 	ClientHelloHook func(*ClientHelloContext) error
+	// Fragmentation, if set, is applied to every connection's first
+	// ClientHello (see FragmentOptions).
+	Fragmentation *FragmentOptions
 }
 
 // DialContext dials and completes the handshake before returning.
@@ -252,6 +255,12 @@ func (d *Dialer) dialUConn(ctx context.Context, network, addr string) (*UConn, e
 	uc := UClient(raw, config, id)
 	if d.ClientHelloHook != nil {
 		if err := uc.SetClientHelloHook(d.ClientHelloHook); err != nil {
+			raw.Close()
+			return nil, err
+		}
+	}
+	if d.Fragmentation != nil {
+		if err := uc.SetFragmentation(*d.Fragmentation); err != nil {
 			raw.Close()
 			return nil, err
 		}

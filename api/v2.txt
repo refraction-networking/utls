@@ -194,7 +194,7 @@ type CompressCertificateExtension = itls.CompressCertificateExtension
 type ConnectionState = tls.ConnectionState
 type CookieExtension = itls.CookieExtension
 type CurveID = itls.CurveID
-type Dialer struct{ NetDialer interface { DialContext(ctx context.Context, network, addr string) (net.Conn, error) }; Config *tls.Config; ClientHelloID ClientHelloID; ClientHelloHook func(*ClientHelloContext) error }
+type Dialer struct{ NetDialer interface { DialContext(ctx context.Context, network, addr string) (net.Conn, error) }; Config *tls.Config; ClientHelloID ClientHelloID; ClientHelloHook func(*ClientHelloContext) error; Fragmentation *FragmentOptions }
 type EarlyDataExtension = itls.EarlyDataExtension
 type EncryptedClientHelloExtension = itls.EncryptedClientHelloExtension
 type ExtendedMasterSecretExtension = itls.ExtendedMasterSecretExtension
