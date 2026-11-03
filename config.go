@@ -23,8 +23,10 @@
 package utls
 
 import (
+	"bytes"
 	"crypto/tls"
 	"errors"
+	"slices"
 
 	itls "github.com/refraction-networking/utls/v2/internal/tls"
 )
@@ -42,11 +44,23 @@ type SignatureScheme = itls.SignatureScheme
 // handshake. Every exported field is either converted here or listed with a
 // reason in config_fields_test.go (which fails when a Go release adds one);
 // behavior is covered by config_behavior_test.go.
+//
+// Ownership: the struct and the slices it owns as plain data (NextProtos,
+// CipherSuites, CurvePreferences, EncryptedClientHelloConfigList, and each
+// Certificate's chain/OCSP/SCT bytes and signature list) are snapshotted, so
+// later changes to them do not affect the connection. Referenced objects —
+// RootCAs, private keys and Leaf, Rand, Time, KeyLogWriter,
+// ClientSessionCache and every callback with whatever it captures — are
+// shared, exactly as crypto/tls shares them; like crypto/tls, uTLS requires
+// that they not be modified while connections use them.
 func fromStdConfig(c *tls.Config) *itls.Config {
 	if c == nil {
 		return &itls.Config{}
 	}
 	c = c.Clone()
+	c.NextProtos = slices.Clone(c.NextProtos)
+	c.CipherSuites = slices.Clone(c.CipherSuites)
+	c.EncryptedClientHelloConfigList = bytes.Clone(c.EncryptedClientHelloConfigList)
 	ic := &itls.Config{
 		Rand:                           c.Rand,
 		Time:                           c.Time,
@@ -95,15 +109,28 @@ func fromStdConfig(c *tls.Config) *itls.Config {
 	return ic
 }
 
+// stdToInternalCertificate copies the certificate's byte data; the private
+// key (often a crypto.Signer backed by an HSM) and the parsed Leaf are shared.
 func stdToInternalCertificate(c tls.Certificate) itls.Certificate {
 	return itls.Certificate{
-		Certificate:                  c.Certificate,
+		Certificate:                  cloneByteSlices(c.Certificate),
 		PrivateKey:                   c.PrivateKey,
 		SupportedSignatureAlgorithms: convertSigSchemes(c.SupportedSignatureAlgorithms),
-		OCSPStaple:                   c.OCSPStaple,
-		SignedCertificateTimestamps:  c.SignedCertificateTimestamps,
+		OCSPStaple:                   bytes.Clone(c.OCSPStaple),
+		SignedCertificateTimestamps:  cloneByteSlices(c.SignedCertificateTimestamps),
 		Leaf:                         c.Leaf,
 	}
+}
+
+func cloneByteSlices(in [][]byte) [][]byte {
+	if in == nil {
+		return nil
+	}
+	out := make([][]byte, len(in))
+	for i, b := range in {
+		out[i] = bytes.Clone(b)
+	}
+	return out
 }
 
 func convertSigSchemes[T ~uint16](in []T) []itls.SignatureScheme {

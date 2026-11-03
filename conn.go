@@ -42,7 +42,12 @@ var ErrHookWithECH = itls.ErrHookWithECH
 
 // UClient wraps conn as a uTLS client with fingerprint id. config may be nil
 // (but crypto/tls rules still require ServerName or InsecureSkipVerify).
-// config is copied; later changes to it do not affect the connection.
+// The Config's fields and the plain-data slices it owns (NextProtos,
+// CipherSuites, CurvePreferences, EncryptedClientHelloConfigList, certificate
+// bytes) are copied, so later changes to them do not affect the connection.
+// Objects it references — RootCAs, private keys, Rand, Time, KeyLogWriter,
+// ClientSessionCache, callbacks and anything they capture — are shared, as in
+// crypto/tls, and must not be modified while in use.
 //
 // An unusable id (zero value, or a spec factory that fails) is reported by the
 // handshake, before anything is written to conn. HelloCustom requires

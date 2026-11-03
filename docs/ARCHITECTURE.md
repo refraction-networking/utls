@@ -86,7 +86,11 @@ runs upstream's code path.
 The root package speaks `*crypto/tls.Config`, `crypto/tls.ConnectionState`,
 `*crypto/tls.ClientSessionState`, `tls.QUICEvent` and the stdlib error types.
 
-- **Config** (config.go): converted field by field once per connection;
+- **Config** (config.go): converted field by field once per connection. The
+  struct and its plain-data slices (ALPN, suites, curves, ECH list, certificate
+  bytes) are snapshotted; referenced objects (roots, keys, callbacks, caches,
+  writers) are shared as in crypto/tls and must not be mutated while in use
+  (config_ownership_test.go);
   `config_fields_test.go` classifies every field of both structs by reflection
   (converted / client-irrelevant / unsupported), so a new stdlib field fails a
   test instead of being silently ignored. Callbacks are wrapped:
