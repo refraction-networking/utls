@@ -69,7 +69,7 @@ func StdContextBridgeOK() bool { return stdCtxOK }
 
 // ErrExporterUnavailable is returned by a bridged ConnectionState's exporter
 // when no keying material can be exported yet (before the handshake completes).
-var ErrExporterUnavailable = errorString("utls: keying material is not available (handshake not complete); use (*UConn).ExportKeyingMaterial")
+var ErrExporterUnavailable = errorString("utls: keying material is not available: the handshake has not completed successfully")
 
 type errorString string
 

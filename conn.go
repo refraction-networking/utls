@@ -144,8 +144,7 @@ func (c *UConn) ConnectionState() ConnectionState { return toStdConnectionState(
 // ExportKeyingMaterial returns keying material per RFC 5705 / RFC 8446 7.5,
 // with the same restrictions as crypto/tls.
 func (c *UConn) ExportKeyingMaterial(label string, context []byte, length int) ([]byte, error) {
-	cs := c.u.ConnectionState()
-	return cs.ExportKeyingMaterial(label, context, length)
+	return c.u.ExportKeyingMaterial(label, context, length)
 }
 
 // EphemeralKey returns the classical ECDH private key offered for group (for

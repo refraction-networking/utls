@@ -507,3 +507,19 @@ func (c *Conn) uMaxOfferedVersion(configMax uint16) uint16 {
 	}
 	return min(configMax, slices.Max(u.hello.supportedVersions))
 }
+
+// ExportKeyingMaterial exports keying material (RFC 5705 / RFC 8446 7.5).
+// Before the handshake has completed successfully — including after a failed
+// handshake, where the exporter may never have been derived — it returns
+// ErrExporterUnavailable. After success it behaves as crypto/tls (including
+// after Close, and refusing TLS 1.2 without Extended Master Secret).
+func (u *UConn) ExportKeyingMaterial(label string, context []byte, length int) ([]byte, error) {
+	if !u.Conn.isHandshakeComplete.Load() {
+		return nil, ErrExporterUnavailable
+	}
+	cs := u.Conn.ConnectionState()
+	if cs.ekm == nil {
+		return nil, ErrExporterUnavailable
+	}
+	return cs.ekm(label, context, length)
+}
