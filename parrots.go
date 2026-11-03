@@ -7,6 +7,8 @@
 // Provenance (see docs/FINGERPRINTS.md):
 //   - Chrome 155: checked against an independent capture of Google Chrome
 //     155.0.8059.40 (testdata/chrome155_clienthello.hex, chrome155_test.go).
+//   - Firefox 158: checked against isolated loopback captures of Mozilla
+//     Firefox 158.0 (testdata/firefox158_clienthello*.hex, fidelity_test.go).
 //   - Firefox 148, Safari 26.3, iOS 14, Android 11 OkHttp, QQ 11.1: ported
 //     unchanged from uTLS v1 (refraction-networking/utls ff1b50f, u_parrots.go),
 //     where they were derived from captures; no capture is bundled here, so
@@ -33,7 +35,8 @@ var (
 	HelloEdge_Auto   = register(preset("Edge", "Auto", chrome155Spec), "edge")
 
 	HelloFirefox_148  = register(preset("Firefox", "148", firefox148Spec), "firefox148")
-	HelloFirefox_Auto = register(withVersion(HelloFirefox_148, "Auto"), "firefox")
+	HelloFirefox_158  = register(preset("Firefox", "158", firefox158Spec), "firefox158")
+	HelloFirefox_Auto = register(withVersion(HelloFirefox_158, "Auto"), "firefox")
 
 	HelloSafari_26_3 = register(preset("Safari", "26.3", safari263Spec), "safari26")
 	HelloSafari_Auto = register(withVersion(HelloSafari_26_3, "Auto"), "safari")
@@ -190,6 +193,58 @@ func firefox148Spec() (*ClientHelloSpec, error) {
 				GREASE:               true,
 				GREASECipherSuites:   []HPKESymmetricCipherSuite{{KDF: 1, AEAD: 1}, {KDF: 1, AEAD: 3}},
 				GREASEPayloadLengths: []uint16{239},
+			},
+		},
+	}, nil
+}
+
+// firefox158Spec reproduces Mozilla Firefox 158.0 (macOS) as captured on
+// loopback (testdata/firefox158_clienthello.md). Relative to 148 it drops the
+// ECDHE-ECDSA-AES-CBC suites and the FFDHE groups, adds session_ticket and
+// sends a 240-byte GREASE ECH payload with HKDF-SHA256/ChaCha20-Poly1305.
+func firefox158Spec() (*ClientHelloSpec, error) {
+	return &ClientHelloSpec{
+		TLSVersMin: VersionTLS12,
+		TLSVersMax: VersionTLS13,
+		CipherSuites: []uint16{
+			TLS_AES_128_GCM_SHA256, TLS_CHACHA20_POLY1305_SHA256, TLS_AES_256_GCM_SHA384,
+			TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256, TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+			TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256, TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+			TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384, TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+			TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA, TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+			TLS_RSA_WITH_AES_128_GCM_SHA256, TLS_RSA_WITH_AES_256_GCM_SHA384,
+			TLS_RSA_WITH_AES_128_CBC_SHA, TLS_RSA_WITH_AES_256_CBC_SHA,
+		},
+		CompressionMethods: []uint8{0},
+		Extensions: []TLSExtension{
+			&SNIExtension{},
+			&ExtendedMasterSecretExtension{},
+			&RenegotiationInfoExtension{},
+			&SupportedCurvesExtension{Curves: []CurveID{X25519MLKEM768, X25519, CurveP256, CurveP384, CurveP521}},
+			&SupportedPointsExtension{SupportedPoints: []uint8{0}},
+			&SessionTicketExtension{},
+			&ALPNExtension{AlpnProtocols: []string{"h2", "http/1.1"}},
+			&StatusRequestExtension{},
+			// delegated_credentials: ECDSA P-256/384/521, ECDSA-SHA1
+			&GenericExtension{Id: 34, Data: []byte{0x00, 0x08, 0x04, 0x03, 0x05, 0x03, 0x06, 0x03, 0x02, 0x03}},
+			&SCTExtension{},
+			&KeyShareExtension{ReuseClassicalFromHybrid: true, KeyShares: []KeyShareEntry{
+				{Group: X25519MLKEM768}, {Group: X25519}, {Group: CurveP256},
+			}},
+			&SupportedVersionsExtension{Versions: []uint16{VersionTLS13, VersionTLS12}},
+			&SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []SignatureScheme{
+				ECDSAWithP256AndSHA256, ECDSAWithP384AndSHA384, ECDSAWithP521AndSHA512,
+				PSSWithSHA256, PSSWithSHA384, PSSWithSHA512,
+				PKCS1WithSHA256, PKCS1WithSHA384, PKCS1WithSHA512,
+				ECDSAWithSHA1, PKCS1WithSHA1,
+			}},
+			&PSKKeyExchangeModesExtension{Modes: []uint8{pskModeDHE}},
+			&RecordSizeLimitExtension{Limit: 0x4001},
+			&CompressCertificateExtension{Algorithms: []CertCompressionAlgo{CertCompressionZlib, CertCompressionBrotli, CertCompressionZstd}},
+			&EncryptedClientHelloExtension{
+				GREASE:               true,
+				GREASECipherSuites:   []HPKESymmetricCipherSuite{{KDF: 1, AEAD: 3}},
+				GREASEPayloadLengths: []uint16{240},
 			},
 		},
 	}, nil

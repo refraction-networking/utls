@@ -165,6 +165,75 @@ func TestChrome155MatchesBrowserCapture(t *testing.T) {
 	}
 }
 
+func loadCapture(t testing.TB, name string) []byte {
+	t.Helper()
+	h, err := os.ReadFile("testdata/" + name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := hex.DecodeString(strings.TrimSpace(string(h)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// TestFirefox158MatchesBrowserCapture compares HelloFirefox_158 with real
+// Firefox 158.0 captures (testdata/firefox158_clienthello.md). Firefox does not
+// permute extensions, so order is compared exactly.
+func TestFirefox158MatchesBrowserCapture(t *testing.T) {
+	for _, tc := range []struct{ file, sni string }{
+		{"firefox158_clienthello.hex", "utls-capture.test"},
+		{"firefox158_ip_clienthello.hex", "127.0.0.1"},
+	} {
+		capture := loadCapture(t, tc.file)
+		want := parseHelloFields(t, capture)
+		for i := 0; i < 3; i++ {
+			raw := renderHello(t, HelloFirefox_158, tc.sni)
+			got := parseHelloFields(t, raw)
+			if len(raw) != len(capture) {
+				t.Errorf("%s: record length %d, capture %d", tc.file, len(raw), len(capture))
+			}
+			if got.vers != want.vers || got.sidLen != want.sidLen || !slices.Equal(got.ciphers, want.ciphers) {
+				t.Fatalf("%s: version/session id/ciphers differ", tc.file)
+			}
+			if !slices.Equal(got.extIDs, want.extIDs) {
+				t.Fatalf("%s: extension order\n got %v\nwant %v", tc.file, got.extIDs, want.extIDs)
+			}
+			for id, wb := range want.ext {
+				gb := got.ext[id]
+				switch id {
+				case 0x0033:
+					if !slices.Equal(keyShareShape(gb), keyShareShape(wb)) {
+						t.Fatalf("key_share shape %v vs %v", keyShareShape(gb), keyShareShape(wb))
+					}
+					// X25519 share reused from the hybrid share, as in the capture.
+					if !bytes.Equal(gb[2+4+1216-32:2+4+1216], gb[2+4+1216+4:2+4+1216+4+32]) {
+						t.Fatal("X25519 share not reused from X25519MLKEM768")
+					}
+				case 0xfe0d: // type+suite, enc length and payload length exact
+					if len(gb) != len(wb) || !bytes.Equal(gb[:5], wb[:5]) || !bytes.Equal(gb[6:8], wb[6:8]) ||
+						!bytes.Equal(gb[40:42], wb[40:42]) {
+						t.Fatalf("GREASE ECH shape\n got %x\nwant %x", gb[:8], wb[:8])
+					}
+				default:
+					if !bytes.Equal(gb, wb) {
+						t.Fatalf("%s: extension %#04x body\n got %x\nwant %x", tc.file, id, gb, wb)
+					}
+				}
+			}
+			ja4g, _ := JA4(raw)
+			ja4w, _ := JA4(capture)
+			ja3g, _, _ := JA3(raw)
+			ja3w, _, _ := JA3(capture)
+			if ja4g != ja4w || ja3g != ja3w {
+				t.Fatalf("%s: JA4 %s/%s JA3 %s/%s", tc.file, ja4g, ja4w, ja3g, ja3w)
+			}
+		}
+	}
+	handshakeStd(t, HelloFirefox_158, clientConfig(t), serverConfig(t), nil).ok(t)
+}
+
 func TestParseCaptureRoundTrip(t *testing.T) {
 	hexData, _ := os.ReadFile("testdata/chrome155_clienthello.hex")
 	capture, _ := hex.DecodeString(strings.TrimSpace(string(hexData)))

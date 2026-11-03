@@ -15,7 +15,7 @@ import (
 )
 
 func allPresets() []ClientHelloID {
-	return []ClientHelloID{HelloChrome_Auto, HelloChrome_155, HelloEdge_Auto, HelloFirefox_Auto, HelloSafari_Auto,
+	return []ClientHelloID{HelloChrome_Auto, HelloChrome_155, HelloEdge_Auto, HelloFirefox_148, HelloFirefox_Auto, HelloSafari_Auto,
 		HelloIOS_Auto, HelloAndroid_11_OkHttp, HelloQQ_Auto, HelloRandomized, HelloRandomizedALPN, HelloRandomizedNoALPN, HelloGolang}
 }
 
