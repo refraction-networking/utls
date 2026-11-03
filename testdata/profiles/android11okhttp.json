@@ -1,0 +1,72 @@
+{
+  "format": "utls-profile",
+  "version": 1,
+  "client": "Android",
+  "client_version": "11-OkHttp",
+  "cipher_suites": [
+    49195,
+    49196,
+    52393,
+    49199,
+    49200,
+    52392,
+    49171,
+    49172,
+    156,
+    157,
+    47,
+    53
+  ],
+  "compression_methods": [
+    0
+  ],
+  "extensions": [
+    {
+      "type": "server_name",
+      "params": {
+        "ServerName": ""
+      }
+    },
+    {
+      "type": "extended_master_secret"
+    },
+    {
+      "type": "renegotiation_info"
+    },
+    {
+      "type": "supported_groups",
+      "params": {
+        "Curves": [
+          29,
+          23,
+          24
+        ]
+      }
+    },
+    {
+      "type": "ec_point_formats",
+      "params": {
+        "SupportedPoints": "AA=="
+      }
+    },
+    {
+      "type": "status_request"
+    },
+    {
+      "type": "signature_algorithms",
+      "params": {
+        "SupportedSignatureAlgorithms": [
+          1027,
+          2052,
+          1025,
+          1283,
+          2053,
+          1281,
+          2054,
+          1537,
+          513
+        ]
+      }
+    }
+  ]
+}

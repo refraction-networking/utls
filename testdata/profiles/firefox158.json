@@ -1,0 +1,169 @@
+{
+  "format": "utls-profile",
+  "version": 1,
+  "client": "Firefox",
+  "client_version": "158",
+  "tls_vers_min": 771,
+  "tls_vers_max": 772,
+  "cipher_suites": [
+    4865,
+    4867,
+    4866,
+    49195,
+    49199,
+    52393,
+    52392,
+    49196,
+    49200,
+    49171,
+    49172,
+    156,
+    157,
+    47,
+    53
+  ],
+  "compression_methods": [
+    0
+  ],
+  "extensions": [
+    {
+      "type": "server_name",
+      "params": {
+        "ServerName": ""
+      }
+    },
+    {
+      "type": "extended_master_secret"
+    },
+    {
+      "type": "renegotiation_info"
+    },
+    {
+      "type": "supported_groups",
+      "params": {
+        "Curves": [
+          4588,
+          29,
+          23,
+          24,
+          25
+        ]
+      }
+    },
+    {
+      "type": "ec_point_formats",
+      "params": {
+        "SupportedPoints": "AA=="
+      }
+    },
+    {
+      "type": "session_ticket"
+    },
+    {
+      "type": "alpn",
+      "params": {
+        "AlpnProtocols": [
+          "h2",
+          "http/1.1"
+        ]
+      }
+    },
+    {
+      "type": "status_request"
+    },
+    {
+      "type": "generic",
+      "params": {
+        "Id": 34,
+        "Data": "AAgEAwUDBgMCAw=="
+      }
+    },
+    {
+      "type": "signed_certificate_timestamp"
+    },
+    {
+      "type": "key_share",
+      "params": {
+        "KeyShares": [
+          {
+            "Group": 4588,
+            "Data": null
+          },
+          {
+            "Group": 29,
+            "Data": null
+          },
+          {
+            "Group": 23,
+            "Data": null
+          }
+        ],
+        "ReuseClassicalFromHybrid": true
+      }
+    },
+    {
+      "type": "supported_versions",
+      "params": {
+        "Versions": [
+          772,
+          771
+        ]
+      }
+    },
+    {
+      "type": "signature_algorithms",
+      "params": {
+        "SupportedSignatureAlgorithms": [
+          1027,
+          1283,
+          1539,
+          2052,
+          2053,
+          2054,
+          1025,
+          1281,
+          1537,
+          515,
+          513
+        ]
+      }
+    },
+    {
+      "type": "psk_key_exchange_modes",
+      "params": {
+        "Modes": "AQ=="
+      }
+    },
+    {
+      "type": "record_size_limit",
+      "params": {
+        "Limit": 16385
+      }
+    },
+    {
+      "type": "compress_certificate",
+      "params": {
+        "Algorithms": [
+          1,
+          2,
+          3
+        ]
+      }
+    },
+    {
+      "type": "encrypted_client_hello",
+      "params": {
+        "GREASE": true,
+        "GREASECipherSuites": [
+          {
+            "KDF": 1,
+            "AEAD": 3
+          }
+        ],
+        "GREASEPayloadLengths": [
+          240
+        ]
+      }
+    }
+  ]
+}
