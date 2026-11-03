@@ -151,7 +151,18 @@
  	tls12Downgrade := string(serverHello.random[24:]) == downgradeCanaryTLS12
  	tls11Downgrade := string(serverHello.random[24:]) == downgradeCanaryTLS11
  	if maxVers == VersionTLS13 && c.vers <= VersionTLS12 && (tls12Downgrade || tls11Downgrade) ||
-@@ -1062,7 +1077,11 @@
+@@ -520,6 +535,10 @@
+ 		c.sendAlert(alertProtocolVersion)
+ 		return fmt.Errorf("tls: server selected unsupported protocol version %x", peerVersion)
+ 	}
++	if err := c.uCheckOfferedVersion(serverHello, vers); err != nil { // [uTLS] the spec's offered versions
++		c.sendAlert(alertProtocolVersion)
++		return err
++	}
+ 
+ 	c.vers = vers
+ 	c.haveVers = true
+@@ -1062,7 +1081,11 @@
  	session.ticket = hs.ticket
  
  	cs := &ClientSessionState{session: session}

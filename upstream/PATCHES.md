@@ -51,6 +51,11 @@ Hunks by file (pinned release: `upstream/VERSION`):
   `SetSessionParams`), the ClientHello hook and PSK binder recomputation.
 - **ServerHello exposure.** `setServerHello` records the raw ServerHello and the
   server's key share.
+- **Offered-version check.** `pickTLSVersion` calls `uCheckOfferedVersion`:
+  the server's version must be one the rendered ClientHello actually offered
+  (a spec's list can be narrower than, or noncontiguous within, the Config
+  bounds that `mutualVersion` checks; without supported_versions the server may
+  not use the extension and may pick at most legacy_version).
 - **Downgrade check.** `uMaxOfferedVersion`: the downgrade canary is checked
   against the highest version the spec actually offered (a TLS-1.2-only spec
   must not reject a TLS 1.2 server).

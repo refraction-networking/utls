@@ -535,6 +535,10 @@ func (c *Conn) pickTLSVersion(serverHello *serverHelloMsg) error {
 		c.sendAlert(alertProtocolVersion)
 		return fmt.Errorf("tls: server selected unsupported protocol version %x", peerVersion)
 	}
+	if err := c.uCheckOfferedVersion(serverHello, vers); err != nil { // [uTLS] the spec's offered versions
+		c.sendAlert(alertProtocolVersion)
+		return err
+	}
 
 	c.vers = vers
 	c.haveVers = true

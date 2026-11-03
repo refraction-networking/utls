@@ -32,6 +32,7 @@ type UConn struct {
 	clientHelloHook func(*ClientHelloContext) error
 	injected        *ClientSessionState
 	fragment        *FragmentOptions // first-ClientHello write policy; cleared once used (under c.out)
+	versionsExt     bool             // the spec sends supported_versions (set by prepareHello)
 
 	started  bool   // the handshake has begun; configuration is frozen
 	snapshot []byte // last ClientHello rendered for the wire (immutable copy)
@@ -263,6 +264,7 @@ func (u *UConn) prepareHello(c *Conn, hello *clientHelloMsg, stock *keySharePriv
 	}
 	u.mu.Lock()
 	u.build, u.renderer, u.hello, u.keys = b, r, hello, keys
+	u.versionsExt = b.specVersions != nil
 	u.mu.Unlock()
 	return primary, nil
 }
@@ -500,6 +502,36 @@ func (u *UConn) setServerHello(raw []byte, share keyShare) {
 
 // uMaxOfferedVersion is the highest version actually offered, for the RFC 8446
 // downgrade-canary check (the spec may offer less than the Config allows).
+// uCheckOfferedVersion rejects a server-selected version the ClientHello did
+// not offer. Config bounds (checked by crypto/tls) cannot express a spec's
+// exact, possibly noncontiguous, supported_versions list, nor a spec that sent
+// no supported_versions extension at all (then the server may not use the
+// extension, and may select at most the legacy_version).
+func (c *Conn) uCheckOfferedVersion(sh *serverHelloMsg, vers uint16) error {
+	u := c.uconn
+	if u == nil || u.golang {
+		return nil
+	}
+	u.mu.Lock()
+	h, hasExt := u.hello, u.versionsExt
+	u.mu.Unlock()
+	if h == nil {
+		return nil
+	}
+	if !hasExt {
+		if sh.supportedVersion != 0 {
+			return fmt.Errorf("tls: server selected protocol version %x with supported_versions, which the ClientHello did not offer", sh.supportedVersion)
+		}
+		if vers > h.vers {
+			return fmt.Errorf("tls: server selected protocol version %x above the ClientHello's legacy_version %x, which the ClientHello did not offer", vers, h.vers)
+		}
+	}
+	if !slices.Contains(h.supportedVersions, vers) {
+		return fmt.Errorf("tls: server selected protocol version %x, which the ClientHello did not offer (offered %x)", vers, h.supportedVersions)
+	}
+	return nil
+}
+
 func (c *Conn) uMaxOfferedVersion(configMax uint16) uint16 {
 	u := c.uconn
 	if u == nil || u.golang || u.hello == nil || len(u.hello.supportedVersions) == 0 {
