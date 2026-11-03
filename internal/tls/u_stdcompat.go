@@ -132,6 +132,20 @@ func StdError(err error) error {
 	if err == nil {
 		return nil
 	}
+	std := stdErrorValue(err)
+	if std == nil {
+		return err
+	}
+	switch err.(type) {
+	case *ECHRejectionError, *CertificateVerificationError, RecordHeaderError, AlertError:
+		return std // the error is exactly the mapped value
+	}
+	// The mapped value is wrapped (e.g. a QUIC error wrapping the cause and an
+	// AlertError): keep the original chain for errors.Is/As on the cause.
+	return &stdWrappedError{err: err, std: std}
+}
+
+func stdErrorValue(err error) error {
 	var ech *ECHRejectionError
 	if errors.As(err, &ech) {
 		return &stdtls.ECHRejectionError{RetryConfigList: ech.RetryConfigList}
@@ -148,5 +162,14 @@ func StdError(err error) error {
 	if errors.As(err, &ae) {
 		return stdtls.AlertError(ae)
 	}
-	return err
+	return nil
 }
+
+// stdWrappedError has the message of err and unwraps to the crypto/tls value
+// first, then to err's own chain.
+type stdWrappedError struct {
+	err, std error
+}
+
+func (e *stdWrappedError) Error() string   { return e.err.Error() }
+func (e *stdWrappedError) Unwrap() []error { return []error{e.std, e.err} }
