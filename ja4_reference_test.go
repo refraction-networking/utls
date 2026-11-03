@@ -143,9 +143,9 @@ func TestJA4ALPNSpecExamples(t *testing.T) {
 		{[][]byte{{0x30, 0xAB, 0xCD, 0x31}}, "01"},
 		{[][]byte{[]byte("h2")}, "h2"},
 		{[][]byte{[]byte("http/1.1"), []byte("h2")}, "h1"}, // first value only
-		{[][]byte{[]byte("x")}, "xx"},                     // single character is first and last
-		{[][]byte{{}, []byte("h2")}, "00"},                // empty first value
-		{[][]byte{}, "00"},                                // no values
+		{[][]byte{[]byte("x")}, "xx"},                      // single character is first and last
+		{[][]byte{{}, []byte("h2")}, "00"},                 // empty first value
+		{[][]byte{}, "00"},                                 // no values
 	} {
 		h := specExample()
 		h.alpn = tc.alpn
