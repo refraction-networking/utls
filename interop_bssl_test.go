@@ -115,5 +115,33 @@ func TestBoringSSLALPS(t *testing.T) {
 	}
 }
 
+// Opaque ALPS bytes travel in both directions: BoringSSL receives the client's
+// non-empty settings exactly, and the client receives the server's.
+func TestBoringSSLALPSClientSettings(t *testing.T) {
+	id := CustomFingerprint("Chrome", "alps-bytes", func() (*ClientHelloSpec, error) {
+		s, err := HelloChrome_155.Spec()
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range s.Extensions {
+			if a, ok := e.(*ApplicationSettingsExtension); ok {
+				a.Settings = []byte{0x00, 0x03, 0x00, 0x00, 0x00, 0x64} // opaque to uTLS
+			}
+		}
+		return s, nil
+	})
+	addr := startBSSLPeer(t, "-alps", "h2=0a0b0c", "-alps-new")
+	uc, status := bsslDial(t, addr, id)
+	defer uc.Close()
+	settings, ok := uc.NegotiatedApplicationSettings()
+	if !ok || string(settings) != "\x0a\x0b\x0c" {
+		t.Fatalf("client got %x (%v)", settings, ok)
+	}
+	if !strings.Contains(status, "alps=000300000064 ") {
+		t.Fatalf("server did not receive the client's settings: %s", status)
+	}
+	t.Log(status)
+}
+
 var _ = io.EOF
 var _ = tls.VersionTLS13
