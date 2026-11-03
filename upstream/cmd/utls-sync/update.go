@@ -337,9 +337,11 @@ func (r *repo) finish(w io.Writer) error {
 	return nil
 }
 
-// merge3 runs `git merge-file` on local (in place) with base and other.
+// merge3 runs `git merge-file` on local (in place) with base and other. The
+// mirror is byte-exact, so line-ending conversion from the user's Git
+// configuration (core.autocrlf, core.eol) is disabled for this command only.
 func merge3(local, base, other, baseLabel, otherLabel string) (clean bool, err error) {
-	cmd := exec.Command("git", "merge-file", "-L", "uTLS", "-L", baseLabel, "-L", otherLabel, local, base, other)
+	cmd := exec.Command("git", "-c", "core.autocrlf=false", "-c", "core.eol=lf", "merge-file", "-L", "uTLS", "-L", baseLabel, "-L", otherLabel, local, base, other)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	err = cmd.Run()

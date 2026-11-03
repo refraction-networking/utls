@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -78,7 +79,9 @@ func TestUnifiedDiffAppliesWithGit(t *testing.T) {
 		os.WriteFile(filepath.Join(dir, "f.txt"), []byte(a.String()), 0o644)
 		p := unifiedDiff("a/f.txt", "b/f.txt", []byte(a.String()), []byte(b.String()))
 		os.WriteFile(filepath.Join(dir, "p.diff"), p, 0o644)
-		cmd := exec.Command("git", "apply", "--unidiff-zero", "p.diff")
+		// Byte-exact: never let the runner's core.autocrlf (true on Windows
+		// CI images) rewrite line endings of the patched file.
+		cmd := exec.Command("git", "-c", "core.autocrlf=false", "-c", "core.eol=lf", "apply", "--unidiff-zero", "p.diff")
 		cmd.Dir = dir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("git apply rejected diff: %v\n%s\n%s", err, out, p)
@@ -447,34 +450,62 @@ func TestAmbiguousRenameIsConflict(t *testing.T) {
 	}
 }
 
+// A write failure while applying a rename must abort the update without
+// losing the source file, advancing VERSION, or passing check/finish.
 func TestRenameWriteFailurePreservesSource(t *testing.T) {
-	if os.Getuid() == 0 {
-		t.Skip("root ignores directory permissions")
-	}
-	f := newFixture(t)
-	base := f.files("go1.0.0")
-	f.addGoroot("go1.0.1", base, func(m map[string]string) {
-		m["src/crypto/tls/messages.go"] = m["src/crypto/tls/msgs.go"]
-		delete(m, "src/crypto/tls/msgs.go")
-	})
-	dir := filepath.Join(f.repo, "internal", "tls")
-	os.Chmod(dir, 0o555)
-	defer os.Chmod(dir, 0o755)
-	err := f.run("update", "go1.0.1")
-	os.Chmod(dir, 0o755)
-	if err == nil {
-		t.Fatal("write failure not reported")
-	}
-	if !strings.Contains(f.read("internal/tls/msgs.go"), "[uTLS] hunk") {
-		t.Fatal("source lost after failed rename")
-	}
-	if v := strings.TrimSpace(f.read("upstream/VERSION")); v != "go1.0.0" {
-		t.Fatalf("VERSION advanced to %s after an aborted update", v)
-	}
-	if err := f.run("check"); err == nil {
-		t.Fatal("check passed after an aborted update")
-	}
-	if err := f.run("finish"); err == nil {
-		t.Fatal("finish accepted an aborted update")
+	for _, tc := range []struct {
+		name     string
+		obstruct func(t *testing.T, dir string) (undo func())
+	}{
+		// Portable: a non-empty directory where the rename's temporary file
+		// must be written makes that write fail on every OS.
+		{"temp path is a directory", func(t *testing.T, dir string) func() {
+			tmp := filepath.Join(dir, "messages.go.utls-sync-tmp")
+			if err := os.MkdirAll(filepath.Join(tmp, "x"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			return func() { os.RemoveAll(tmp) }
+		}},
+		// POSIX: a read-only directory. Windows has no POSIX directory write
+		// protection (chmod only toggles the read-only attribute, which does not
+		// stop creating files), so this variant cannot fail there; the portable
+		// case above covers the same code path.
+		{"read-only directory", func(t *testing.T, dir string) func() {
+			if runtime.GOOS == "windows" {
+				t.Skip("no POSIX directory write permissions on Windows")
+			}
+			if os.Getuid() == 0 {
+				t.Skip("root ignores directory permissions")
+			}
+			os.Chmod(dir, 0o555)
+			return func() { os.Chmod(dir, 0o755) }
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture(t)
+			base := f.files("go1.0.0")
+			f.addGoroot("go1.0.1", base, func(m map[string]string) {
+				m["src/crypto/tls/messages.go"] = m["src/crypto/tls/msgs.go"]
+				delete(m, "src/crypto/tls/msgs.go")
+			})
+			undo := tc.obstruct(t, filepath.Join(f.repo, "internal", "tls"))
+			err := f.run("update", "go1.0.1")
+			undo()
+			if err == nil {
+				t.Fatal("write failure not reported")
+			}
+			if !strings.Contains(f.read("internal/tls/msgs.go"), "[uTLS] hunk") {
+				t.Fatal("source lost after failed rename")
+			}
+			if v := strings.TrimSpace(f.read("upstream/VERSION")); v != "go1.0.0" {
+				t.Fatalf("VERSION advanced to %s after an aborted update", v)
+			}
+			if err := f.run("check"); err == nil {
+				t.Fatal("check passed after an aborted update")
+			}
+			if err := f.run("finish"); err == nil {
+				t.Fatal("finish accepted an aborted update")
+			}
+		})
 	}
 }
