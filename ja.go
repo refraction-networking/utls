@@ -181,7 +181,9 @@ func parseRawHello(raw []byte) (*rawHello, error) {
 			if d.ReadUint8LengthPrefixed(&list) {
 				for !list.Empty() {
 					var v uint16
-					list.ReadUint16(&v)
+					if !list.ReadUint16(&v) {
+						return nil, errors.New("utls: malformed supported_versions")
+					}
 					h.versions = append(h.versions, v)
 				}
 			}
