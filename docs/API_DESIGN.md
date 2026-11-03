@@ -34,66 +34,101 @@ downstream**.
 
 ## Decisions and trade-offs
 
+**Module path `github.com/refraction-networking/utls/v2`.** The API removes or
+changes most v1 identifiers (docs/REMOVALS.md), so semantic import versioning
+requires a new major path; v1 users are not broken by `go get -u`, and both can
+coexist in one build during migration. `api/v2.txt` plus `api_test.go` gate
+every later change: removals/changes fail CI, additions are recorded.
+
 **`CurveID`/`SignatureScheme` are uTLS types; `ConnectionState` is the stdlib
-type.** A spec is built from extension types whose fields use the uTLS
-`CurveID`, so exposing the uTLS type there lets specs compose without importing
-`internal`. `ConnectionState` is consumed by net/http, so it must be the stdlib
-type. The seam is a `uint16` conversion. We accepted this small asymmetry
-because it removes two larger frictions at once.
+type.** Specs compose from extension types whose fields use the uTLS `CurveID`
+without importing `internal`; `ConnectionState` is consumed by net/http, so it
+must be the stdlib type. The seam is a `uint16` conversion.
 
-**`ClientSessionCache` from the stdlib config is not carried across.** Bridging
-`crypto/tls.ClientSessionState` to the internal one cannot be done losslessly
-(the session encoding is explicitly opaque and version-dependent). Rather than
-ship something subtly wrong, v2 marks it unsupported-from-std in the reflection
-test and will expose resumption through a uTLS-native option. Most fingerprinting
-downstreams do not resume.
+**Sessions speak the stdlib types.** A stdlib `ClientSessionCache` in the Config
+works unchanged (bridged through `ResumptionState`/`SessionState.Bytes`, the
+same encoding as the mirrored release). `SetSession(*tls.ClientSessionState)`
+injects a session explicitly. Forged/out-of-band sessions without certificates
+cannot be expressed as a `*tls.ClientSessionState` (crypto/tls refuses to
+parse a client session without certificates), so they have a native path:
+`SetSessionParams(ClientSessionParams)`.
 
-**`ExportKeyingMaterial` on the returned `ConnectionState` does not work.** The
-exporter lives in an unexported stdlib field. We document it and provide the
-method on `UConn`. Silently returning a broken EKM (as some forks did via unsafe
-field copies) is worse than a documented, typed alternative.
+**`ExportKeyingMaterial` works on the returned `ConnectionState`, and
+`CertificateRequestInfo.Context()` is the handshake context.** Both sit in
+unexported stdlib fields; `internal/tls/u_stdcompat.go` is the single place that
+sets them, validated at start-up. If a future Go changes those fields, uTLS
+fails explicitly (`ErrExporterUnavailable`; GetClientCertificate configs refused
+before I/O) instead of panicking or passing a nil context.
 
-**Server-side config fields are not converted.** uTLS v2's public API is a
-client. Server-side callbacks (`GetCertificate`, `GetConfigForClient`,
-session wrapping, server ECH keys) are marked unsupported in the reflection
-test. A uTLS "server" in the wild is almost always a probe-resistant front
-(REALITY/Restls/JLS) built on the *raw ClientHello parser* plus a stock
-`crypto/tls` server — which `ParseClientHello` supports — not on a parallel
-server Config.
+**Server-side config fields are not converted.** uTLS is a client. Probe-
+resistant servers (REALITY/ShadowTLS-style) are a stock `crypto/tls` server
+plus `ParseClientHello` on the peeked hello (see downstream_test.go).
 
-**Byte-exact parroting is a `parrots.go` concern, not an API concern.** The API
-renders whatever spec it is given, exactly. How close a preset is to a specific
-browser build is a data question isolated to `parrots.go` and
-[FINGERPRINTS.md](FINGERPRINTS.md), so fidelity work never touches the engine or
-the sync machinery.
+**No silent fallbacks.** An unusable fingerprint (zero `ClientHelloID`,
+`HelloCustom` without `ApplyPreset`, a failing factory, an invalid spec) fails
+the handshake before any byte is written. Configuration methods
+(`ApplyPreset`, `SetClientHelloHook`, `SetSession*`, `SetFragmentation`) return
+an error once the handshake started. Spec getters return copies.
+
+**Byte-exact parroting is data, not engine.** The engine renders whatever spec
+it is given; fidelity is a property of `parrots.go`, proven only against real
+captures (docs/FINGERPRINTS.md).
+
+## Capabilities beyond the handshake
+
+**ClientHello hook.** Runs once on the final first ClientHello (after session
+load, before binders): `Random`/`SessionID` writable in place, `Raw` for MACs,
+`EphemeralKey(group)` for ECDH-derived authenticators. Binders are recomputed
+afterwards; changing anything else is an error; combining with ECH is refused
+(`ErrHookWithECH`) because the hook would see bytes that are never sent.
+
+**Fragmentation** (`SetFragmentation`, `Dialer`/`Transport.Fragmentation`).
+Splits only the first ClientHello into TLS records and/or separate writes,
+optionally in the middle of the SNI host name; fails before writing if asked to
+split at an SNI that is not there. Implemented under the record lock (no
+`net.Conn` swapping).
+
+**Record-layer handoff** (`HandOff`). For a completed TLS 1.3 connection,
+returns keys, IVs, traffic secrets, sequence numbers, decrypted-but-unread
+plaintext, undecrypted input and the transport; afterwards Read/Write fail with
+`ErrHandedOff` and Close sends no alert under stale state. Enough for kTLS,
+Vision-style splicing or a custom record layer. TLS 1.2 is refused (its keys
+are not retained).
+
+**QUIC** (`QUICClient`). The same event-driven API as `tls.QUICClient`, with
+standard `tls.QUICConfig`/`QUICEvent`/`QUICEncryptionLevel`/`SessionState`.
+Edits to `SessionState.EarlyData/Extra` in resume/store events reach the
+handshake. Browser QUIC hellos differ from TCP ones: supply a QUIC spec with a
+`QUICTransportParametersExtension` slot.
+
+**Profiles** (`ExportProfile`, `ParseProfile`, `Profile.ClientHelloID`).
+Versioned JSON (`"format": "utls-profile", "version": 1`), strict: unknown
+versions, fields or extension types are errors; the result must `Validate`.
+`testdata/profiles/*.json` are the format's golden files.
+
+**Randomization.** `HelloRandomized*` and `SeededRandomized(seed, weights)`
+(replayable: same seed and weights, same spec).
+
+**JA3/JA4.** Computed from raw hellos; `SpecFromJA3` only when the JA3 string
+plus explicit options determine every extension body (otherwise an error that
+names what is missing). There is no JA4-to-spec: JA4 is a hash.
 
 ## Mapping survey intents to API
 
 | Intent (survey rank) | API |
 |---|---|
 | 1 name→fingerprint | `ParseFingerprint`, `Fingerprints`, `ClientHelloID`, aliases |
-| 2 dial + handshake-first | `Dial`, `DialContext`, `UClient`+`Handshake` |
-| 3 crypto/tls interop | `fromStdConfig`/`toStdConnectionState`, `ConnectionState`, `Transport` |
+| 2 dial + handshake-first | `Dial`, `DialContext`, `Dialer`, `UClient`+`Handshake` |
+| 3 crypto/tls interop | std `Config`/`ConnectionState`/sessions/errors, `Transport` |
 | 4 verify ≠ SNI | standard config fields; `SNIExtension{}`/omit; `VerifyConnection` |
-| 5 write into hello + ephemeral key | `ClientHelloContext` (Random/SessionID/EphemeralKey) |
-| 6 custom server auth | `UConn.ServerKeyShareGroup/Data`, `ServerHelloRaw`, `EphemeralKey` |
-| 7 spec from data | `ParseClientHello`, `ClientHelloSpec`, randomized presets |
+| 5 write into hello + ephemeral key | `SetClientHelloHook`, `ClientHelloContext` |
+| 6 custom server auth | `ServerKeyShareGroup/Data`, `ServerHelloRaw`, `EphemeralKey` |
+| 7 spec from data | `ParseClientHello`, `ParseProfile`, `SpecFromJA3`, `SeededRandomized` |
 | 8 per-connection freshness | `Spec()` fresh each call; renderer GREASE/keys |
 | 9 h2/h1 RoundTripper | `Transport` |
 | 10 multiple key shares / PQ | renderer + establishHandshakeKeys hunk |
+| 11 forged resumption, fragmentation, handoff, ECH, QUIC | `SetSessionParams`, `SetFragmentation`, `HandOff`, std ECH config fields, `QUICClient` |
 
-## Not yet (deliberate, documented gaps)
-
-These are real survey needs the architecture supports but which v2 does not yet
-ship as first-class helpers. They are natural additions that fit the existing
-shape without new `crypto/tls` coupling:
-
-- JA3/JA4 *string* parsing (today: `ParseClientHello` from raw bytes).
-- Out-of-band / forged session resumption (Psiphon, Lantern).
-- ClientHello fragmentation hook (Psiphon fork, Lantern, samizdat).
-- Post-handshake record-layer handoff for kTLS/Vision/Restls.
-- ECH with a fingerprinted outer hello.
-- A QUIC client surface mirroring the stdlib QUIC types (see the QUIC survey).
-
-Each should be added as root-package API plus, if unavoidable, a marked `[uTLS]`
-hunk documented in `upstream/PATCHES.md`.
+Additions follow the same rule: root-package API, plus — only if unavoidable —
+a marked `[uTLS]` hunk documented in `upstream/PATCHES.md`, and an
+`api/v2.txt` update.

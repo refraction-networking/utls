@@ -1,96 +1,121 @@
-# Adding and updating fingerprints
+# Fingerprints
 
-A fingerprint is a function that returns a fresh `ClientHelloSpec`, registered
-under a name. Everything lives in the root package; you do not touch
-`internal/tls` unless you need an extension type that does not exist yet.
+A fingerprint is a function returning a fresh `ClientHelloSpec`, registered
+under a name. Everything lives in the root package; you touch `internal/tls`
+only for an extension type that does not exist yet.
 
-## Add a preset
+## Presets and their provenance
 
-In `parrots.go`:
+| ID (`ParseFingerprint` names) | Evidence |
+|---|---|
+| `HelloChrome_156` = `HelloChrome_Auto` (`chrome`, `chromium`, `chrome156`) | 3 captures of Chrome 156.0.8078.80, `testdata/chrome156_clienthello.md` |
+| `HelloChrome_155` (`chrome155`) | capture of Chrome 155.0.8059.40, `testdata/chrome155_clienthello.md` |
+| `HelloEdge_Auto` (`edge`) | Chromium; uses the Chrome 155/156 spec (no Edge capture) |
+| `HelloFirefox_158` = `HelloFirefox_Auto` (`firefox`, `firefox158`) | 2 captures of Firefox 158.0, `testdata/firefox158_clienthello.md` |
+| `HelloFirefox_148` (`firefox148`) | ported from uTLS v1 (no capture bundled) |
+| `HelloSafari_27` = `HelloSafari_Auto` (`safari`, `safari27`) | 3 captures of Safari 27.0.1, `testdata/safari27_clienthello.md` |
+| `HelloSafari_26_3`, `HelloIOS_14`/`Auto`, `HelloAndroid_11_OkHttp`, `HelloQQ_11_1`/`Auto` | ported from uTLS v1 (no capture bundled) |
+| `HelloRandomized{,ALPN,NoALPN}`, `SeededRandomized` | generated; always negotiable |
+| `HelloGolang` (`golang`, `go`, `none`) | the stock crypto/tls ClientHello |
+
+"360" is deliberately unsupported (`ParseFingerprint` explains why: NPN and
+Channel ID cannot be negotiated). `HelloCustom` sends only what `ApplyPreset`
+gives it and fails with `ErrNoSpec` otherwise — uTLS never silently sends a
+different fingerprint.
+
+`fidelity_test.go` compares each captured preset with its captures: cipher
+suites, extension set (and order for Firefox/Safari, which do not permute),
+every extension body, GREASE extension bodies, key-share groups and lengths,
+GREASE ECH suite and payload length family, JA3/JA4. Only per-connection values
+(randoms, keys, GREASE codepoints, Chrome's extension permutation, GREASE ECH
+bytes) may differ.
+
+## Capturing a browser (the only acceptable evidence)
+
+Never write a capture by hand or "update" one from documentation. Record one:
+
+```
+interop/capture/capture-browsers.sh OUTDIR     # Chrome and Firefox, headless
+```
+
+It builds `interop/capture` (a loopback listener that saves the first TLS
+record of each connection and closes it), and runs each installed browser
+headless with a brand-new temporary profile against
+`https://utls-capture.test:<port>/`, mapped to 127.0.0.1. For Safari, open a
+private window by hand to `https://localhost:<port>/` while `go run
+./interop/capture PORT PREFIX` listens. Never use or modify a real profile, and
+never point a capture browser at other sites.
+
+Then:
+
+1. Copy the `.hex` files to `testdata/<browser><version>_clienthello*.hex` and
+   write a `.md` next to them: exact browser version (from `--version`), OS,
+   date, command line / procedure, SHA-256 of each file and of the handshake.
+2. Parse a capture as a starting point: `spec, _ := utls.ParseClientHello(raw)`.
+   Hand-write the preset in `parrots.go` from it (named extension types, not
+   `GenericExtension`, wherever a type exists; `SNIExtension{}` with an empty
+   name; empty key-share `Data`). If the new capture is identical to the
+   previous version's spec, reuse the spec and say so in the provenance header.
+3. Add a test in `fidelity_test.go` (use `compareChromeCapture` for
+   Chromium-family; the Safari/Firefox tests for fixed-order browsers) and add
+   the preset to `allPresets()` in `utls_test.go` so it is interop-tested.
+4. Update the table above and the provenance header of `parrots.go`.
+
+## Writing a spec
 
 ```go
-var HelloChrome_150 = register(
-    ClientHelloID{Client: "Chrome", Version: "150", specFactory: chrome150Spec},
-    "chrome-150", // optional extra aliases
-)
+var HelloChrome_157 = register(preset("Chrome", "157", chrome157Spec), "chrome157")
 
-func chrome150Spec() (*ClientHelloSpec, error) {
+func chrome157Spec() (*ClientHelloSpec, error) {
     return &ClientHelloSpec{
-        CipherSuites: []uint16{
-            GREASE_PLACEHOLDER,
-            TLS_AES_128_GCM_SHA256,
-            // ...
-        },
+        CipherSuites:       []uint16{GREASE_PLACEHOLDER, TLS_AES_128_GCM_SHA256 /* ... */},
         CompressionMethods: []uint8{0},
-        Extensions: []TLSExtension{
+        Extensions: shuffleChromeExtensions([]TLSExtension{
             &UtlsGREASEExtension{},
-            &SNIExtension{},            // empty: uses the dial's ServerName
+            &SNIExtension{},
             &SupportedCurvesExtension{Curves: []CurveID{GREASE_PLACEHOLDER, X25519MLKEM768, X25519}},
-            // ... in the exact order the browser sends them ...
             &KeyShareExtension{KeyShares: []KeyShareEntry{
-                {Group: CurveID(GREASE_PLACEHOLDER), Data: []byte{0}},
-                {Group: X25519MLKEM768},  // empty Data => fresh key generated per connection
+                {Group: GREASE_PLACEHOLDER, Data: []byte{0}},
+                {Group: X25519MLKEM768}, // empty Data: fresh key per connection
                 {Group: X25519},
             }},
-            &SupportedVersionsExtension{Versions: []uint16{GREASE_PLACEHOLDER, VersionTLS13, VersionTLS12}},
-            &UtlsGREASEExtension{Body: []byte{0}},
-            &UtlsPaddingExtension{GetPaddingLen: BoringPaddingStyle},
-        },
+            // ... in the browser's order ...
+            &UtlsGREASEExtension{Body: []byte{0}}, // BoringSSL: 1-byte body on the second
+        }),
     }, nil
 }
 ```
 
-Rules that keep it correct:
+Rules:
 
-- **The factory must return a fresh spec every call.** Never share extension
-  pointers between specs or connections; extensions hold per-connection state
-  (GREASE values, padding length). `ClientHelloID.Spec()` relies on this.
-- **Order is the fingerprint.** Emit extensions in the exact order the target
-  sends them. GREASE goes where the browser puts it (usually first, with a
-  second GREASE near the end for Chromium).
-- **Leave key_share `Data` empty** for groups you want a real, fresh key for.
-  Supply `Data` only for a GREASE share (one `0x00` byte) or when you
-  deliberately want fixed bytes (the server must then not select that group).
-- **`SNIExtension{}` with an empty name** takes the connection's `ServerName`.
-  Omit the extension entirely to omit SNI.
-- Register aliases users are likely to type; `ParseFingerprint` already handles
-  `""`→Chrome and `golang`/`none`→stdlib.
+- **Fresh spec per call.** Never share extension objects between specs.
+- **Order is the fingerprint** (unless the browser permutes; then use
+  `shuffleChromeExtensions`, which keeps GREASE, padding and pre_shared_key in
+  place). GREASE values are chosen per connection, BoringSSL-style (one value
+  per slot; the key-share GREASE equals the supported-groups GREASE).
+- **Key shares**: empty `Data` for real groups. `ReuseClassicalFromHybrid` only
+  if the capture shows the X25519 share equal to the hybrid's X25519 half
+  (Firefox does; Chrome does not).
+- **Padding**: `UtlsPaddingExtension{GetPaddingLen: BoringPaddingStyle}` only
+  if the browser pads.
+- A spec can be shipped as data: `ExportProfile(id)` / `ParseProfile(json)`
+  (docs/API_DESIGN.md "Profiles"). `testdata/profiles/*.json` are golden files
+  for the format.
 
-Then add a line to the interop test matrix in `utls_test.go` so CI proves your
-preset handshakes against a standard server.
+## A new extension type
 
-## Need an extension that doesn't exist?
+Add it in `internal/tls/u_extensions.go` (`ID`, `clone`, `apply`, `render`),
+re-export it in `spec.go`, map it in `fingerprinter.go` (`ParseClientHello`) and
+`profile.go` (`profileTypes`), and record the API addition
+(`go test -run TestAPICompatibility -update-api .`). Use `GenericExtension` when
+a verbatim body is enough; `Validate` refuses Generic for extensions that must
+influence the handshake.
 
-Add the type in `internal/tls/u_extensions.go`, implementing `TLSExtension`
-(`ID`, `marshal`, `writeToHello`), then re-export it with an alias in `spec.go`.
-Use `GenericExtension{Id, Data}` first if a verbatim body is enough; only add a
-typed extension when it must influence the handshake (key material, ALPN,
-versions, groups) or be introspectable.
+## JA3 / JA4
 
-## Fidelity: how exact is a parrot?
-
-The presets here reproduce the **structure** of a browser hello — the extension
-set and order, GREASE placement, the hybrid + classical key share, cipher list
-shape, padding. That defeats structural fingerprinting and is what most uses
-need.
-
-Byte-for-byte equality with a specific browser build (so a JA3/JA4 hash matches
-exactly) additionally requires the browser's precise cipher and extension
-values for that version, and BoringSSL's exact GREASE derivation (uTLS currently
-draws valid GREASE values per connection, which is what the browser does, but
-not from the same seed algorithm). If you need an exact hash match:
-
-1. Capture a real ClientHello from the target build.
-2. Feed it to `utls.ParseClientHello` to get a spec skeleton.
-3. Hand-reconcile the cipher/extension values against the capture.
-4. Add a golden test asserting the rendered bytes equal the capture (modulo the
-   per-connection random, session_id and key-share bytes).
-
-Keeping parrots current is the ongoing maintenance cost; it is intentionally
-isolated to `parrots.go` so it never entangles the sync machinery.
-
-## Randomized fingerprints
-
-`randomized.go` generates valid, always-negotiable hellos (always TLS 1.3 with
-X25519). Prefer these when you do not need to look like one specific browser —
-they defeat blocklists without a parrot-is-dead risk.
+`JA3` and `JA4` compute the standard fingerprints of a raw ClientHello.
+`SpecFromJA3` builds a spec only when every listed extension's body can be
+derived from the JA3 fields plus explicit `JA3SpecOptions`; otherwise it
+returns an error naming the missing information (JA3 omits extension bodies
+such as ALPS settings or trust anchors). JA4 is a lossy hash and cannot be
+turned into a spec.

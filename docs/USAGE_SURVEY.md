@@ -69,9 +69,8 @@ Psiphon-Labs/utls, bogdanfinn/utls, yawning/utls, restls-client-go.
 7. **Build a spec from data:** JA3/JA4 string (CycleTLS, tls-client, fastdialer,
    yaklang), raw captured bytes (fastdialer, flashlight, fingerproxy), JSON
    (Psiphon tactics, watm), or a seeded randomized fingerprint replayed later
-   (Psiphon). → `ParseClientHello`; `ClientHelloSpec` is plain data; randomized
-   presets. (JA3/JA4 string parsing is a thin future addition over
-   `ParseClientHello`.)
+   (Psiphon). → `ParseClientHello`; versioned JSON profiles; `SeededRandomized`;
+   `JA3`/`JA4` and `SpecFromJA3` (only when the JA3 determines the bodies).
 
 8. **Per-connection freshness.** GREASE (incl. signature_algorithms — a common
    fork patch), extension shuffling, fresh key shares, and never sharing
@@ -91,9 +90,9 @@ Psiphon-Labs/utls, bogdanfinn/utls, yawning/utls, restls-client-go.
 
 11. **Out-of-band / forged resumption, ClientHello fragmentation, record-layer
     handoff (kTLS/Vision/Restls), ECH, QUIC mimicry.** Real but narrower needs
-    (Psiphon, Lantern, sing-box, mihomo, uquic). The hooks and raw-bytes access
-    in v2 make these implementable downstream without forking core; first-class
-    helpers are the natural next additions (see API_DESIGN.md "Not yet").
+    (Psiphon, Lantern, sing-box, mihomo, uquic). v2 ships them as first-class
+    API: `SetSessionParams`, `SetFragmentation`, `HandOff`, ECH through the
+    standard config fields, and `QUICClient` (see API_DESIGN.md).
 
 ## Identifiers the survey said to drop or demote
 

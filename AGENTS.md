@@ -21,36 +21,48 @@ the root package instead. When it genuinely cannot, see
 
 Why this matters: v1 of uTLS hand-patched thousands of lines across the whole of
 `crypto/tls`, so every Go release broke it and every fix was archaeology. v2
-keeps the patch to ~140 lines across 6 files, all marked, so a Go update is a
+keeps the patch to ~100 added lines across 6 files, all marked, so a Go update is a
 scripted re-sync plus a handful of merge resolutions.
 
 ## The map
 
 ```
-.                      root package `utls` — the PUBLIC API (hand-written, stable)
+.                      root package `utls` (module .../utls/v2) — the PUBLIC API
   config.go            crypto/tls.Config <-> internal conversion (the one boundary)
-  conn.go              UConn, UClient, Dial, the ClientHello hook
+  conn.go              UConn, UClient, Dial/Dialer, hook, sessions, fragmentation, HandOff
+  quic.go              QUICConn on standard crypto/tls QUIC types
   spec.go              ClientHelloSpec + extension/const re-exports
   fingerprint.go       ClientHelloID, ParseFingerprint, the preset registry
-  parrots.go           the browser fingerprint presets
-  randomized.go        randomized fingerprints
-  transport.go         http.RoundTripper (ALPN -> h2/h1)
+  parrots.go           the browser fingerprint presets (provenance in the header)
+  randomized.go        randomized + seeded fingerprints
+  profile.go           versioned JSON profiles
+  ja.go                JA3 / JA4 and SpecFromJA3
+  transport.go         http.RoundTripper (native net/http h1/h2 per proxy route)
   fingerprinter.go     ParseClientHello: raw bytes -> spec
+  api/v2.txt           the exported API; api_test.go is the compatibility GATE
   config_fields_test.go  the reflection GUARDRAIL (see below)
+  fidelity_test.go     presets vs real browser captures in testdata/
+  downstream_test.go   Xray/sing-box/Psiphon migration fixtures
 
 internal/tls           MIRROR of crypto/tls (generated) + uTLS renderer
   *.go (no u_ prefix)  upstream-owned: crypto/tls verbatim + [uTLS] hunks only
   u_common.go          uTLS constants, GREASE helpers
   u_extensions.go      the TLSExtension types and their wire encoding
   u_spec.go            ClientHelloSpec + the renderer (spec -> bytes)
-  u_conn.go            UConn driver, ClientHelloContext, hooks
+  u_conn.go            UConn driver, ClientHelloContext, hooks, sessions
+  u_negotiate.go       cert compression, ALPS, record_size_limit
+  u_fragment.go        first-ClientHello fragmentation
+  u_handoff.go         TLS 1.3 record-layer handoff
+  u_stdcompat.go       the ONLY private-field coupling to crypto/tls types
+  u_testpeer.go        test server for negotiated features
   u_*_test.go          uTLS-owned tests
 
 internal/{godebug,boring,tls12,tls13,byteorder,fips140tls,cryptotest,testenv}
                        shims for std-internal packages (see internal/README.md)
 
 upstream/              the sync machinery
-  sync.sh              pristine / update / diff / check
+  sync.sh              wrapper for cmd/utls-sync: pristine/update/finish/diff/check/shims
+  cmd/utls-sync        the portable sync tool (+ fixtures in sync_test.go)
   VERSION              the Go release the mirror is pinned to
   files.txt            which dirs are mirrored
   imports.txt          std-internal import -> shim rewrites
@@ -69,9 +81,10 @@ Full procedure: [docs/UPSTREAM_SYNC.md](docs/UPSTREAM_SYNC.md). In short:
 
 ```
 upstream/sync.sh update go1.28.0      # 3-way merges the mirror onto the new release
+# resolve conflicts if any, then: upstream/sync.sh finish
 go build ./... && go test ./...        # fix fallout (mirror tests first, then uTLS)
 upstream/sync.sh diff > upstream/utls.patch   # re-record the patch
-go test ./...                          # includes the reflection guardrail
+upstream/sync.sh check && go test ./... # includes the reflection guardrail
 ```
 
 Expect conflicts only where a `[uTLS]` hunk touches code that upstream also
@@ -99,8 +112,14 @@ handshake hook, express it as a `u_*.go` method plus the smallest possible
   mirror. If a sync or a hunk broke TLS behaviour, it fails here.
 - `config_fields_test.go` fails if a new stdlib `Config`/`ConnectionState` field
   is unhandled, or if the mirror drifts from stdlib's field set.
-- `upstream/sync.sh check` fails in CI if `upstream/utls.patch` is stale, i.e.
-  someone edited a mirrored file without re-recording the patch.
+- `upstream/sync.sh check` fails in CI if `upstream/utls.patch` is stale (a
+  mirrored file was edited without re-recording the patch), an update is
+  unresolved, a mirrored file imports an unmapped std-internal package, or an
+  upstream package behind a shim changed.
+- `api_test.go` fails if the exported API differs from `api/v2.txt`. Removing
+  or changing a line is a breaking change (needs /v3); additions are recorded
+  with `go test -run TestAPICompatibility -update-api .` after review.
+- `fidelity_test.go` fails if a preset drifts from its real browser capture.
 
 ## Non-negotiables
 
@@ -110,6 +129,8 @@ handshake hook, express it as a `u_*.go` method plus the smallest possible
 - Never return uTLS-specific copies of `tls.Config`/`tls.ConnectionState` from
   the public API; the whole point is to speak the standard types.
 - A fingerprint preset's `Spec()` must return a FRESH spec each call.
+- Never claim browser fidelity without a real capture with provenance in
+  `testdata/` (see docs/FINGERPRINTS.md); never fabricate a capture.
 - Keep `go vet ./...` clean.
 
 ## Orientation reading

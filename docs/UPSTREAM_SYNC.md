@@ -26,10 +26,13 @@ Assume the new release is `go1.28.0`. From the repo root:
 
 ### 0. Prerequisites
 
-Have the target toolchain available. `sync.sh` finds sources either from the
-active toolchain (if `go version` matches) or by downloading the
-`golang.org/toolchain@v0.0.1-<version>.linux-amd64` module from the Go module
-proxy — no git access to go.googlesource.com is needed.
+`upstream/sync.sh` runs the portable Go tool `upstream/cmd/utls-sync` (it needs
+only Go and `git merge-file`). It finds the Go sources for a release, in order,
+from `-goroot goX.Y.Z=DIR`, the active toolchain if its VERSION matches, a
+`golang.org/toolchain` module already in the module cache, or
+`go mod download golang.org/toolchain@v0.0.1-<version>.linux-amd64` — no git
+access to go.googlesource.com is needed. Use a toolchain whose release you have
+verified (checksum of the official archive).
 
 Confirm a clean tree and that the current mirror is consistent:
 
@@ -44,22 +47,31 @@ upstream/sync.sh check      # should say the patch is up to date
 upstream/sync.sh update go1.28.0
 ```
 
-This computes `pristine(old)` and `pristine(new)`, then for each mirrored file
-does a `git merge-file` three-way merge of {committed tree, pristine(old),
-pristine(new)}. Because our changes are small and marked, most files merge
-cleanly. The command prints `merged` / `added` / `removed` per file and a
-summary, and writes the new version into `upstream/VERSION`.
+This computes `pristine(old)` and `pristine(new)`, then three-way merges each
+mirrored file {committed tree, pristine(old), pristine(new)}. Before touching
+the tree it aborts if the new release imports a std-internal package that
+`upstream/imports.txt` does not map. Renames are detected deterministically by
+content similarity; an ambiguous rename is reported as a conflict rather than
+guessed. Because our changes are small and marked, most files merge cleanly.
 
-If it reports conflicts, they are in files where a `[uTLS]` hunk sits on code
-that upstream also changed. Open each file, find the `<<<<<<<`/`=======`/
-`>>>>>>>` markers, and resolve them so the `[uTLS]`-marked intent is preserved
-on top of the new upstream code. Keep the `[uTLS]` comment on the resulting
-hunk. The known hunks and their intent are in `upstream/PATCHES.md`.
+On a clean merge, `upstream/VERSION` is updated. On any conflict — content,
+modify/delete, add/add (a rename onto an existing file keeps both), ambiguous
+rename — or when an upstream package that a shim replaces changed
+(`upstream/shims.txt`), it writes `upstream/UPDATE_STATE` and leaves VERSION
+alone, so `sync.sh check` and CI cannot mistake the tree for a finished update.
+If the update fails part way (I/O error), UPDATE_STATE says "aborted": restore
+the tree with git and start again.
 
-An `add/add` or `modify/delete` conflict means upstream added a file we also
-have, or deleted a file we patched. These are rare; handle per PATCHES.md (the
-usual resolution for a deleted-upstream file that carried a hunk is to move the
-behaviour into a `u_*.go` file).
+Resolve each conflict so the `[uTLS]`-marked intent sits on top of the new
+upstream code (keep the `[uTLS]` comment; hunk intents are in
+`upstream/PATCHES.md`). For a deleted-upstream file that carried a hunk, move
+the behaviour into a `u_*.go` file. Review any changed shim against its
+upstream package, refresh `upstream/shims.txt` with `upstream/sync.sh shims >
+upstream/shims.txt`, then:
+
+```
+upstream/sync.sh finish        # refuses while markers or an abort remain
+```
 
 ### 2. Build and test, inner layer first
 
@@ -79,8 +91,9 @@ update:
   simplest is to re-run the whole update from a clean tree once the config is fixed.
 - A new test file references a symbol from an excluded file: add a stub in
   `internal/tls/u_mirror_stubs_test.go` (there is precedent there).
-- A GODEBUG default changed: the `internal/godebug` shim reads the real env var,
-  so behaviour follows `GODEBUG`; usually nothing to do.
+- A GODEBUG default changed: the `internal/godebug` shim resolves settings like
+  the standard library (GODEBUG env var, then the binary's DefaultGODEBUG), so
+  behaviour follows the new defaults; usually nothing to do.
 
 Then the uTLS layer:
 
@@ -105,10 +118,13 @@ Review the diff: it should contain only your `[uTLS]`-marked hunks and the
 import rewrites. If it contains anything you did not intend, a mirrored file was
 edited by accident — revert that and re-record.
 
-### 4. Bump the module's Go version if needed
+### 4. Bump the module's Go version
 
-If the new release is the minimum you now require, update `go.mod`'s `go`
-directive and the toolchain references in CI.
+The mirror is the new release's crypto/tls and may rely on its standard library
+(net/http's native HTTP/2 over `DialTLSContext` needs 1.27.3+, for example).
+Update `go.mod`'s `go` directive to the mirrored release and the minimum-version
+lane in `.github/workflows/go.yml`. Run the full gate list in
+docs/RELEASING.md.
 
 ### 5. Commit
 
