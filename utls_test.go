@@ -175,3 +175,18 @@ func TestCustomFingerprintFactories(t *testing.T) {
 	}
 	handshakeStd(t, a, clientConfig(t), serverConfig(t), nil).ok(t)
 }
+
+// A failed Dialer.DialContext returns a nil net.Conn interface, not an
+// interface holding a nil *UConn (which would pass `c != nil` checks).
+func TestDialerErrorReturnsNilInterface(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	ln.Close() // connection refused
+	c, err := (&Dialer{Config: clientConfig(t)}).DialContext(context.Background(), "tcp", addr)
+	if err == nil || c != nil {
+		t.Fatalf("c=%#v err=%v", c, err)
+	}
+}

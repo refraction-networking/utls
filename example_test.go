@@ -8,10 +8,8 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"io"
 	"log"
 	"net"
-	"net/http"
 	"time"
 
 	utls "github.com/refraction-networking/utls/v2"
@@ -30,15 +28,25 @@ func ExampleDialContext() {
 	fmt.Println(tls.VersionName(st.Version), st.NegotiatedProtocol)
 }
 
-func ExampleTransport() {
-	client := &http.Client{Transport: &utls.Transport{ClientHelloID: utls.HelloFirefox_Auto}}
-	resp, err := client.Get("https://example.com/")
+func ExampleDialer() {
+	// A Dialer returns handshaken TLS connections as net.Conn, for any
+	// protocol stack that accepts a dial function (gRPC, HTTP clients, ...).
+	// The caller's stack owns application behavior: uTLS negotiates TLS,
+	// ALPN and (opaque) ALPS bytes only.
+	d := &utls.Dialer{Config: &tls.Config{NextProtos: []string{"http/1.1"}}, ClientHelloID: utls.HelloChrome_Auto}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	c, err := d.DialContext(ctx, "tcp", "example.com:443")
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer resp.Body.Close()
-	io.Copy(io.Discard, resp.Body)
-	fmt.Println(resp.Proto, resp.TLS.NegotiatedProtocol)
+	defer c.Close()
+	uc := c.(*utls.UConn)
+	st := uc.ConnectionState() // standard crypto/tls.ConnectionState
+	fmt.Println(st.NegotiatedProtocol)
+	if settings, ok := uc.NegotiatedApplicationSettings(); ok {
+		_ = settings // ALPS: the peer's application settings, for the caller's protocol stack
+	}
 }
 
 func ExampleParseFingerprint() {

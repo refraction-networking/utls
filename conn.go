@@ -239,7 +239,11 @@ type Dialer struct {
 
 // DialContext dials and completes the handshake before returning.
 func (d *Dialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	return d.dialUConn(ctx, network, addr)
+	uc, err := d.dialUConn(ctx, network, addr)
+	if err != nil {
+		return nil, err // not a net.Conn holding a nil *UConn
+	}
+	return uc, nil
 }
 
 func (d *Dialer) dialUConn(ctx context.Context, network, addr string) (*UConn, error) {

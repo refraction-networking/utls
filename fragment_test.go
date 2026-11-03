@@ -215,7 +215,7 @@ func TestFragmentOnlyFirstHello(t *testing.T) {
 	}
 }
 
-func TestFragmentDialerAndTransportOptions(t *testing.T) {
+func TestFragmentDialerOption(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)

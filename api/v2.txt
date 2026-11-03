@@ -115,8 +115,6 @@ method (*StatusRequestExtension).ID() uint16
 method (*SupportedCurvesExtension).ID() uint16
 method (*SupportedPointsExtension).ID() uint16
 method (*SupportedVersionsExtension).ID() uint16
-method (*Transport).CloseIdleConnections()
-method (*Transport).RoundTrip(req *net/http.Request) (*net/http.Response, error)
 method (*TrustAnchorsExtension).ID() uint16
 method (*UConn).ApplyPreset(spec *ClientHelloSpec) error
 method (*UConn).ClientHelloID() ClientHelloID
@@ -350,21 +348,6 @@ type TLSExtension = owned:TLSExtension
 type TLSExtension comparable=true
 type TLSExtension interface method ID() uint16
 type TLSExtension interface sealed=true
-type Transport comparable=false
-type Transport field ClientHelloHook func(*ClientHelloContext) error
-type Transport field ClientHelloID ClientHelloID
-type Transport field DialContext func(ctx context.Context, network string, addr string) (net.Conn, error)
-type Transport field Fragmentation *FragmentOptions
-type Transport field IdleConnTimeout time.Duration
-type Transport field MaxConnsPerHost int
-type Transport field MaxIdleConns int
-type Transport field MaxIdleConnsPerHost int
-type Transport field MaxProxyRoutes int
-type Transport field Proxy func(*net/http.Request) (*net/url.URL, error)
-type Transport field ResponseHeaderTimeout time.Duration
-type Transport field TLSConfig *crypto/tls.Config
-type Transport field TLSHandshakeTimeout time.Duration
-type Transport struct
 type TrustAnchorsExtension = owned:TrustAnchorsExtension
 type TrustAnchorsExtension comparable=false
 type TrustAnchorsExtension field TrustAnchorIDs [][]byte
