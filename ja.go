@@ -51,13 +51,20 @@ func JA4(raw []byte) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// TLS version (JA4 spec, "TLS and DTLS Version"): if supported_versions
+	// is present, the highest non-GREASE value in it — even if lower than
+	// legacy_version, and "00" if it lists none or only unknown values;
+	// legacy_version only when the extension is absent.
 	ver := h.legacyVersion
-	for _, v := range h.versions {
-		if !isGREASE(v) && v > ver {
-			ver = v
+	if h.hasVersions {
+		ver = 0
+		for _, v := range h.versions {
+			if !isGREASE(v) && v > ver {
+				ver = v
+			}
 		}
 	}
-	verStr := map[uint16]string{0x0304: "13", 0x0303: "12", 0x0302: "11", 0x0301: "10", 0x0300: "s3"}[ver]
+	verStr := ja4Versions[ver]
 	if verStr == "" {
 		verStr = "00"
 	}
@@ -76,11 +83,7 @@ func JA4(raw []byte) (string, error) {
 			exts = append(exts, e)
 		}
 	}
-	alpn := "00"
-	if len(h.alpn) > 0 && len(h.alpn[0]) > 0 {
-		a := h.alpn[0]
-		alpn = string(a[0]) + string(a[len(a)-1])
-	}
+	alpn := ja4ALPN(h.alpn)
 	hexList := func(v []uint16) string {
 		var parts []string
 		for _, x := range v {
@@ -118,6 +121,28 @@ func JA4(raw []byte) (string, error) {
 	return a + "_" + hash12(hexList(sc)) + "_" + hash12(extPart), nil
 }
 
+var ja4Versions = map[uint16]string{
+	0x0304: "13", 0x0303: "12", 0x0302: "11", 0x0301: "10", 0x0300: "s3", 0x0002: "s2",
+	0xfeff: "d1", 0xfefd: "d2", 0xfefc: "d3",
+}
+
+// ja4ALPN is JA4's two-character ALPN field (spec, "ALPN Extension Value"):
+// "00" without ALPN or with an empty first value; the first and last bytes of
+// the first value when both are ASCII alphanumeric (a single byte counts as
+// both); otherwise the first and last hex digits of the whole first value.
+func ja4ALPN(protos [][]byte) string {
+	if len(protos) == 0 || len(protos[0]) == 0 {
+		return "00"
+	}
+	a := protos[0]
+	alnum := func(c byte) bool { return '0' <= c && c <= '9' || 'A' <= c && c <= 'Z' || 'a' <= c && c <= 'z' }
+	if alnum(a[0]) && alnum(a[len(a)-1]) {
+		return string([]byte{a[0], a[len(a)-1]})
+	}
+	x := hex.EncodeToString(a)
+	return string([]byte{x[0], x[len(x)-1]})
+}
+
 type rawHello struct {
 	legacyVersion uint16
 	ciphers       []uint16
@@ -125,8 +150,9 @@ type rawHello struct {
 	groups        []uint16
 	points        []uint8
 	versions      []uint16
+	hasVersions   bool // supported_versions present (versions may still be empty)
 	sigalgs       []uint16
-	alpn          []string
+	alpn          [][]byte
 	hasSNI        bool
 }
 
@@ -162,39 +188,67 @@ func parseRawHello(raw []byte) (*rawHello, error) {
 			return nil, errors.New("utls: malformed extension")
 		}
 		h.extIDs = append(h.extIDs, id)
+		var ok bool
 		switch id {
 		case 0:
 			h.hasSNI = true
 		case 10:
-			h.groups, _ = readRawU16List(d)
+			if h.groups, ok = readRawU16List(d); !ok {
+				return nil, errors.New("utls: malformed supported_groups")
+			}
 		case 11:
 			var p cryptobyte.String
-			if d.ReadUint8LengthPrefixed(&p) {
-				h.points = append([]uint8(nil), p...)
+			if !d.ReadUint8LengthPrefixed(&p) || !d.Empty() {
+				return nil, errors.New("utls: malformed ec_point_formats")
 			}
+			h.points = append([]uint8(nil), p...)
 		case 13:
-			h.sigalgs, _ = readRawU16List(d)
+			if h.sigalgs, ok = readRawU16List(d); !ok {
+				return nil, errors.New("utls: malformed signature_algorithms")
+			}
 		case 16:
-			h.alpn, _ = readProtocols(&d)
+			if h.alpn, ok = readRawProtocols(d); !ok {
+				return nil, errors.New("utls: malformed application_layer_protocol_negotiation")
+			}
 		case 43:
+			h.hasVersions = true
 			var list cryptobyte.String
-			if d.ReadUint8LengthPrefixed(&list) {
-				for !list.Empty() {
-					var v uint16
-					if !list.ReadUint16(&v) {
-						return nil, errors.New("utls: malformed supported_versions")
-					}
-					h.versions = append(h.versions, v)
+			if !d.ReadUint8LengthPrefixed(&list) || !d.Empty() {
+				return nil, errors.New("utls: malformed supported_versions")
+			}
+			for !list.Empty() {
+				var v uint16
+				if !list.ReadUint16(&v) {
+					return nil, errors.New("utls: malformed supported_versions")
 				}
+				h.versions = append(h.versions, v)
 			}
 		}
 	}
 	return h, nil
 }
 
+// readRawProtocols reads an ALPN protocol_name_list without judging the
+// names (JA4 defines output for empty and binary names).
+func readRawProtocols(d cryptobyte.String) ([][]byte, bool) {
+	var list cryptobyte.String
+	if !d.ReadUint16LengthPrefixed(&list) || !d.Empty() {
+		return nil, false
+	}
+	var out [][]byte
+	for !list.Empty() {
+		var p cryptobyte.String
+		if !list.ReadUint8LengthPrefixed(&p) {
+			return nil, false
+		}
+		out = append(out, append([]byte(nil), p...))
+	}
+	return out, true
+}
+
 func readRawU16List(d cryptobyte.String) ([]uint16, bool) {
 	var list cryptobyte.String
-	if !d.ReadUint16LengthPrefixed(&list) {
+	if !d.ReadUint16LengthPrefixed(&list) || !d.Empty() {
 		return nil, false
 	}
 	var out []uint16
