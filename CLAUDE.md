@@ -15,3 +15,5 @@ Quick reminders:
   uTLS tests. `upstream/sync.sh check` guards the patch. Keep `go vet ./...` clean.
 - Do not reintroduce uTLS-specific copies of `tls.Config`/`tls.ConnectionState`;
   the public API speaks the standard types.
+- uTLS is a TLS library: no HTTP clients, RoundTrippers, proxies or HTTP/2
+  handling. ALPS settings are returned as opaque bytes for the caller's stack.

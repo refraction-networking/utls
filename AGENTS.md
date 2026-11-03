@@ -37,12 +37,15 @@ scripted re-sync plus a handful of merge resolutions.
   randomized.go        randomized + seeded fingerprints
   profile.go           versioned JSON profiles
   ja.go                JA3 / JA4 and SpecFromJA3
-  transport.go         http.RoundTripper (native net/http h1/h2 per proxy route)
   fingerprinter.go     ParseClientHello: raw bytes -> spec
   api/v2.txt           the exported API; api_test.go is the compatibility GATE
   config_fields_test.go  the reflection GUARDRAIL (see below)
   fidelity_test.go     presets vs real browser captures in testdata/
-  downstream_test.go   Xray/sing-box/Psiphon migration fixtures
+  downstream_test.go   sing-box/Psiphon migration fixtures
+
+interop/boringssl      independent BoringSSL TLS peer (go test -tags bsslinterop)
+interop/reality        SEPARATE MODULE: the real XTLS/REALITY server vs uTLS
+interop/capture        browser ClientHello capture tool
 
 internal/tls           MIRROR of crypto/tls (generated) + uTLS renderer
   *.go (no u_ prefix)  upstream-owned: crypto/tls verbatim + [uTLS] hunks only
@@ -123,6 +126,13 @@ handshake hook, express it as a `u_*.go` method plus the smallest possible
   or changing a line is a breaking change (needs /v3); additions are recorded
   with `go test -run TestAPICompatibility -update-api .` after review.
 - `fidelity_test.go` fails if a preset drifts from its real browser capture.
+
+## Scope
+
+uTLS is a TLS library. It negotiates TLS, ALPN and opaque ALPS bytes and speaks
+the standard crypto/tls types. It does not implement HTTP: no RoundTripper,
+pooling, proxy routing, HTTP/2 SETTINGS handling or HTTP fingerprints — those
+belong to the caller's protocol stack. Do not add them here.
 
 ## Non-negotiables
 

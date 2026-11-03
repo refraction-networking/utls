@@ -10,9 +10,11 @@ v1 (`github.com/refraction-networking/utls`) keeps working; both can be in one
 build while you migrate. The guiding change: **v2 speaks `crypto/tls` types**,
 so most glue code disappears. `docs/REMOVALS.md` lists every removed v1
 identifier with its replacement. `downstream_test.go` contains runnable
-migrations of Xray REALITY, sing-box (ShadowTLS v3, PQ opt-out, ALPN, ECH) and
+migrations of sing-box (ShadowTLS v3, PQ opt-out, ALPN, ECH) and
 Psiphon (seeded profiles, passthrough random, obfuscated session tickets,
-fragmentation) — read them next to this page.
+fragmentation), and `interop/reality` runs an Xray-style REALITY client
+against the real XTLS/REALITY server. They are tests of the uTLS side of each
+pattern, not complete ports of those projects — read them next to this page.
 
 ## Dialing
 
@@ -49,10 +51,13 @@ Behaviour changes to know:
 | `utls.MakeClientSessionState(ticket, vers, suite, secret, …)` (forged) | `uConn.SetSessionParams(utls.ClientSessionParams{…})` |
 | `errors.As(err, *utls.ECHRejectionError)` etc. | the `crypto/tls` error types |
 
-If you forked net/http (fhttp, oohttp, …) only to carry uTLS's
-`ConnectionState`, drop the fork: `utls.UConn` satisfies net/http's TLS
-interface, and `utls.Transport` is a ready `http.RoundTripper` (h2/h1 by ALPN,
-per-route proxies, standard pooling).
+HTTP stays yours. `utls.UConn` returns the standard `ConnectionState`, so code
+that only needed a standard TLS state from uTLS can stop converting types, and
+a stack that accepts a TLS dial function (for example net/http's
+`DialTLSContext`) can use `(&utls.Dialer{...}).DialContext`. That does not make
+HTTP-level changes disappear: uTLS has no HTTP client, and stock net/http does
+not apply ALPS settings, so stacks that relied on a fork for HTTP/2
+fingerprinting or ALPS still need that HTTP code.
 
 ## Fingerprint selection
 
@@ -125,7 +130,7 @@ the server side for schemes that authenticate it.
 | seeded randomized ClientHello (`PRNGSeed`) | `seed, _ := utls.NewPRNGSeed()`; `utls.SeededRandomized(seed, &weights)` (store the 32 bytes) |
 | obfuscated session ticket (`MakeClientSessionState`) | `SetSessionParams(ClientSessionParams{Version, CipherSuite, Secret, Ticket, ExtendedMasterSecret})` |
 | passthrough client random | `SetClientHelloHook` writing `h.Random` |
-| ClientHello fragmentation | `SetFragmentation(utls.FragmentOptions{Records: true, SplitAtSNI: true})` (or `Segments`, `MaxPieceSize`, `Delay`); `Dialer.Fragmentation`, `Transport.Fragmentation` |
+| ClientHello fragmentation | `SetFragmentation(utls.FragmentOptions{Records: true, SplitAtSNI: true})` (or `Segments`, `MaxPieceSize`, `Delay`); `Dialer.Fragmentation` |
 
 ## Record-layer handoff (Xray Vision, sing-box kTLS, Restls)
 

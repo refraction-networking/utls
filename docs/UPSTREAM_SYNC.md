@@ -121,7 +121,7 @@ edited by accident — revert that and re-record.
 ### 4. Bump the module's Go version
 
 The mirror is the new release's crypto/tls and may rely on its standard library
-(net/http's native HTTP/2 over `DialTLSContext` needs 1.27.3+, for example).
+(and go1.27.3 carries the crypto/tls ECH and crypto/x509 security fixes).
 Update `go.mod`'s `go` directive to the mirrored release and the minimum-version
 lane in `.github/workflows/go.yml`. Run the full gate list in
 docs/RELEASING.md.

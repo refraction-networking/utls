@@ -43,7 +43,7 @@ Psiphon-Labs/utls, bogdanfinn/utls, yawning/utls, restls-client-go.
    OONI, uquic, oohttp, req, CycleTLS, surf, CLIProxyAPI, yaklang, fastdialer,
    sing-box, mihomo all hand-converted types, forked net/http (oohttp, fhttp,
    metacubex/http), or kept reflection whitelists. → the conversion boundary in
-   `config.go`; `ConnectionState = crypto/tls.ConnectionState`; `Transport`.
+   `config.go`; `ConnectionState = crypto/tls.ConnectionState`.
 
 4. **Cert verification decoupled from SNI.** Omit SNI, front SNI, verify a
    different name, pin a leaf, custom roots. Psiphon, flashlight, fronted,
@@ -80,7 +80,9 @@ Psiphon-Labs/utls, bogdanfinn/utls, yawning/utls, restls-client-go.
 
 9. **An http.RoundTripper that dispatches h2/h1 by ALPN.** meek, lyrebird,
    snowflake, Conjure, oohttp, gotapdance, req, CycleTLS, surf, CLIProxyAPI,
-   yaklang — many forked net/http. → `Transport`.
+   yaklang — many forked net/http. → historical evidence only: an early v2
+   draft shipped an HTTP `Transport`, removed before release because uTLS is a
+   TLS library; HTTP stacks stay caller-owned and consume a uTLS dial function.
 
 10. **Multiple key shares / PQ.** Offer X25519MLKEM768 + X25519 and complete
     whichever the server picks; drop PQ for old servers. bogdanfinn and Psiphon

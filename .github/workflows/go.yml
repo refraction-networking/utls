@@ -54,14 +54,34 @@ jobs:
         run: sh upstream/sync.sh check
       - name: Sync tool fixtures
         run: go test -count=1 ./upstream/cmd/utls-sync
-      - name: API compatibility (api/v2.txt)
-        run: go test -count=1 -run TestAPICompatibility .
+      - name: Type-checked API compatibility (api/v2.txt) and gate fixtures
+        run: go test -count=1 -run 'TestAPI' .
       - name: Bounded fuzzing
         run: |
           go test -run '^$' -fuzz '^FuzzParseClientHello$' -fuzztime 60s .
           go test -run '^$' -fuzz '^FuzzSNIHostRange$' -fuzztime 60s ./internal/tls
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
+  reality-interop:
+    # The real XTLS/REALITY server (Xray-core's pin) in an isolated module,
+    # so its dependencies never enter the uTLS runtime module.
+    runs-on: ubuntu-latest
+    env:
+      GOTOOLCHAIN: local
+    defaults:
+      run:
+        working-directory: interop/reality
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: "1.27.3"
+          cache-dependency-path: interop/reality/go.sum
+      - name: Vet
+        run: go vet ./...
+      - name: REALITY interop (classical/hybrid/ML-DSA-65, negative authentication)
+        run: go test -count=1 -race -v ./...
 
   boringssl-interop:
     runs-on: ubuntu-latest
@@ -81,7 +101,7 @@ jobs:
           git -C "$RUNNER_TEMP/boringssl" checkout "$BORINGSSL_COMMIT"
           cmake -GNinja -B "$RUNNER_TEMP/boringssl/build" -S "$RUNNER_TEMP/boringssl" -DCMAKE_BUILD_TYPE=Release
           ninja -C "$RUNNER_TEMP/boringssl/build" ssl crypto
-      - name: Interop (zlib certificate compression, ALPS old/new)
+      - name: TLS interop (zlib certificate compression, ALPS old/new codepoints)
         run: |
           PEER=$(BORINGSSL="$RUNNER_TEMP/boringssl" OUT="$RUNNER_TEMP/peer" sh interop/boringssl/build.sh)
           UTLS_BSSL_PEER="$PEER" go test -count=1 -tags bsslinterop -run BoringSSL -v .

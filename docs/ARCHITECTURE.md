@@ -12,7 +12,7 @@ uTLS is two layers with a hard boundary between them.
    │  *crypto/tls.Config ──fromStdConfig──► internal config       │
    │  internal state     ──toStd*/StdError─► crypto/tls types     │
    │                                                             │
-   │  UConn, Dialer, Transport, QUICConn, ClientHelloID presets, │
+   │  UConn, Dialer, QUICConn, ClientHelloID presets,           │
    │  profiles, JA3/JA4, ParseClientHello, fragmentation, HandOff│
    └───────────────┬───────────────────────────────────────────┘
                    │  (one import, one conversion boundary)
@@ -112,14 +112,23 @@ The root package speaks `*crypto/tls.Config`, `crypto/tls.ConnectionState`,
   `CertificateVerificationError` and `RecordHeaderError` are returned as the
   crypto/tls types; when wrapped (QUIC), the original chain is kept too.
 
-## Net/http interoperability
+## Scope and the integration boundary
 
-`UConn` returns the standard `ConnectionState` and implements
-`HandshakeContext`, which net/http (Go 1.27.3+) uses to run HTTP/2 natively over
-a `DialTLSContext` connection that negotiated "h2". `Transport` is therefore a
-thin router: one `net/http.Transport` per proxy route whose `DialTLSContext`
-does the uTLS handshake, so pooling, retries, body rewinding and `resp.TLS` are
-standard net/http behaviour.
+uTLS stops at TLS. It negotiates versions, suites, key shares, ALPN, ALPS,
+certificate compression, record_size_limit, ECH and sessions, and returns a
+`net.Conn` with standard crypto/tls state. Application protocols are the
+caller's: `UConn` implements `ConnectionState()` and `HandshakeContext`, so a
+caller can hand it to an HTTP stack through a dial function (net/http's
+`DialTLSContext`, for example), but pooling, proxies, retries and HTTP/2 frame
+handling are that stack's behaviour, not uTLS's.
+
+ALPS (application_settings) is negotiated as opaque bytes: uTLS sends the
+spec's settings, validates the extension in EncryptedExtensions and exposes
+the peer's bytes via `NegotiatedApplicationSettings`. It never parses them.
+For HTTP/2, the ALPS draft makes the server's initial SETTINGS live in TLS; the
+standard library's net/http does not consume ALPS, so a caller that negotiates
+ALPS with an HTTP/2 server needs an HTTP/2 implementation that applies those
+settings.
 
 ## Test infrastructure
 

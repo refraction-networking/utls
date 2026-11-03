@@ -10,19 +10,34 @@ import (
     utls "github.com/refraction-networking/utls/v2"
 )
 
-// Dial with a Chrome fingerprint:
+// Dial and handshake with a Chrome fingerprint:
 conn, err := utls.Dial("tcp", "example.com:443",
     &tls.Config{ServerName: "example.com"}, utls.HelloChrome_Auto)
 
-// Or make HTTPS requests that look like a browser (ALPN picks h2/h1):
-client := &http.Client{Transport: &utls.Transport{ClientHelloID: utls.HelloChrome_Auto}}
-resp, err := client.Get("https://example.com/")
+// Or wrap a connection you already have (TCP, a proxy tunnel, ...):
+uc := utls.UClient(rawConn, &tls.Config{ServerName: "example.com"}, utls.HelloFirefox_Auto)
+err = uc.HandshakeContext(ctx)
+
+// Or hand a dial function to any protocol stack that accepts one:
+d := &utls.Dialer{Config: &tls.Config{NextProtos: []string{"h2", "http/1.1"}}}
+var dial func(ctx context.Context, network, addr string) (net.Conn, error) = d.DialContext
 ```
 
-The connection you get back returns the standard `crypto/tls.ConnectionState`
-and satisfies the interface `net/http` uses to discover TLS state, so it plugs
-into `net/http`, `golang.org/x/net/http2`, and the rest of the ecosystem without
-any wrapper or forked HTTP stack.
+uTLS is a **TLS** library. A `*utls.UConn` is a `net.Conn` that takes the
+standard `*crypto/tls.Config` and returns the standard
+`crypto/tls.ConnectionState` (including a working `ExportKeyingMaterial`),
+standard session types and standard error types, so it slots in wherever code
+expects a TLS connection.
+
+**The integration boundary.** uTLS negotiates TLS, ALPN and — when a
+fingerprint offers it — ALPS, whose peer settings it returns as opaque bytes
+(`NegotiatedApplicationSettings`). Everything above TLS belongs to your
+protocol stack: HTTP/2 SETTINGS and ACKs, connection pooling, proxies,
+retries, and an HTTP-level browser fingerprint (header order, SETTINGS values,
+priorities). The standard library's `net/http` does not consume ALPS, so a
+browser fingerprint that negotiates ALPS needs an HTTP stack that applies the
+ALPS settings (or a fingerprint without ALPS); switching TLS libraries does not
+make such source changes unnecessary.
 
 > **This is uTLS v2** (module `github.com/refraction-networking/utls/v2`), a
 > redesign. v1 users: see [docs/MIGRATION.md](docs/MIGRATION.md) and
@@ -71,7 +86,9 @@ v2 fixes both problems:
 - **Standard types throughout:** `*crypto/tls.Config` (verification, roots,
   client certificates, session caches, key logging, ECH), standard
   `ConnectionState` (with a working `ExportKeyingMaterial`), crypto/tls error
-  types; `Transport` uses net/http's own HTTP/2.
+  types.
+- **Verified against real counterparts:** BoringSSL (certificate compression,
+  ALPS) and the real XTLS/REALITY server (interop/reality).
 
 ## Quickstart: custom fingerprint
 

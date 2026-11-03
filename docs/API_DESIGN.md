@@ -10,7 +10,7 @@ downstream**.
 1. **Speak the standard types.** The public API takes `*crypto/tls.Config` and
    returns `crypto/tls.ConnectionState`. The #1 friction in v1 was a parallel
    `utls.Config`/`utls.ConnectionState` that every consumer had to convert,
-   whitelist by reflection, or fork net/http around. v2 converts once, at a
+   whitelist by reflection, or fork HTTP stacks around. v2 converts once, at a
    single boundary, guarded by a reflection test.
 
 2. **The fingerprint is a value, resolved by name.** `ClientHelloID` +
@@ -20,7 +20,7 @@ downstream**.
 
 3. **Intents, not internals.** Downstream wanted to *do* things (authenticate in
    session_id, pick h2 vs h1, verify a pinned cert, replay a captured hello).
-   v2 exposes those as `ClientHelloContext`, `Transport`, the standard verify
+   v2 exposes those as `ClientHelloContext`, `Dialer`, the standard verify
    callbacks, and `ParseClientHello` — not as raw `HandshakeState` structs.
 
 4. **Additive evolution.** The `TLSExtension` interface has unexported methods,
@@ -82,7 +82,7 @@ load, before binders): `Random`/`SessionID` writable in place, `Raw` for MACs,
 afterwards; changing anything else is an error; combining with ECH is refused
 (`ErrHookWithECH`) because the hook would see bytes that are never sent.
 
-**Fragmentation** (`SetFragmentation`, `Dialer`/`Transport.Fragmentation`).
+**Fragmentation** (`SetFragmentation`, `Dialer.Fragmentation`).
 Splits only the first ClientHello into TLS records and/or separate writes,
 optionally in the middle of the SNI host name; fails before writing if asked to
 split at an SNI that is not there. Implemented under the record lock (no
@@ -113,19 +113,30 @@ versions, fields or extension types are errors; the result must `Validate`.
 plus explicit options determine every extension body (otherwise an error that
 names what is missing). There is no JA4-to-spec: JA4 is a hash.
 
+## Scope: no HTTP
+
+uTLS is a TLS library. An earlier draft of v2 included an `http.RoundTripper`
+(`Transport`); it was removed before the first v2 release. HTTP behaviour —
+pooling, proxy routing, retries, HTTP/2 SETTINGS and ACKs, HTTP-level browser
+fingerprints — belongs to the caller's HTTP stack, which receives a uTLS
+connection through a dial function. uTLS returns the negotiated ALPN protocol
+and the peer's ALPS settings as opaque bytes and does not interpret HTTP/2
+frames. The survey's HTTP intents (rank 9) are historical evidence of how
+consumers integrate, not a requirement for uTLS to own HTTP.
+
 ## Mapping survey intents to API
 
 | Intent (survey rank) | API |
 |---|---|
 | 1 name→fingerprint | `ParseFingerprint`, `Fingerprints`, `ClientHelloID`, aliases |
 | 2 dial + handshake-first | `Dial`, `DialContext`, `Dialer`, `UClient`+`Handshake` |
-| 3 crypto/tls interop | std `Config`/`ConnectionState`/sessions/errors, `Transport` |
+| 3 crypto/tls interop | std `Config`/`ConnectionState`/sessions/errors |
 | 4 verify ≠ SNI | standard config fields; `SNIExtension{}`/omit; `VerifyConnection` |
 | 5 write into hello + ephemeral key | `SetClientHelloHook`, `ClientHelloContext` |
 | 6 custom server auth | `ServerKeyShareGroup/Data`, `ServerHelloRaw`, `EphemeralKey` |
 | 7 spec from data | `ParseClientHello`, `ParseProfile`, `SpecFromJA3`, `SeededRandomized` |
 | 8 per-connection freshness | `Spec()` fresh each call; renderer GREASE/keys |
-| 9 h2/h1 RoundTripper | `Transport` |
+| 9 h2/h1 RoundTripper | out of scope: uTLS is a TLS library (see below) |
 | 10 multiple key shares / PQ | renderer + establishHandshakeKeys hunk |
 | 11 forged resumption, fragmentation, handoff, ECH, QUIC | `SetSessionParams`, `SetFragmentation`, `HandOff`, std ECH config fields, `QUICClient` |
 
