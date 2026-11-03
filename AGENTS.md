@@ -116,7 +116,10 @@ handshake hook, express it as a `u_*.go` method plus the smallest possible
   mirrored file was edited without re-recording the patch), an update is
   unresolved, a mirrored file imports an unmapped std-internal package, or an
   upstream package behind a shim changed.
-- `api_test.go` fails if the exported API differs from `api/v2.txt`. Removing
+- `api_test.go` fails if the type-checked exported API (constant values,
+  inferred var types, signatures, fields, method sets, comparability, and the
+  uTLS-owned types behind aliases) differs from `api/v2.txt`, or if the API
+  exposes an internal type without a public alias. Removing
   or changing a line is a breaking change (needs /v3); additions are recorded
   with `go test -run TestAPICompatibility -update-api .` after review.
 - `fidelity_test.go` fails if a preset drifts from its real browser capture.

@@ -1,9 +1,10 @@
 # v1 → v2 removal audit
 
 This is the complete audit of the exported API of uTLS v1 (refraction-networking/
-utls at ff1b50f, the v2 base) against v2. It was produced mechanically with the
-same extractor as the API gate (`exportedAPI` in api_test.go) over v1's
-non-test sources, then classified by hand. Counts: 693 v1 declarations; 61 kept
+utls at ff1b50f, the v2 base) against v2. It was produced mechanically with a
+syntax-level extractor of exported declarations over v1's non-test sources
+(the v2 API gate itself is type-checked; see api_test.go), then classified by
+hand. Counts: 693 v1 declarations; 61 kept
 under the same name; 168 are crypto/tls API that v2 takes or returns as the
 standard types (or re-exports, e.g. the cipher-suite and version constants);
 464 removed. Every removed identifier falls in one of the groups below, each

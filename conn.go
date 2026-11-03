@@ -131,7 +131,7 @@ func (c *UConn) SetSessionParams(p ClientSessionParams) error {
 // ErrExporterUnavailable is returned by ExportKeyingMaterial on a returned
 // ConnectionState before the handshake completes (crypto/tls itself has no
 // exporter then).
-var ErrExporterUnavailable = itls.ErrExporterUnavailable
+var ErrExporterUnavailable error = itls.ErrExporterUnavailable
 
 // Handshake runs the TLS handshake.
 func (c *UConn) Handshake() error { return itls.StdError(c.u.HandshakeContext(context.Background())) }
