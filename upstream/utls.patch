@@ -60,7 +60,19 @@
  		return c.in.setErrorLocked(c.sendAlert(alertRecordOverflow))
  	}
  
-@@ -1005,7 +1011,7 @@
+@@ -949,6 +955,11 @@
+ 		c.sendBuf = append(c.sendBuf, data...)
+ 		return len(data), nil
+ 	}
++	if c.uFragmentPending() { // [uTLS] ClientHello fragmentation
++		n, err := c.uconn.writeFragmented(c.conn, data)
++		c.bytesSent += int64(n)
++		return n, err
++	}
+ 
+ 	n, err := c.conn.Write(data)
+ 	c.bytesSent += int64(n)
+@@ -1005,7 +1016,7 @@
  	var n int
  	for len(data) > 0 {
  		m := len(data)
@@ -69,7 +81,7 @@
  			m = maxPayload
  		}
  
-@@ -1168,6 +1174,10 @@
+@@ -1168,6 +1179,10 @@
  		m = new(endOfEarlyDataMsg)
  	case typeKeyUpdate:
  		m = new(keyUpdateMsg)
@@ -80,7 +92,7 @@
  	default:
  		return nil, c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
  	}
-@@ -1180,6 +1190,9 @@
+@@ -1180,6 +1195,9 @@
  	if !m.unmarshal(data) {
  		return nil, c.in.setErrorLocked(c.sendAlert(alertDecodeError))
  	}

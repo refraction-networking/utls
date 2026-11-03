@@ -86,7 +86,7 @@ func (r *recConn) firstRecord() []byte {
 	if len(b) < 5 {
 		return nil
 	}
-	n := 5 + int(b[3])<<8 | int(b[4])
+	n := 5 + (int(b[3])<<8 | int(b[4]))
 	if len(b) < n {
 		return nil
 	}

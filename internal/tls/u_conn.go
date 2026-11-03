@@ -31,6 +31,7 @@ type UConn struct {
 
 	clientHelloHook func(*ClientHelloContext) error
 	injected        *ClientSessionState
+	fragment        *FragmentOptions // first-ClientHello write policy; cleared once used (under c.out)
 
 	started  bool   // the handshake has begun; configuration is frozen
 	snapshot []byte // last ClientHello rendered for the wire (immutable copy)

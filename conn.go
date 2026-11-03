@@ -81,6 +81,16 @@ func (c *UConn) SetClientHelloHook(h func(*ClientHelloContext) error) error {
 	return c.u.SetClientHelloHook(h)
 }
 
+// FragmentOptions controls how the first ClientHello is written (TLS record
+// and/or TCP-write splitting, e.g. inside the SNI host name). See
+// (*UConn).SetFragmentation.
+type FragmentOptions = itls.FragmentOptions
+
+// SetFragmentation splits the first ClientHello across TLS records and/or
+// separate writes as o describes. The handshake transcript is unchanged. It
+// must be called before the handshake; invalid options are rejected here.
+func (c *UConn) SetFragmentation(o FragmentOptions) error { return c.u.SetFragmentation(o) }
+
 // SetSession makes the first handshake offer cs (from any crypto/tls
 // ClientSessionCache, or built with NewClientSession) regardless of the
 // Config's session cache. The session is trusted as given: its certificates

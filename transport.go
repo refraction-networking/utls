@@ -44,6 +44,9 @@ type Transport struct {
 	TLSConfig *tls.Config
 	// ClientHelloHook, if set, is installed on every connection.
 	ClientHelloHook func(*ClientHelloContext) error
+	// Fragmentation, if set, is applied to every connection's first
+	// ClientHello (see FragmentOptions).
+	Fragmentation *FragmentOptions
 	// DialContext dials TCP connections (to the server or the proxy). Nil uses
 	// a net.Dialer.
 	DialContext func(ctx context.Context, network, addr string) (net.Conn, error)
@@ -177,6 +180,12 @@ func (t *Transport) dialTLS(ctx context.Context, pu *url.URL, addr string) (net.
 	uc := UClient(raw, cfg, id)
 	if t.ClientHelloHook != nil {
 		if err := uc.SetClientHelloHook(t.ClientHelloHook); err != nil {
+			raw.Close()
+			return nil, err
+		}
+	}
+	if t.Fragmentation != nil {
+		if err := uc.SetFragmentation(*t.Fragmentation); err != nil {
 			raw.Close()
 			return nil, err
 		}

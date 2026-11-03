@@ -955,6 +955,11 @@ func (c *Conn) write(data []byte) (int, error) {
 		c.sendBuf = append(c.sendBuf, data...)
 		return len(data), nil
 	}
+	if c.uFragmentPending() { // [uTLS] ClientHello fragmentation
+		n, err := c.uconn.writeFragmented(c.conn, data)
+		c.bytesSent += int64(n)
+		return n, err
+	}
 
 	n, err := c.conn.Write(data)
 	c.bytesSent += int64(n)
