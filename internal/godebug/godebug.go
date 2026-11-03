@@ -6,9 +6,11 @@
 // internal/godebug package, which cannot be imported from outside GOROOT.
 //
 // Upstream crypto/tls reads a handful of GODEBUG settings (tlssha1,
-// tlsmlkem, tlssecpmlkem, fips140ems, tlsmaxrsasize) through this package.
-// This shim reads the real GODEBUG environment variable so those settings
-// keep working, while letting the mirrored crypto/tls files stay byte-for-byte
+// tlsmlkem, tlssecpmlkem, fips140ems, tlsmaxrsasize, ...) through this
+// package. This shim resolves them the way the standard library does — the
+// GODEBUG environment variable, then the binary's DefaultGODEBUG (the main
+// module's go version and godebug directives) — so uTLS honours the same
+// settings as crypto/tls in the same program, while the mirrored files stay
 // identical to upstream. See internal/README.md and upstream/PATCHES.md.
 //
 // The metrics side of the upstream package (IncNonDefault / counters exposed
@@ -18,7 +20,9 @@ package godebug
 
 import (
 	"os"
+	"runtime/debug"
 	"strings"
+	"sync"
 )
 
 // A Setting is a single setting in the $GODEBUG environment variable.
@@ -54,16 +58,38 @@ func (s *Setting) Value() string {
 // not depend on the counter.
 func (s *Setting) IncNonDefault() {}
 
-// lookup returns the value of name in the $GODEBUG environment variable, or ""
-// if it is not present. GODEBUG is a comma-separated list of key=value pairs;
-// the last occurrence wins, matching the std library.
+// lookup returns the value of name as the standard library would see it: the
+// $GODEBUG environment variable if it sets name (last occurrence wins),
+// otherwise the binary's default from its build info (DefaultGODEBUG, derived
+// by the go command from the main module's go version and its godebug /
+// //go:debug directives), otherwise "".
 func lookup(name string) string {
-	val := ""
-	for _, kv := range strings.Split(os.Getenv("GODEBUG"), ",") {
-		k, v, ok := strings.Cut(kv, "=")
-		if ok && k == name {
-			val = v
+	if v, ok := find(os.Getenv("GODEBUG"), name); ok {
+		return v
+	}
+	v, _ := find(defaultGODEBUG(), name)
+	return v
+}
+
+func find(list, name string) (string, bool) {
+	val, found := "", false
+	for _, kv := range strings.Split(list, ",") {
+		if k, v, ok := strings.Cut(kv, "="); ok && k == name {
+			val, found = v, true
 		}
 	}
-	return val
+	return val, found
 }
+
+var defaultGODEBUG = sync.OnceValue(func() string {
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return ""
+	}
+	for _, s := range bi.Settings {
+		if s.Key == "DefaultGODEBUG" {
+			return s.Value
+		}
+	}
+	return ""
+})
