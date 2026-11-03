@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/rand/v2"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -50,7 +51,9 @@ func runParsers(t *testing.T, b []byte) {
 			}
 			return
 		case <-timeout:
-			t.Fatalf("%s did not return on %s", last, hex.EncodeToString(b))
+			buf := make([]byte, 1<<16)
+			buf = buf[:runtime.Stack(buf, true)]
+			t.Fatalf("%s did not return on %s\n%s", last, hex.EncodeToString(b), buf)
 		}
 	}
 }

@@ -13,7 +13,7 @@ revision being tagged; `.github/workflows/go.yml` runs the same gates.
 | 5 | Mirror consistent with `upstream/VERSION` + `upstream/utls.patch`, no unresolved update, no unmapped std-internal import, shims current | `upstream/sync.sh check` |
 | 6 | Sync tool fixtures | `go test -count=1 ./upstream/cmd/utls-sync` |
 | 7 | Type-checked API compatibility and gate fixtures | `go test -count=1 -run 'TestAPI' .` |
-| 8 | Bounded fuzzing | `go test -run '^$' -fuzz FuzzParseClientHello -fuzztime 60s .` and `go test -run '^$' -fuzz FuzzSNIHostRange -fuzztime 60s ./internal/tls` |
+| 8 | Bounded fuzzing (minimization bounded so the budget explores; the target has a per-input watchdog because Go's fuzzer has none) | `go test -run '^$' -fuzz FuzzParseClientHello -fuzztime 60s -fuzzminimizetime 5s .` and `go test -run '^$' -fuzz FuzzSNIHostRange -fuzztime 60s -fuzzminimizetime 5s ./internal/tls` |
 | 9 | Independent peer interop | build `interop/boringssl` (pinned BoringSSL commit) and `UTLS_BSSL_PEER=... go test -tags bsslinterop -run BoringSSL .` |
 | 9b | Real REALITY counterpart (isolated module; pinned github.com/xtls/reality) | `cd interop/reality && go test -count=1 -race .` |
 | 10 | Vulnerabilities | `govulncheck ./...` (golang.org/x/vuln v1.9.0 or newer); also in `interop/reality` for the test module |

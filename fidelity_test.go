@@ -412,9 +412,8 @@ func FuzzParseClientHello(f *testing.F) {
 	f.Add(capture[5:])
 	f.Add([]byte{0x16, 3, 1, 0, 4, 1, 0, 0, 0})
 	f.Fuzz(func(t *testing.T, b []byte) {
+		runParsers(t, b) // every parser returns (with a per-input watchdog)
 		spec, err := ParseClientHello(b)
-		JA3(b)
-		JA4(b)
 		if err != nil {
 			return
 		}

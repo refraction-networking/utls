@@ -58,8 +58,8 @@ jobs:
         run: go test -count=1 -run 'TestAPI' .
       - name: Bounded fuzzing
         run: |
-          go test -run '^$' -fuzz '^FuzzParseClientHello$' -fuzztime 60s .
-          go test -run '^$' -fuzz '^FuzzSNIHostRange$' -fuzztime 60s ./internal/tls
+          go test -run '^$' -fuzz '^FuzzParseClientHello$' -fuzztime 60s -fuzzminimizetime 5s .
+          go test -run '^$' -fuzz '^FuzzSNIHostRange$' -fuzztime 60s -fuzzminimizetime 5s ./internal/tls
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
