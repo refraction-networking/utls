@@ -116,18 +116,18 @@ func TestProfileErrors(t *testing.T) {
 	}
 	handshakeStd(t, p.ClientHelloID(), clientConfig(t), serverConfig(t), nil).ok(t)
 	for name, bad := range map[string]string{
-		"format":          strings.Replace(good, `"utls-profile"`, `"other"`, 1),
-		"version":         strings.Replace(good, `"version":1`, `"version":2`, 1),
-		"unknown field":   strings.Replace(good, `"client":"X"`, `"client":"X","extra":1`, 1),
-		"unknown type":    strings.Replace(good, `"server_name"`, `"next_protocol_negotiation"`, 1),
-		"unknown param":   strings.Replace(good, `"Versions":[772]`, `"Versions":[772],"Foo":1`, 1),
-		"paramless":       strings.Replace(good, `{"type":"server_name"}`, `{"type":"server_name","params":{"x":1}}`, 1),
-		"duplicate":       strings.Replace(good, `{"type":"server_name"}`, `{"type":"server_name"},{"type":"server_name"}`, 1),
-		"padding style":   strings.Replace(good, `{"type":"server_name"}`, `{"type":"server_name"},{"type":"padding","params":{"style":"random"}}`, 1),
-		"compression":     strings.Replace(good, `[0]`, `[256]`, 1),
-		"shuffle":         strings.Replace(good, `"client":"X"`, `"client":"X","shuffle":"firefox"`, 1),
-		"trailing":        good + `{}`,
-		"not json":        `{`,
+		"format":        strings.Replace(good, `"utls-profile"`, `"other"`, 1),
+		"version":       strings.Replace(good, `"version":1`, `"version":2`, 1),
+		"unknown field": strings.Replace(good, `"client":"X"`, `"client":"X","extra":1`, 1),
+		"unknown type":  strings.Replace(good, `"server_name"`, `"next_protocol_negotiation"`, 1),
+		"unknown param": strings.Replace(good, `"Versions":[772]`, `"Versions":[772],"Foo":1`, 1),
+		"paramless":     strings.Replace(good, `{"type":"server_name"}`, `{"type":"server_name","params":{"x":1}}`, 1),
+		"duplicate":     strings.Replace(good, `{"type":"server_name"}`, `{"type":"server_name"},{"type":"server_name"}`, 1),
+		"padding style": strings.Replace(good, `{"type":"server_name"}`, `{"type":"server_name"},{"type":"padding","params":{"style":"random"}}`, 1),
+		"compression":   strings.Replace(good, `[0]`, `[256]`, 1),
+		"shuffle":       strings.Replace(good, `"client":"X"`, `"client":"X","shuffle":"firefox"`, 1),
+		"trailing":      good + `{}`,
+		"not json":      `{`,
 	} {
 		if _, err := ParseProfile([]byte(bad)); err == nil {
 			t.Errorf("%s: accepted", name)

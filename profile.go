@@ -55,16 +55,16 @@ const (
 )
 
 type profileJSON struct {
-	Format             string        `json:"format"`
-	Version            int           `json:"version"`
-	Client             string        `json:"client"`
-	ClientVersion      string        `json:"client_version"`
-	Shuffle            string        `json:"shuffle,omitempty"`
-	TLSVersMin         uint16        `json:"tls_vers_min,omitempty"`
-	TLSVersMax         uint16        `json:"tls_vers_max,omitempty"`
-	CipherSuites       []uint16      `json:"cipher_suites"`
-	CompressionMethods []int         `json:"compression_methods"`
-	Extensions         []profileExt  `json:"extensions"`
+	Format             string       `json:"format"`
+	Version            int          `json:"version"`
+	Client             string       `json:"client"`
+	ClientVersion      string       `json:"client_version"`
+	Shuffle            string       `json:"shuffle,omitempty"`
+	TLSVersMin         uint16       `json:"tls_vers_min,omitempty"`
+	TLSVersMax         uint16       `json:"tls_vers_max,omitempty"`
+	CipherSuites       []uint16     `json:"cipher_suites"`
+	CompressionMethods []int        `json:"compression_methods"`
+	Extensions         []profileExt `json:"extensions"`
 }
 
 type profileExt struct {

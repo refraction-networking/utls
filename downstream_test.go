@@ -9,8 +9,8 @@ package utls
 // v1 with the v2 API, against a loopback server that independently verifies
 // what the client put on the wire. docs/MIGRATION.md maps the v1 calls.
 //
-//   Xray-core REALITY  (transport/internet/reality/reality.go, v1:
-//     BuildHandshakeState; HandshakeState.Hello.Raw[39:]; State13.KeyShareKeys)
+//   (Xray-core REALITY is tested against the real XTLS/REALITY server in the
+//   isolated module interop/reality.)
 //   sing-box ShadowTLS v3, PQ opt-out, ALPN, ECH (common/tls/utls_client.go,
 //     protocol/shadowtls; v1 fork: SessionIDGenerator)
 //   Psiphon tunnel-core (psiphon/tlsDialer.go: seeded randomized profiles,
@@ -18,26 +18,14 @@ package utls
 
 import (
 	"bytes"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/ecdh"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/hkdf"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha1"
 	"crypto/sha256"
-	"crypto/sha512"
 	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/asn1"
-	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"io"
-	"math/big"
 	"net"
 	"slices"
 	"testing"
@@ -152,199 +140,6 @@ func serveOnce(t *testing.T, handle func(c net.Conn, h *peekedHello) error) (str
 		errc <- handle(c, h)
 	}()
 	return ln.Addr().String(), errc
-}
-
-// ---------------------------------------------------------------------------
-// Xray-core REALITY
-
-func realityAuthKey(t testing.TB, priv *ecdh.PrivateKey, peer []byte, random []byte) []byte {
-	pub, err := ecdh.X25519().NewPublicKey(peer)
-	if err != nil {
-		t.Fatal(err)
-	}
-	shared, err := priv.ECDH(pub)
-	if err != nil {
-		t.Fatal(err)
-	}
-	k, err := hkdf.Key(sha256.New, shared, random[:20], "REALITY", 32)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return k
-}
-
-func gcm(t testing.TB, key []byte) cipher.AEAD {
-	b, err := aes.NewCipher(key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	a, err := cipher.NewGCM(b)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return a
-}
-
-// zeroSID returns a copy of a ClientHello handshake message with the 32-byte
-// session ID zeroed (Xray's hello.Raw[39:71]).
-func zeroSID(msg []byte) []byte {
-	m := bytes.Clone(msg)
-	clear(m[39 : 39+32])
-	return m
-}
-
-// realityClient is Xray's UClient for REALITY, ported to v2:
-//
-//	v1: uConn.BuildHandshakeState(); hello := uConn.HandshakeState.Hello
-//	    hello.SessionId = make([]byte, 32); copy(hello.Raw[39:], hello.SessionId)
-//	    ... ecdhe := uConn.HandshakeState.State13.KeyShareKeys.Ecdhe (or MlkemEcdhe)
-//	    aead.Seal(hello.SessionId[:0], hello.Random[20:], hello.SessionId[:16], hello.Raw)
-//	    copy(hello.Raw[39:], hello.SessionId)
-//	v2: one ClientHello hook; resumption off (the AEAD covers the whole hello).
-func realityClient(t *testing.T, conn net.Conn, serverPub []byte, shortID [8]byte) (*UConn, *bool) {
-	var authKey []byte
-	verified := new(bool)
-	cfg := &tls.Config{
-		ServerName:             "www.example.com", // the "dest" being impersonated
-		SessionTicketsDisabled: true,
-		InsecureSkipVerify:     true, // REALITY authenticates via the HMAC'd temporary cert
-		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
-			cert, err := x509.ParseCertificate(rawCerts[0])
-			if err != nil {
-				return err
-			}
-			if authKey == nil {
-				return errors.New("reality: no auth key")
-			}
-			h := hmac.New(sha512.New, authKey)
-			h.Write(cert.RawSubjectPublicKeyInfo)
-			for _, ext := range cert.Extensions {
-				if ext.Id.Equal(realityAuthOID) && hmac.Equal(ext.Value, h.Sum(nil)) {
-					*verified = true
-					return nil
-				}
-			}
-			return errors.New("reality: server authentication failed")
-		},
-	}
-	uc := UClient(conn, cfg, HelloChrome_Auto)
-	err := uc.SetClientHelloHook(func(ctx *ClientHelloContext) error {
-		if ctx.PSK {
-			return errors.New("reality: resumption must be disabled")
-		}
-		priv := ctx.EphemeralKey(X25519) // classical half of X25519MLKEM768 for Chrome
-		if priv == nil {
-			return errors.New("reality: no X25519 key share")
-		}
-		authKey = realityAuthKey(t, priv, serverPub, ctx.Random)
-		var plain [16]byte
-		plain[0], plain[1], plain[2] = 25, 11, 2 // Xray version
-		binary.BigEndian.PutUint32(plain[4:], uint32(time.Now().Unix()))
-		copy(plain[8:], shortID[:])
-		sealed := gcm(t, authKey).Seal(nil, ctx.Random[20:], plain[:], zeroSID(ctx.Raw))
-		copy(ctx.SessionID, sealed)
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return uc, verified
-}
-
-// realityAuthOID marks the test server's authenticator extension.
-var realityAuthOID = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 55555, 1}
-
-// realityServer is a minimal REALITY server: it authenticates the session ID
-// and answers with a temporary certificate bound to authKey. Xray's server (a
-// crypto/tls fork) uses an Ed25519 certificate whose signature field is
-// HMAC-SHA512(authKey, pubkey) and signs with Ed25519 even though Chrome does
-// not offer it; stock crypto/tls refuses that, so this fixture carries
-// HMAC-SHA512(authKey, SubjectPublicKeyInfo) in an extension of an ECDSA
-// certificate. The client-side uTLS usage is identical.
-func realityServer(t *testing.T, priv *ecdh.PrivateKey, shortID [8]byte) (string, <-chan error) {
-	return serveOnce(t, func(c net.Conn, h *peekedHello) error {
-		if h.x25519 == nil || len(h.sid) != 32 {
-			return errors.New("no X25519 share or session ID")
-		}
-		authKey := realityAuthKey(t, priv, h.x25519, h.random)
-		plain, err := gcm(t, authKey).Open(nil, h.random[20:], h.sid, zeroSID(h.msg))
-		if err != nil {
-			return errors.New("reality server: session ID does not authenticate: " + err.Error())
-		}
-		if !bytes.Equal(plain[8:], shortID[:]) {
-			return errors.New("reality server: wrong short ID")
-		}
-		if d := time.Since(time.Unix(int64(binary.BigEndian.Uint32(plain[4:])), 0)); d > time.Minute || d < -time.Minute {
-			return errors.New("reality server: stale timestamp")
-		}
-		key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-		spki, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
-		if err != nil {
-			return err
-		}
-		mac := hmac.New(sha512.New, authKey)
-		mac.Write(spki)
-		tmpl := &x509.Certificate{SerialNumber: big.NewInt(1), NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour),
-			ExtraExtensions: []pkix.Extension{{Id: realityAuthOID, Value: mac.Sum(nil)}}}
-		der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
-		if err != nil {
-			return err
-		}
-		s := tls.Server(replay(c, h.record), &tls.Config{
-			MinVersion:   tls.VersionTLS13,
-			Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: key}},
-		})
-		if err := s.Handshake(); err != nil {
-			return err
-		}
-		_, err = s.Write([]byte("reality-ok"))
-		return err
-	})
-}
-
-func TestDownstreamXrayREALITY(t *testing.T) {
-	serverKey, _ := ecdh.X25519().GenerateKey(rand.Reader)
-	shortID := [8]byte{0xde, 0xad, 0xbe, 0xef}
-	addr, serr := realityServer(t, serverKey, shortID)
-	conn, err := net.Dial("tcp", addr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer conn.Close()
-	uc, verified := realityClient(t, conn, serverKey.PublicKey().Bytes(), shortID)
-	if err := uc.Handshake(); err != nil {
-		t.Fatalf("client: %v (server: %v)", err, <-serr)
-	}
-	b := make([]byte, 10)
-	if _, err := io.ReadFull(uc, b); err != nil || string(b) != "reality-ok" {
-		t.Fatalf("read %q %v", b, err)
-	}
-	if err := <-serr; err != nil {
-		t.Fatal(err)
-	}
-	if !*verified {
-		t.Fatal("REALITY server certificate not verified")
-	}
-	// The wire hello is still a Chrome hello (the hook changed only the SID).
-	if !slices.Contains(parseHelloFields(t, uc.ClientHelloRaw()).extIDs, 0xfe0d) {
-		t.Fatal("not a Chrome-shaped hello")
-	}
-
-	// Wrong server key: the server rejects the session ID; the client never
-	// accepts an impostor certificate.
-	otherKey, _ := ecdh.X25519().GenerateKey(rand.Reader)
-	addr, serr = realityServer(t, otherKey, shortID)
-	conn2, err := net.Dial("tcp", addr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer conn2.Close()
-	uc2, verified2 := realityClient(t, conn2, serverKey.PublicKey().Bytes(), shortID)
-	uc2.SetDeadline(time.Now().Add(5 * time.Second))
-	go func() { <-serr; conn2.Close() }()
-	if err := uc2.Handshake(); err == nil || *verified2 {
-		t.Fatal("handshake with an impostor REALITY server succeeded")
-	}
 }
 
 // ---------------------------------------------------------------------------
