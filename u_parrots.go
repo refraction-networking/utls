@@ -16,6 +16,7 @@ import (
 	"math"
 	"math/big"
 	"math/rand"
+	"slices"
 	"sort"
 	"strconv"
 
@@ -2098,6 +2099,18 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				},
 			},
 		}, nil
+	case HelloEdge_156:
+		// Edge 156 sends the Chrome 155 ClientHello without trust_anchors.
+		// See testdata/edge156_clienthello.md.
+		spec, err := utlsIdToSpec(HelloChrome_155)
+		if err != nil {
+			return spec, err
+		}
+		spec.Extensions = slices.DeleteFunc(spec.Extensions, func(e TLSExtension) bool {
+			_, ok := e.(*TrustAnchorsExtension)
+			return ok
+		})
+		return spec, nil
 	case HelloEdge_106:
 		return ClientHelloSpec{
 			TLSVersMin: VersionTLS12,
