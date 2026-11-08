@@ -16,8 +16,6 @@ import (
 	"net"
 	"slices"
 	"strconv"
-
-	"golang.org/x/crypto/cryptobyte"
 )
 
 type ClientHelloBuildStatus int
@@ -478,19 +476,6 @@ func (uconn *UConn) ApplyConfig() error {
 	return nil
 }
 
-func (uconn *UConn) extensionsList() []uint16 {
-
-	outerExts := []uint16{}
-	for _, ext := range uconn.Extensions {
-		buffer := cryptobyte.String(make([]byte, 2000))
-		ext.Read(buffer)
-		var extension uint16
-		buffer.ReadUint16(&extension)
-		outerExts = append(outerExts, extension)
-	}
-	return outerExts
-}
-
 func (uconn *UConn) computeAndUpdateOuterECHExtension(inner *clientHelloMsg, ech *echClientContext, useKey bool) error {
 	// This function is mostly copied from
 	// https://github.com/refraction-networking/utls/blob/e430876b1d82fdf582efc57f3992d448e7ab3d8a/ech.go#L408
@@ -499,7 +484,7 @@ func (uconn *UConn) computeAndUpdateOuterECHExtension(inner *clientHelloMsg, ech
 		encapKey = ech.encapsulatedKey
 	}
 
-	encodedInner, err := encodeInnerClientHelloReorderOuterExts(inner, int(ech.config.MaxNameLength), uconn.extensionsList())
+	encodedInner, err := encodeInnerClientHelloFromRaw(inner, ech.innerOuterExts, int(ech.config.MaxNameLength))
 	if err != nil {
 		return err
 	}
@@ -564,17 +549,17 @@ func (uconn *UConn) MarshalClientHello() error {
 				return errors.New("tls: PSK resumption with a custom ECH ClientHello is not supported")
 			}
 		}
-		inner, _, ech, err := uconn.makeClientHello()
+		// makeClientHello sets up the ECH context. Its hello, built from the
+		// Config's defaults, is not used: the inner hello is built from the
+		// spec's extensions, as the browser being parroted builds its own.
+		goHello, _, ech, err := uconn.makeClientHello()
 		if err != nil {
 			return err
 		}
-
-		// copy compressed extensions to the ClientHelloInner
-		inner.keyShares = KeyShares(uconn.HandshakeState.Hello.KeyShares).ToPrivate()
-		inner.supportedSignatureAlgorithms = uconn.HandshakeState.Hello.SupportedSignatureAlgorithms
-		inner.sessionId = uconn.HandshakeState.Hello.SessionId
-		inner.supportedCurves = uconn.HandshakeState.Hello.SupportedCurves
-
+		inner, err := uconn.innerClientHello(ech, goHello.random)
+		if err != nil {
+			return err
+		}
 		ech.innerHello = inner
 
 		if err := uconn.computeAndUpdateOuterECHExtension(inner, ech, true); err != nil {

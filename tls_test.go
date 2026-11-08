@@ -2672,6 +2672,11 @@ func testECHSpec(t *testing.T, spec *ClientHelloSpec, expectSuccess bool) {
 	clientConfig.RootCAs.AddCert(publicCert)
 	clientConfig.EncryptedClientHelloConfigList = echConfigList
 	clientConfig.ClientSessionCache = NewLRUClientSessionCache(2)
+	// The inner hello of a custom spec offers psk_key_exchange_modes as the
+	// outer does, so the server issues tickets, which later handshakes with a
+	// spec that has no pre-shared key extension must leave in the cache:
+	// resumption with a custom ECH ClientHello is not supported yet.
+	clientConfig.PreferSkipResumptionOnNilExtension = true
 	serverConfig.InsecureSkipVerify = false
 	serverConfig.Time = nil
 	serverConfig.MinVersion = VersionTLS13

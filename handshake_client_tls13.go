@@ -388,9 +388,11 @@ func (hs *clientHandshakeStateTLS13) processHelloRetryRequest() error {
 		if hs.uconn.ClientHelloID != HelloGolang {
 			keyShareExtFound := false
 			for _, ext := range hs.uconn.Extensions {
-				// new ks seems to be generated either way
+				// new ks seems to be generated either way; hello is the inner
+				// one when the server accepted ECH, and its key shares are the
+				// ones the retry regenerated
 				if ks, ok := ext.(*KeyShareExtension); ok {
-					ks.KeyShares = keyShares(hs.hello.keyShares).ToPublic()
+					ks.KeyShares = keyShares(hello.keyShares).ToPublic()
 					keyShareExtFound = true
 				}
 			}
@@ -463,7 +465,14 @@ func (hs *clientHandshakeStateTLS13) processHelloRetryRequest() error {
 		hs.hello.keyShares = hello.keyShares
 		hs.echContext.innerHello = hello
 		if hs.uconn != nil && hs.uconn.clientHelloBuildStatus == BuildByUtls {
-			if err := hs.uconn.computeAndUpdateOuterECHExtension(hs.echContext.innerHello, hs.echContext, false); err != nil {
+			// The outer's extensions now carry the new key share and the
+			// cookie; rebuild the inner from them, keeping its random.
+			inner, err := hs.uconn.innerClientHello(hs.echContext, hello.random)
+			if err != nil {
+				return err
+			}
+			hs.echContext.innerHello = inner
+			if err := hs.uconn.computeAndUpdateOuterECHExtension(inner, hs.echContext, false); err != nil {
 				return err
 			}
 
