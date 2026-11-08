@@ -562,6 +562,10 @@ func (c *UConn) clientHandshake(ctx context.Context) (err error) {
 		err = hs13.handshake()
 		if handshakeState := hs13.toPublic13(); handshakeState != nil {
 			c.HandshakeState = *handshakeState
+			// The key share private keys are spent once the shared secret is
+			// derived, and an ML-KEM decapsulation key is about 8 KiB, so do
+			// not keep them alive for the rest of the connection.
+			c.HandshakeState.State13.KeyShareKeys = nil
 		}
 		return err
 	}

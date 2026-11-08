@@ -46,6 +46,9 @@ type TLS13OnlyState struct {
 	// Will be removed in the future.
 	KEMKey *KemPrivateKey
 
+	// KeyShareKeys holds the private keys behind the ClientHello's key shares.
+	// They are needed until the shared secret is derived and are dropped once
+	// the handshake completes, so they are nil afterwards.
 	KeyShareKeys  *KeySharePrivateKeys
 	Suite         *PubCipherSuiteTLS13
 	EarlySecret   []byte
