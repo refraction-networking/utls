@@ -3084,6 +3084,21 @@ func (uconn *UConn) applyPresetByID(id ClientHelloID) (err error) {
 
 // ApplyPreset should only be used in conjunction with HelloCustom to apply custom specs.
 // The provided ClientHelloSpec is cloned before per-connection handshake state is applied.
+// keepClassicalKeyShareKey records the private key of a classical key share
+// the ClientHello offers: the first one as KeyShareKeys.Ecdhe, as before, and
+// every one by group in KeyShareKeys.Ecdhes, so that the server may select
+// any of them.
+func (uconn *UConn) keepClassicalKeyShareKey(group CurveID, key *ecdh.PrivateKey) {
+	keys := uconn.HandshakeState.State13.KeyShareKeys
+	if keys.Ecdhe == nil {
+		keys.Ecdhe = key
+	}
+	if keys.Ecdhes == nil {
+		keys.Ecdhes = make(map[CurveID]*ecdh.PrivateKey)
+	}
+	keys.Ecdhes[group] = key
+}
+
 func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 	var err error
 	p = p.clone()
@@ -3216,7 +3231,6 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 				}
 			}
 		case *KeyShareExtension:
-			preferredCurveIsSet := false
 			reusableClassicalKeys := make(map[CurveID][]*ecdh.PrivateKey)
 			for i := range ext.KeyShares {
 				curveID := ext.KeyShares[i].Group
@@ -3293,11 +3307,7 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 						reusableClassicalKeys[curveID] = keysForCurve[1:]
 
 						ext.KeyShares[i].Data = reusedKey.PublicKey().Bytes()
-						if !preferredCurveIsSet {
-							// only do this once for the first non-grease curve
-							uconn.HandshakeState.State13.KeyShareKeys.Ecdhe = reusedKey
-							preferredCurveIsSet = true
-						}
+						uconn.keepClassicalKeyShareKey(curveID, reusedKey)
 						continue
 					}
 
@@ -3308,11 +3318,7 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 					}
 
 					ext.KeyShares[i].Data = ecdheKey.PublicKey().Bytes()
-					if !preferredCurveIsSet {
-						// only do this once for the first non-grease curve
-						uconn.HandshakeState.State13.KeyShareKeys.Ecdhe = ecdheKey
-						preferredCurveIsSet = true
-					}
+					uconn.keepClassicalKeyShareKey(curveID, ecdheKey)
 				}
 			}
 		case *SupportedVersionsExtension:
