@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"slices"
 	"sync"
 
 	"github.com/refraction-networking/utls/dicttls"
@@ -49,7 +50,7 @@ type GREASEEncryptedClientHelloExtension struct {
 	CandidateConfigIds    []uint8
 	configId              uint8    // randomly picked from CandidateConfigIds or generated if empty
 	EncapsulatedKey       []byte   // if empty, will generate random bytes
-	CandidatePayloadLens  []uint16 // Pre-encryption. If 0, will pick 128(+16=144)
+	CandidatePayloadLens  []uint16 // Pre-encryption. If empty, drawn from BoringSSL's 128, 160, 192 and 224 (+16 on the wire)
 	payload               []byte   // payload should be calculated ONCE and stored here, HRR will reuse this
 
 	initOnce sync.Once
@@ -153,7 +154,7 @@ func (g *GREASEEncryptedClientHelloExtension) init() error {
 
 		if len(g.payload) == 0 {
 			if len(g.CandidatePayloadLens) == 0 {
-				g.CandidatePayloadLens = []uint16{128}
+				g.CandidatePayloadLens = slices.Clone(boringGREASEECHPayloadLens)
 			}
 
 			// randomly pick one from the list
@@ -316,6 +317,14 @@ func (*UnimplementedECHExtension) mustEmbedUnimplementedECHExtension() {
 	panic("mustEmbedUnimplementedECHExtension() is not implemented")
 }
 
+// boringGREASEECHPayloadLens are the pre-encryption payload lengths BoringSSL
+// draws a GREASE ECH payload from, uniformly on every connection: 32 bytes
+// times a random integer in [4, 7], the size of a typical ClientHelloInner
+// padded to a multiple of 32 (ssl/encrypted_client_hello.cc, setup_ech_grease).
+// With the 16-byte AEAD tag the payload is 144, 176, 208 or 240 bytes on the
+// wire.
+var boringGREASEECHPayloadLens = []uint16{128, 160, 192, 224}
+
 // BoringGREASEECH returns a GREASE scheme BoringSSL uses by default.
 func BoringGREASEECH() *GREASEEncryptedClientHelloExtension {
 	return &GREASEEncryptedClientHelloExtension{
@@ -325,6 +334,6 @@ func BoringGREASEECH() *GREASEEncryptedClientHelloExtension {
 				AeadId: dicttls.AEAD_AES_128_GCM,
 			},
 		},
-		CandidatePayloadLens: []uint16{128, 160, 192, 224}, // +16: 144, 176, 208, 240
+		CandidatePayloadLens: slices.Clone(boringGREASEECHPayloadLens),
 	}
 }
