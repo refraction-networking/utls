@@ -243,8 +243,9 @@ func (m *clientHelloMsg) marshalMsgReorderOuterExts(echInner bool, outerExts []u
 		}
 	}
 	if len(m.alpnProtocols) > 0 {
-		// ALPN extension copy is skipped because in ECH inner, the ALPN might be different
-		if echInner && false {
+		// Only compress ALPN for standard ClientHellos, where inner and outer match.
+		// Custom ClientHellos may use different inner and outer ALPNs.
+		if echInner && outerExts == nil {
 			echOuterExts = append(echOuterExts, extensionALPN)
 		} else {
 			// RFC 7301, Section 3.1
