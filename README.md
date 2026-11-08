@@ -254,6 +254,7 @@ will prepare ClientHello with empty uconn.Extensions so you can fill it with TLS
 	* `utls.HelloChrome_155` - parrots a fresh Chrome 155.0.8059.40 connection on macOS
 	* `utls.HelloFirefox_Auto` - parrots recommended(usually latest) Firefox version
 	* `utls.HelloFirefox_55` - parrots Firefox 55
+	* `utls.HelloFirefox_158` - parrots a fresh Firefox 158.0 connection on Linux in normal browsing mode
 
 `HelloChrome_Auto` currently selects `HelloChrome_155`. This profile includes
 GREASE and ML-DSA signature schemes and the 28 trust anchor IDs observed in a
@@ -261,6 +262,11 @@ GREASE and ML-DSA signature schemes and the 28 trust anchor IDs observed in a
 of that build's Chrome Root Store; component updates and browser feature settings
 can change the ClientHello. `TrustAnchorsExtension` preserves these IDs when
 fingerprinting a capture and does not change `Config.RootCAs`.
+
+`HelloFirefox_Auto` currently selects `HelloFirefox_158`, captured in normal
+browsing mode from a [fresh Firefox profile](testdata/firefox158_clienthello.md).
+Firefox private browsing omits the `session_ticket` and `psk_key_exchange_modes`
+extensions; `HelloFirefox_148` matches that private browsing ClientHello.
 	
 # Usage
 ## Examples
