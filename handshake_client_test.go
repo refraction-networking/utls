@@ -2806,6 +2806,10 @@ u58=
 	}
 }
 
+// echConfigListExampleGolang is a serialized ECHConfigList (RFC 9849)
+// advertising the public_name "example.golang". [uTLS]
+const echConfigListExampleGolang = "0041fe0d003d0100200020204bed0a11fc0dde595a9b78d966b0011128eb83f65d3c91c1cc5ac786cd246f000400010001ff0e6578616d706c652e676f6c616e670000"
+
 func TestTLS13ECHRejectionCallbacks(t *testing.T) {
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -2838,7 +2842,7 @@ func TestTLS13ECHRejectionCallbacks(t *testing.T) {
 	clientConfig.RootCAs = x509.NewCertPool()
 	clientConfig.RootCAs.AddCert(cert)
 	clientConfig.MinVersion = VersionTLS13
-	clientConfig.EncryptedClientHelloConfigList, _ = hex.DecodeString("0041fe0d003d0100200020204bed0a11fc0dde595a9b78d966b0011128eb83f65d3c91c1cc5ac786cd246f000400010001ff0e6578616d706c652e676f6c616e670000")
+	clientConfig.EncryptedClientHelloConfigList, _ = hex.DecodeString(echConfigListExampleGolang)
 	clientConfig.ServerName = "example.golang"
 
 	for _, tc := range []struct {
@@ -2911,13 +2915,164 @@ func TestTLS13ECHRejectionCallbacks(t *testing.T) {
 	}
 }
 
+// [uTLS SECTION BEGINS]
+
+// echRejectionConfigs returns a client Config offering ECH for the inner name
+// "secret.example" behind the public_name "example.golang", a server Config
+// without ECH keys, which therefore rejects ECH and completes the handshake with
+// the outer ClientHello, and the server's certificate, which covers only the
+// public name, as a real client-facing server's does.
+func echRejectionConfigs(t *testing.T) (clientConfig, serverConfig *Config, cert *x509.Certificate) {
+	t.Helper()
+	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "test"},
+		DNSNames:     []string{"example.golang"},
+		NotBefore:    testConfigServer.Time().Add(-time.Hour),
+		NotAfter:     testConfigServer.Time().Add(time.Hour),
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, k.Public(), k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert, err = x509.ParseCertificate(certDER)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	clientConfig, serverConfig = testConfigClient.Clone(), testConfigServer.Clone()
+	serverConfig.Certificates = []Certificate{{Certificate: [][]byte{certDER}, PrivateKey: k}}
+	serverConfig.MinVersion = VersionTLS13
+	clientConfig.RootCAs = x509.NewCertPool()
+	clientConfig.RootCAs.AddCert(cert)
+	clientConfig.MinVersion = VersionTLS13
+	clientConfig.EncryptedClientHelloConfigList, _ = hex.DecodeString(echConfigListExampleGolang)
+	clientConfig.ServerName = "secret.example"
+	return clientConfig, serverConfig, cert
+}
+
+// echRejectionSpec names one of the ClientHello builders an ECH rejection test
+// covers: the Go-built hello (nil spec) or a uTLS custom spec.
+type echRejectionSpec struct {
+	name string
+	spec *ClientHelloSpec
+}
+
+// echRejectionSpecs lists the ClientHello builders an ECH rejection test
+// covers.
+func echRejectionSpecs(t *testing.T) []echRejectionSpec {
+	t.Helper()
+	chrome, err := utlsIdToSpec(HelloChrome_Auto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return []echRejectionSpec{
+		{name: "golang hello", spec: nil},
+		{name: "custom spec", spec: &chrome},
+	}
+}
+
+// echRejectionHandshake handshakes with the given configs, building the
+// ClientHello with Go (spec nil) or with the uTLS spec, and returns the
+// client's handshake error.
+func echRejectionHandshake(t *testing.T, clientConfig, serverConfig *Config, spec *ClientHelloSpec) error {
+	t.Helper()
+	c, s := localPipe(t)
+	done := make(chan struct{})
+	go func() {
+		// The client's error is the subject; the server only sees the
+		// matching alert.
+		_ = Server(s, serverConfig).Handshake()
+		_ = s.Close()
+		close(done)
+	}()
+	defer func() {
+		_ = c.Close()
+		<-done
+	}()
+
+	if spec == nil {
+		return Client(c, clientConfig).Handshake()
+	}
+	uc := UClient(c, clientConfig, HelloCustom)
+	if err := uc.ApplyPreset(spec); err != nil {
+		t.Fatal(err)
+	}
+	return uc.Handshake()
+}
+
+// TestTLS13ECHRejectionVerifiesPublicName checks that, when the server rejects
+// ECH, the client verifies the certificate it presents against the ECH
+// configuration's public_name, the name the outer ClientHello asked for, rather
+// than the concealed inner ServerName. The two normally differ, so verifying
+// against the inner name always fails and the *ECHRejectionError carrying
+// retry_configs never reaches the caller (RFC 9849, section 6.1.6).
+func TestTLS13ECHRejectionVerifiesPublicName(t *testing.T) {
+	for _, tc := range echRejectionSpecs(t) {
+		t.Run(tc.name, func(t *testing.T) {
+			clientConfig, serverConfig, _ := echRejectionConfigs(t)
+			err := echRejectionHandshake(t, clientConfig, serverConfig, tc.spec)
+			var echErr *ECHRejectionError
+			if !errors.As(err, &echErr) {
+				t.Fatalf("want *ECHRejectionError, got %T: %v", err, err)
+			}
+		})
+	}
+}
+
+// TestTLS13ECHRejectionVerifySeesPeerCertificates checks that
+// EncryptedClientHelloRejectionVerify receives the chain the server presented
+// and the public name it was asked for, so the callback can verify the ECH
+// provider's certificate as its documentation promises. Normal verification is
+// skipped in favour of the callback, so VerifiedChains stays empty. See
+// golang/go#75242.
+func TestTLS13ECHRejectionVerifySeesPeerCertificates(t *testing.T) {
+	for _, tc := range echRejectionSpecs(t) {
+		t.Run(tc.name, func(t *testing.T) {
+			clientConfig, serverConfig, cert := echRejectionConfigs(t)
+			var seen *ConnectionState
+			clientConfig.EncryptedClientHelloRejectionVerify = func(cs ConnectionState) error {
+				seen = &cs
+				return nil
+			}
+
+			err := echRejectionHandshake(t, clientConfig, serverConfig, tc.spec)
+			var echErr *ECHRejectionError
+			if !errors.As(err, &echErr) {
+				t.Fatalf("want *ECHRejectionError, got %T: %v", err, err)
+			}
+			if seen == nil {
+				t.Fatal("EncryptedClientHelloRejectionVerify was not called")
+			}
+			if len(seen.PeerCertificates) != 1 || !seen.PeerCertificates[0].Equal(cert) {
+				t.Fatalf("callback saw %d peer certificates, want the server's certificate", len(seen.PeerCertificates))
+			}
+			if seen.ServerName != "example.golang" {
+				t.Fatalf("callback saw ServerName %q, want the public name %q", seen.ServerName, "example.golang")
+			}
+			if seen.ECHAccepted {
+				t.Fatal("callback saw ECHAccepted set on a rejected ECH")
+			}
+			if len(seen.VerifiedChains) != 0 {
+				t.Fatalf("callback saw %d verified chains, want none", len(seen.VerifiedChains))
+			}
+		})
+	}
+}
+
+// [uTLS SECTION ENDS]
+
 func TestECHTLS12Server(t *testing.T) {
 	clientConfig, serverConfig := testConfigClient.Clone(), testConfigServer.Clone()
 
 	serverConfig.MaxVersion = VersionTLS12
 	clientConfig.MinVersion = 0
 
-	clientConfig.EncryptedClientHelloConfigList, _ = hex.DecodeString("0041fe0d003d0100200020204bed0a11fc0dde595a9b78d966b0011128eb83f65d3c91c1cc5ac786cd246f000400010001ff0e6578616d706c652e676f6c616e670000")
+	clientConfig.EncryptedClientHelloConfigList, _ = hex.DecodeString(echConfigListExampleGolang)
 
 	expectedErr := "server: tls: client offered only unsupported versions: [304]\nclient: remote error: tls: protocol version not supported"
 	_, _, err := testHandshake(t, clientConfig, serverConfig)
