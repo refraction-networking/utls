@@ -485,7 +485,8 @@ func (hs *serverHandshakeStateTLS13) pickCertificate() error {
 		return c.sendAlert(alertMissingExtension)
 	}
 
-	certificate, err := c.config.getCertificate(clientHelloInfo(hs.ctx, c, hs.clientHello))
+	helloInfo := clientHelloInfo(hs.ctx, c, hs.clientHello)
+	certificate, err := c.config.getCertificate(helloInfo)
 	if err != nil {
 		if err == errNoCertificates {
 			c.sendAlert(alertUnrecognizedName)
@@ -497,10 +498,10 @@ func (hs *serverHandshakeStateTLS13) pickCertificate() error {
 	if certificate != nil {
 		hs.c.localCertificate = certificate.Certificate
 	}
-	hs.sigAlg, err = selectSignatureScheme(c.vers, certificate, hs.clientHello.supportedSignatureAlgorithms)
+	hs.sigAlg, err = c.config.selectServerSignatureScheme(helloInfo, certificate, c.vers)
 	if err != nil {
-		// getCertificate returned a certificate that is unsupported or
-		// incompatible with the client's signature algorithms.
+		// getCertificate returned a certificate that cannot be used with
+		// the selected signature scheme.
 		c.sendAlert(alertHandshakeFailure)
 		return err
 	}

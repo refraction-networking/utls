@@ -297,6 +297,22 @@ func selectSignatureScheme(vers uint16, c *Certificate, peerAlgs []SignatureSche
 	return 0, errors.New("tls: peer doesn't support any of the certificate's signature algorithms")
 }
 
+// selectServerSignatureScheme applies the optional server override while
+// retaining the certificate, TLS version, and local policy checks.
+func (c *Config) selectServerSignatureScheme(hello *ClientHelloInfo, cert *Certificate, version uint16) (SignatureScheme, error) {
+	if c.SelectServerSignatureScheme == nil || version < VersionTLS12 || len(hello.SignatureSchemes) == 0 {
+		return selectSignatureScheme(version, cert, hello.SignatureSchemes)
+	}
+	scheme, err := c.SelectServerSignatureScheme(hello, cert, version)
+	if err != nil {
+		return 0, err
+	}
+	if _, err := selectSignatureScheme(version, cert, []SignatureScheme{scheme}); err != nil {
+		return 0, fmt.Errorf("tls: invalid server signature scheme 0x%04x: %w", scheme, err)
+	}
+	return scheme, nil
+}
+
 // unsupportedCertificateError returns a helpful error for certificates with
 // an unsupported private key.
 func unsupportedCertificateError(cert *Certificate) error {
