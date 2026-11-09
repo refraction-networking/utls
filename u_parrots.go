@@ -3449,7 +3449,8 @@ func generateRandomizedSpec(
 	points := SupportedPointsExtension{SupportedPoints: []byte{pointFormatUncompressed}}
 
 	curveIDs := []CurveID{}
-	if r.FlipWeightedCoin(id.Weights.CurveIDs_Append_X25519) && p.TLSVersMax == VersionTLS13 {
+	includeX25519MLKEM768 := r.FlipWeightedCoin(id.Weights.CurveIDs_Append_X25519) && p.TLSVersMax == VersionTLS13
+	if includeX25519MLKEM768 {
 		curveIDs = append(curveIDs, X25519MLKEM768)
 	}
 	if r.FlipWeightedCoin(id.Weights.CurveIDs_Append_X25519) || p.TLSVersMax == VersionTLS13 {
@@ -3509,9 +3510,11 @@ func generateRandomizedSpec(
 			if r.FlipWeightedCoin(id.Weights.KeyShare_Append_RandomGroups) {
 				ks.KeyShares = append(ks.KeyShares, KeyShare{Group: CurveP256})
 			}
-			if r.FlipWeightedCoin(id.Weights.KeyShare_Append_RandomGroups) {
-				ks.KeyShares = append([]KeyShare{{Group: X25519MLKEM768}}, ks.KeyShares...)
-			}
+			// Preserve PRNG progression for existing randomized seeds.
+			_ = r.FlipWeightedCoin(id.Weights.KeyShare_Append_RandomGroups)
+		}
+		if includeX25519MLKEM768 {
+			ks.KeyShares = append([]KeyShare{{Group: X25519MLKEM768}}, ks.KeyShares...)
 		}
 		pskExchangeModes := PSKKeyExchangeModesExtension{[]uint8{pskModeDHE}}
 		supportedVersionsExt := SupportedVersionsExtension{
