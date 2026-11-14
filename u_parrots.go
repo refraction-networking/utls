@@ -964,6 +964,10 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				&UtlsGREASEExtension{},
 			}),
 		}, nil
+	case HelloYandex_26_11:
+		// Independently captured headed and headless Yandex 26.11 handshakes
+		// match this pinned profile. Never follow HelloChrome_Auto here.
+		return UTLSIdToSpec(HelloChrome_155)
 	case HelloChrome_155:
 		return ClientHelloSpec{
 			CipherSuites: []uint16{

@@ -174,6 +174,7 @@ const (
 	helloIOS              = "iOS"
 	helloAndroid          = "Android"
 	helloEdge             = "Edge"
+	helloYandex           = "Yandex"
 	helloSafari           = "Safari"
 	hello360              = "360Browser"
 	helloQQ               = "QQBrowser"
@@ -649,6 +650,11 @@ var (
 	// Chrome 155.0.8059.40 on macOS, with ML-DSA signatures and a snapshot of
 	// the Chrome Root Store trust anchor IDs. See testdata/chrome155_clienthello.md.
 	HelloChrome_155 = ClientHelloID{helloChrome, "155", nil, nil}
+
+	// HelloYandex_26_11 matches Yandex Browser 26.11.0.1993 on Windows.
+	// Its normalized fresh ClientHello matches Chrome 155; this is a versioned
+	// provenance alias, not an additional wire fingerprint. No Auto alias is set.
+	HelloYandex_26_11 = ClientHelloID{helloYandex, "26.11", nil, nil}
 
 	HelloIOS_Auto = HelloIOS_14
 	HelloIOS_11_1 = ClientHelloID{helloIOS, "111", nil, nil} // legacy "111" means 11.1
