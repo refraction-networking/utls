@@ -58,10 +58,8 @@ func (hs *clientHandshakeStateTLS13) handshake() error {
 	}
 
 	// Consistency check on the presence of a keyShare and its parameters.
-	// [uTLS] Private keys are not required here: a uTLS ClientHello may send
-	// hand-written key shares, and establishHandshakeKeys reports clearly
-	// when the server selects one the client holds no key for.
-	if hs.keyShareKeys == nil || len(hs.hello.keyShares) == 0 {
+	if hs.keyShareKeys == nil || (hs.keyShareKeys.ecdhe == nil && hs.keyShareKeys.mlkem == nil) ||
+		len(hs.hello.keyShares) == 0 {
 		return c.sendAlert(alertInternalError)
 	}
 
@@ -581,12 +579,6 @@ func (hs *clientHandshakeStateTLS13) establishHandshakeKeys() error {
 		return err
 	}
 	sharedKey, err := ke.clientSharedSecret(hs.keyShareKeys, hs.serverHello.serverShare.data)
-	// [uTLS] SECTION BEGIN
-	if errors.Is(err, errMissingKeySharePrivateKey) {
-		c.sendAlert(alertInternalError)
-		return fmt.Errorf("tls: server selected %v, but %w", hs.serverHello.serverShare.group, err)
-	}
-	// [uTLS] SECTION END
 	if err != nil {
 		c.sendAlert(alertIllegalParameter)
 		return errors.New("tls: invalid server key share")
