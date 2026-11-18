@@ -1,11 +1,13 @@
 package tls
 
 import (
+	"bytes"
 	"crypto/ecdh"
 	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"reflect"
 	"strings"
 	"testing"
@@ -161,7 +163,8 @@ func TestUTLSKeyShareServerSelectsAnyOfferedGroup(t *testing.T) {
 
 // TestUTLSKeyShareHelloRetryRequest checks that a HelloRetryRequest for a
 // group the client supports but sent no share for still completes when the
-// first ClientHello carried several classical shares.
+// first ClientHello carried several classical shares, and that the retry does
+// not leak into the caller's spec.
 func TestUTLSKeyShareHelloRetryRequest(t *testing.T) {
 	shares := []KeyShare{{Group: X25519}, {Group: CurveP384}}
 	groups := []CurveID{X25519, CurveP384, CurveP256}
@@ -176,6 +179,48 @@ func TestUTLSKeyShareHelloRetryRequest(t *testing.T) {
 	}
 	if curve != CurveP256 {
 		t.Fatalf("negotiated %v, want %v", curve, CurveP256)
+	}
+	if want := keyShareTestSpec(shares, groups); !reflect.DeepEqual(spec, want) {
+		t.Errorf("HelloRetryRequest modified the caller's ClientHelloSpec:\n got %+v\nwant %+v",
+			specKeyShares(spec), specKeyShares(want))
+	}
+}
+
+// TestUTLSApplyPresetSpecReuse checks that one ClientHelloSpec can be applied
+// to several connections: each one generates fresh keys and completes, and
+// the caller's spec is never modified.
+func TestUTLSApplyPresetSpecReuse(t *testing.T) {
+	shares := firefoxKeyShares()
+	groups := []CurveID{X25519MLKEM768, X25519, CurveP256}
+	spec := keyShareTestSpec(shares, groups)
+
+	var sent [][]KeyShare
+	for i, server := range [][]CurveID{{X25519}, {X25519}, {CurveP256}, {X25519MLKEM768}} {
+		curve, client, err := keyShareHandshake(t, spec, server)
+		if err != nil {
+			t.Fatalf("handshake %d with the same spec failed: %v", i+1, err)
+		}
+		if curve != server[0] {
+			t.Fatalf("handshake %d negotiated %v, want %v", i+1, curve, server[0])
+		}
+		sent = append(sent, specKeyShares(&ClientHelloSpec{Extensions: client.Extensions}))
+	}
+
+	if want := keyShareTestSpec(shares, groups); !reflect.DeepEqual(spec, want) {
+		t.Errorf("ApplyPreset modified the caller's ClientHelloSpec:\n got %+v\nwant %+v",
+			specKeyShares(spec), specKeyShares(want))
+	}
+
+	// Every connection must send fresh key material.
+	for i := 1; i < len(sent); i++ {
+		for j, ks := range sent[i] {
+			if ks.Group == X25519MLKEM768 || isGREASEUint16(uint16(ks.Group)) {
+				continue
+			}
+			if string(ks.Data) == string(sent[0][j].Data) {
+				t.Errorf("connection %d resent connection 1's %v public key", i+1, ks.Group)
+			}
+		}
 	}
 }
 
@@ -238,4 +283,73 @@ func TestUTLSKeySharePrivateKeysConversion(t *testing.T) {
 	if back := priv.ToPublic(); !reflect.DeepEqual(back, pub) {
 		t.Errorf("ToPrivate().ToPublic() = %+v, want %+v", back, pub)
 	}
+}
+
+// TestUTLSApplyPresetPerConnectionStateNotInSpec checks that state uTLS keeps
+// inside extensions for one connection (GREASE ECH randomness, padding length,
+// cached transport parameter bytes) lives in that connection's copy, so a
+// reused spec is neither modified nor replayed byte-for-byte.
+func TestUTLSApplyPresetPerConnectionStateNotInSpec(t *testing.T) {
+	ech := &GREASEEncryptedClientHelloExtension{}
+	padding := &UtlsPaddingExtension{GetPaddingLen: func(int) (int, bool) { return 7, true }}
+	tp := &QUICTransportParametersExtension{TransportParameters: TransportParameters{InitialMaxData(1)}}
+	spec := keyShareTestSpec([]KeyShare{{Group: X25519}}, []CurveID{X25519})
+	spec.Extensions = append(spec.Extensions, ech, tp, padding)
+
+	build := func() *UConn {
+		t.Helper()
+		uconn := UClient(&net.TCPConn{}, &Config{ServerName: "example.com"}, HelloCustom)
+		if err := uconn.ApplyPreset(spec); err != nil {
+			t.Fatal(err)
+		}
+		if err := uconn.BuildHandshakeState(); err != nil {
+			t.Fatal(err)
+		}
+		return uconn
+	}
+	first := build()
+	// The caller may change its parameters between connections.
+	tp.TransportParameters = TransportParameters{InitialMaxData(2)}
+	second := build()
+
+	if len(ech.EncapsulatedKey) != 0 || len(ech.payload) != 0 {
+		t.Errorf("GREASE ECH state was written into the caller's spec: enc %x", ech.EncapsulatedKey)
+	}
+	if padding.PaddingLen != 0 || padding.WillPad {
+		t.Errorf("padding state was written into the caller's spec: len %d, pad %v", padding.PaddingLen, padding.WillPad)
+	}
+	if tp.marshalResult != nil {
+		t.Errorf("transport parameter bytes were cached in the caller's spec: %x", tp.marshalResult)
+	}
+
+	echOf := func(u *UConn) *GREASEEncryptedClientHelloExtension {
+		for _, e := range u.Extensions {
+			if g, ok := e.(*GREASEEncryptedClientHelloExtension); ok {
+				return g
+			}
+		}
+		t.Fatal("no GREASE ECH extension in uconn.Extensions")
+		return nil
+	}
+	if e1, e2 := echOf(first), echOf(second); bytes.Equal(e1.EncapsulatedKey, e2.EncapsulatedKey) ||
+		bytes.Equal(e1.payload, e2.payload) {
+		t.Error("two connections from one spec sent the same GREASE ECH enc or payload")
+	}
+	if want := (TransportParameters{InitialMaxData(2)}).Marshal(); !bytes.Contains(second.HandshakeState.Hello.Raw, want) {
+		t.Error("second ClientHello carries the first connection's cached transport parameters")
+	}
+	for _, u := range []*UConn{first, second} {
+		if !bytes.Contains(u.HandshakeState.Hello.Raw, []byte{0x00, 0x15, 0x00, 0x07}) {
+			t.Error("ClientHello lacks the 7-byte padding extension")
+		}
+	}
+}
+
+func specKeyShares(spec *ClientHelloSpec) []KeyShare {
+	for _, ext := range spec.Extensions {
+		if ks, ok := ext.(*KeyShareExtension); ok {
+			return ks.KeyShares
+		}
+	}
+	return nil
 }

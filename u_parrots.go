@@ -16,6 +16,7 @@ import (
 	"math"
 	"math/big"
 	"math/rand"
+	"slices"
 	"sort"
 	"strconv"
 
@@ -3082,8 +3083,13 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 		uconn.HandshakeState.Hello.SessionId = sessionID[:]
 	}
 
+	// Copy the extensions that are filled in per connection below (and during
+	// a HelloRetryRequest), so the caller's spec is never modified and can be
+	// applied again, e.g. when an HTTP/3 transport re-dials with it.
 	uconn.Extensions = make([]TLSExtension, len(p.Extensions))
-	copy(uconn.Extensions, p.Extensions)
+	for i, e := range p.Extensions {
+		uconn.Extensions[i] = cloneExtensionForConn(e)
+	}
 
 	// Check whether NPN extension actually exists
 	var haveNPN bool
@@ -3230,6 +3236,62 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 	}
 
 	return nil
+}
+
+// cloneExtensionForConn returns a copy of e that ApplyPreset and the handshake
+// may fill in for one connection (GREASE values, SNI, generated key shares, a
+// HelloRetryRequest's key share and cookie, padding length, cached transport
+// parameter bytes, GREASE ECH randomness) without writing into the caller's
+// ClientHelloSpec. Other extensions are returned as is.
+func cloneExtensionForConn(e TLSExtension) TLSExtension {
+	switch ext := e.(type) {
+	case *QUICTransportParametersExtension:
+		// Drop any cached encoding so the parameters are marshaled for this
+		// connection.
+		c := *ext
+		c.TransportParameters = slices.Clone(ext.TransportParameters)
+		c.marshalResult = nil
+		return &c
+	case *UtlsPaddingExtension:
+		c := *ext
+		return &c
+	case *GREASEEncryptedClientHelloExtension:
+		// Only the configuration is copied: config_id, cipher suite, enc and
+		// payload are chosen afresh for every connection.
+		return &GREASEEncryptedClientHelloExtension{
+			CandidateCipherSuites: slices.Clone(ext.CandidateCipherSuites),
+			CandidateConfigIds:    slices.Clone(ext.CandidateConfigIds),
+			EncapsulatedKey:       slices.Clone(ext.EncapsulatedKey),
+			CandidatePayloadLens:  slices.Clone(ext.CandidatePayloadLens),
+		}
+	case *SNIExtension:
+		c := *ext
+		return &c
+	case *UtlsGREASEExtension:
+		c := *ext
+		c.Body = slices.Clone(ext.Body)
+		return &c
+	case *SupportedCurvesExtension:
+		c := *ext
+		c.Curves = slices.Clone(ext.Curves)
+		return &c
+	case *KeyShareExtension:
+		c := *ext
+		c.KeyShares = make([]KeyShare, len(ext.KeyShares))
+		for i, ks := range ext.KeyShares {
+			c.KeyShares[i] = KeyShare{Group: ks.Group, Data: slices.Clone(ks.Data)}
+		}
+		return &c
+	case *SupportedVersionsExtension:
+		c := *ext
+		c.Versions = slices.Clone(ext.Versions)
+		return &c
+	case *CookieExtension:
+		c := *ext
+		c.Cookie = slices.Clone(ext.Cookie)
+		return &c
+	}
+	return e
 }
 
 func (uconn *UConn) generateRandomizedSpec() (ClientHelloSpec, error) {
