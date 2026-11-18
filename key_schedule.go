@@ -55,6 +55,10 @@ type keySharePrivateKeys struct {
 	ecdhe      *ecdh.PrivateKey
 	mlkem      *mlkem.DecapsulationKey768
 	mlkemEcdhe *ecdh.PrivateKey // [uTLS] seperate ecdhe key for pq keyshare in line with Chrome, instead of reusing ecdhe key like stdlib
+	// [uTLS] additionalEcdhe holds the private keys of classical key shares
+	// offered after the one in ecdhe (e.g. P-256 next to X25519), so the
+	// handshake can complete whichever offered group the server selects.
+	additionalEcdhe []*ecdh.PrivateKey
 }
 
 const x25519PublicKeySize = 32

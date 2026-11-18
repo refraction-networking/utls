@@ -60,7 +60,10 @@ func (hs *clientHandshakeStateTLS13) handshake() error {
 	}
 
 	// Consistency check on the presence of a keyShare and its parameters.
-	if hs.keyShareKeys == nil || hs.keyShareKeys.ecdhe == nil || len(hs.hello.keyShares) == 0 {
+	// [uTLS] A uTLS ClientHello may hold no classical key in ecdhe (e.g. only
+	// a hybrid share); establishHandshakeKeys picks the key for the group the
+	// server selects and fails with a clear error if there is none.
+	if hs.keyShareKeys == nil || len(hs.hello.keyShares) == 0 {
 		return c.sendAlert(alertInternalError)
 	}
 
@@ -577,6 +580,34 @@ func getSharedKey(peerData []byte, key *ecdh.PrivateKey) ([]byte, error) {
 	return sharedKey, nil
 }
 
+// ecdheForGroup returns the ECDHE private key behind the client's key share
+// for group, or nil if the client holds none. A uTLS ClientHello can carry
+// several classical shares (e.g. X25519 and P-256) and a hybrid share with its
+// own X25519 key, so the key must be picked by the group the server selected.
+func (ksk *keySharePrivateKeys) ecdheForGroup(group CurveID) *ecdh.PrivateKey {
+	if group == X25519MLKEM768 || group == X25519Kyber768Draft00 {
+		// uTLS keeps a separate X25519 key for the hybrid share; crypto/tls
+		// reuses ecdhe.
+		if ksk.mlkemEcdhe != nil {
+			return ksk.mlkemEcdhe
+		}
+		return ksk.ecdhe
+	}
+	curve, ok := curveForCurveID(group)
+	if !ok {
+		return nil
+	}
+	if ksk.ecdhe != nil && ksk.ecdhe.Curve() == curve {
+		return ksk.ecdhe
+	}
+	for _, key := range ksk.additionalEcdhe {
+		if key != nil && key.Curve() == curve {
+			return key
+		}
+	}
+	return nil
+}
+
 // [uTLS] SECTION END
 
 func (hs *clientHandshakeStateTLS13) establishHandshakeKeys() error {
@@ -598,7 +629,15 @@ func (hs *clientHandshakeStateTLS13) establishHandshakeKeys() error {
 		}
 		ecdhePeerData = hs.serverHello.serverShare.data[:x25519PublicKeySize]
 	}
-	sharedKey, err := getSharedKey(ecdhePeerData, hs.keyShareKeys.ecdhe)
+	// The ClientHello may carry several key shares, so use the private key
+	// of the one the server selected.
+	ecdheKey := hs.keyShareKeys.ecdheForGroup(hs.serverHello.serverShare.group)
+	if ecdheKey == nil {
+		c.sendAlert(alertInternalError)
+		return fmt.Errorf("tls: server selected %v, but no private key is held for that key share "+
+			"(was its KeyShare.Data set explicitly?)", hs.serverHello.serverShare.group)
+	}
+	sharedKey, err := getSharedKey(ecdhePeerData, ecdheKey)
 	// [uTLS] SECTION END
 	if err != nil {
 		c.sendAlert(alertIllegalParameter)
@@ -608,14 +647,6 @@ func (hs *clientHandshakeStateTLS13) establishHandshakeKeys() error {
 		if hs.keyShareKeys.mlkem == nil {
 			return c.sendAlert(alertInternalError)
 		}
-		// [uTLS] SECTION BEGIN
-		if hs.uconn != nil && hs.uconn.clientHelloBuildStatus == BuildByUtls {
-			if sharedKey, err = getSharedKey(ecdhePeerData, hs.keyShareKeys.mlkemEcdhe); err != nil {
-				c.sendAlert(alertIllegalParameter)
-				return errors.New("tls: invalid server key share")
-			}
-		}
-		// [uTLS] SECTION END
 		ciphertext := hs.serverHello.serverShare.data[:mlkem.CiphertextSize768]
 		mlkemShared, err := hs.keyShareKeys.mlkem.Decapsulate(ciphertext)
 		if err != nil {
@@ -628,12 +659,6 @@ func (hs *clientHandshakeStateTLS13) establishHandshakeKeys() error {
 	if hs.serverHello.serverShare.group == X25519Kyber768Draft00 {
 		if hs.keyShareKeys.mlkem == nil {
 			return c.sendAlert(alertInternalError)
-		}
-		if hs.uconn != nil && hs.uconn.clientHelloBuildStatus == BuildByUtls {
-			if sharedKey, err = getSharedKey(ecdhePeerData, hs.keyShareKeys.mlkemEcdhe); err != nil {
-				c.sendAlert(alertIllegalParameter)
-				return errors.New("tls: invalid server key share")
-			}
 		}
 		ciphertext := hs.serverHello.serverShare.data[x25519PublicKeySize:]
 		kyberShared, err := kyberDecapsulate(hs.keyShareKeys.mlkem, ciphertext)
