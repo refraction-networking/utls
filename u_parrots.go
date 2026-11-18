@@ -3216,7 +3216,19 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 				}
 			}
 		case *KeyShareExtension:
+			// keepClassicalKey stores the private key of a classical share:
+			// the first in Ecdhe and later ones in AdditionalEcdhe, so the
+			// handshake completes whichever offered group the server selects.
 			preferredCurveIsSet := false
+			keepClassicalKey := func(key *ecdh.PrivateKey) {
+				keys := uconn.HandshakeState.State13.KeyShareKeys
+				if !preferredCurveIsSet {
+					keys.Ecdhe = key
+					preferredCurveIsSet = true
+				} else {
+					keys.AdditionalEcdhe = append(keys.AdditionalEcdhe, key)
+				}
+			}
 			reusableClassicalKeys := make(map[CurveID][]*ecdh.PrivateKey)
 			for i := range ext.KeyShares {
 				curveID := ext.KeyShares[i].Group
@@ -3293,11 +3305,7 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 						reusableClassicalKeys[curveID] = keysForCurve[1:]
 
 						ext.KeyShares[i].Data = reusedKey.PublicKey().Bytes()
-						if !preferredCurveIsSet {
-							// only do this once for the first non-grease curve
-							uconn.HandshakeState.State13.KeyShareKeys.Ecdhe = reusedKey
-							preferredCurveIsSet = true
-						}
+						keepClassicalKey(reusedKey)
 						continue
 					}
 
@@ -3308,11 +3316,7 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 					}
 
 					ext.KeyShares[i].Data = ecdheKey.PublicKey().Bytes()
-					if !preferredCurveIsSet {
-						// only do this once for the first non-grease curve
-						uconn.HandshakeState.State13.KeyShareKeys.Ecdhe = ecdheKey
-						preferredCurveIsSet = true
-					}
+					keepClassicalKey(ecdheKey)
 				}
 			}
 		case *SupportedVersionsExtension:

@@ -925,9 +925,15 @@ func (kpk *kemPrivateKey) ToPublic() *KemPrivateKey {
 
 type KeySharePrivateKeys struct {
 	// CurveID    CurveID
+	// Ecdhe is the private key of the first classical (ECDHE) key share.
 	Ecdhe      *ecdh.PrivateKey
 	Mlkem      crypto.Decapsulator
 	MlkemEcdhe *ecdh.PrivateKey
+	// AdditionalEcdhe holds the private keys of any further classical key
+	// shares, in the order they are offered (e.g. the P-256 share Firefox
+	// sends after X25519). The client uses whichever key matches the group
+	// the server selects.
+	AdditionalEcdhe []*ecdh.PrivateKey
 }
 
 func (ksp *KeySharePrivateKeys) ToPrivate() *keySharePrivateKeys {
@@ -936,9 +942,10 @@ func (ksp *KeySharePrivateKeys) ToPrivate() *keySharePrivateKeys {
 	}
 	return &keySharePrivateKeys{
 		// curveID:    ksp.CurveID,
-		ecdhe:      ksp.Ecdhe,
-		mlkem:      ksp.Mlkem,
-		mlkemEcdhe: ksp.MlkemEcdhe,
+		ecdhe:           ksp.Ecdhe,
+		mlkem:           ksp.Mlkem,
+		mlkemEcdhe:      ksp.MlkemEcdhe,
+		additionalEcdhe: ksp.AdditionalEcdhe,
 	}
 }
 
@@ -948,8 +955,9 @@ func (ksp *keySharePrivateKeys) ToPublic() *KeySharePrivateKeys {
 	}
 	return &KeySharePrivateKeys{
 		// CurveID:    ksp.curveID,
-		Ecdhe:      ksp.ecdhe,
-		Mlkem:      ksp.mlkem,
-		MlkemEcdhe: ksp.mlkemEcdhe,
+		Ecdhe:           ksp.ecdhe,
+		Mlkem:           ksp.mlkem,
+		MlkemEcdhe:      ksp.mlkemEcdhe,
+		AdditionalEcdhe: ksp.additionalEcdhe,
 	}
 }
