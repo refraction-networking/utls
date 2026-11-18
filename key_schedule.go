@@ -57,7 +57,32 @@ type keySharePrivateKeys struct {
 	mlkem crypto.Decapsulator
 
 	mlkemEcdhe *ecdh.PrivateKey // [uTLS] seperate ecdhe key for pq keyshare in line with Chrome, instead of reusing ecdhe key like stdlib
+	// [uTLS] additionalEcdhe holds the private keys of classical key shares
+	// offered after the one in ecdhe (e.g. P-256 next to X25519), so the
+	// handshake can complete whichever offered group the server selects.
+	additionalEcdhe []*ecdh.PrivateKey
 }
+
+// [uTLS] SECTION BEGIN
+
+// errMissingKeySharePrivateKey reports that the client holds no private key
+// for the key share the server selected.
+var errMissingKeySharePrivateKey = errors.New("no private key is held for that key share (was its KeyShare.Data set explicitly?)")
+
+// ecdheForCurve returns the classical private key on curve, or nil.
+func (priv *keySharePrivateKeys) ecdheForCurve(curve ecdh.Curve) *ecdh.PrivateKey {
+	if priv.ecdhe != nil && priv.ecdhe.Curve() == curve {
+		return priv.ecdhe
+	}
+	for _, key := range priv.additionalEcdhe {
+		if key != nil && key.Curve() == curve {
+			return key
+		}
+	}
+	return nil
+}
+
+// [uTLS] SECTION END
 
 // A keyExchange implements a TLS 1.3 KEM.
 type keyExchange interface {
@@ -142,6 +167,10 @@ func (ke *mlkem1024KeyExchange) serverSharedSecret(_ io.Reader, clientKeyShare [
 }
 
 func (ke *mlkem1024KeyExchange) clientSharedSecret(priv *keySharePrivateKeys, serverKeyShare []byte) ([]byte, error) {
+	// [uTLS] A share whose Data was given explicitly has no private key.
+	if priv.mlkem == nil {
+		return nil, errMissingKeySharePrivateKey
+	}
 	sharedKey, err := priv.mlkem.Decapsulate(serverKeyShare)
 	if err != nil {
 		return nil, err
@@ -190,7 +219,9 @@ func (ke *ecdhKeyExchange) clientSharedSecretChooseEcdhe(priv *keySharePrivateKe
 		return nil, err
 	}
 	//[uTLS] SECTION START
-	ecdhe := priv.ecdhe
+	// The ClientHello may carry several classical shares, so use the key on
+	// the selected curve.
+	ecdhe := priv.ecdheForCurve(ke.curve)
 	if useSeperateEcdhe {
 		if priv.mlkemEcdhe == nil {
 			return nil, errors.New("tls: missing separate hybrid ECDHE private key")
@@ -198,7 +229,7 @@ func (ke *ecdhKeyExchange) clientSharedSecretChooseEcdhe(priv *keySharePrivateKe
 		ecdhe = priv.mlkemEcdhe
 	}
 	if ecdhe == nil {
-		return nil, errors.New("tls: missing ECDHE private key")
+		return nil, errMissingKeySharePrivateKey
 	}
 	sharedKey, err := ecdhe.ECDH(peerKey)
 	//[uTLS] SECTION END
@@ -296,6 +327,10 @@ func (ke *hybridKeyExchange) serverSharedSecret(rand io.Reader, clientKeyShare [
 func (ke *hybridKeyExchange) clientSharedSecret(priv *keySharePrivateKeys, serverKeyShare []byte) ([]byte, error) {
 	if len(serverKeyShare) != ke.ecdhElementSize+ke.mlkemCiphertextSize {
 		return nil, errors.New("tls: invalid server key share length for hybrid key exchange")
+	}
+	// [uTLS] A hybrid share whose Data was given explicitly has no ML-KEM key.
+	if priv.mlkem == nil {
+		return nil, errMissingKeySharePrivateKey
 	}
 	var ecdhShareData, mlkemShareData []byte
 	if ke.id == X25519MLKEM768 {
