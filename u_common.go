@@ -658,9 +658,12 @@ var (
 
 	HelloAndroid_11_OkHttp = ClientHelloID{helloAndroid, "11", nil, nil}
 
-	HelloEdge_Auto = HelloEdge_85 // HelloEdge_106 seems to be incompatible with this library
+	HelloEdge_Auto = HelloEdge_156
 	HelloEdge_85   = ClientHelloID{helloEdge, "85", nil, nil}
-	HelloEdge_106  = ClientHelloID{helloEdge, "106", nil, nil}
+	HelloEdge_106  = ClientHelloID{helloEdge, "106", nil, nil} // seems to be incompatible with this library
+	// Edge 156.0.4314.58 on Windows: the Chrome 155 ClientHello without
+	// trust_anchors. See testdata/edge156_clienthello.md.
+	HelloEdge_156 = ClientHelloID{helloEdge, "156", nil, nil}
 
 	HelloSafari_Auto = HelloSafari_26_3
 	HelloSafari_16_0 = ClientHelloID{helloSafari, "16.0", nil, nil}
