@@ -214,15 +214,22 @@ func encodeInnerClientHelloReorderOuterExts(inner *clientHelloMsg, maxNameLength
 	}
 	h = h[4:] // strip four byte prefix
 
+	return padInnerClientHello(h, inner.serverName, maxNameLength), nil
+}
+
+// padInnerClientHello pads an EncodedClientHelloInner as RFC 9849, section
+// 6.1.3 requires: up to maxNameLength for the server name, then to a multiple
+// of 32 bytes. [uTLS]
+func padInnerClientHello(h []byte, serverName string, maxNameLength int) []byte {
 	var paddingLen int
-	if inner.serverName != "" {
-		paddingLen = max(0, maxNameLength-len(inner.serverName))
+	if serverName != "" {
+		paddingLen = max(0, maxNameLength-len(serverName))
 	} else {
 		paddingLen = maxNameLength + 9
 	}
 	paddingLen += 31 - ((len(h) + paddingLen - 1) % 32)
 
-	return append(h, make([]byte, paddingLen)...), nil
+	return append(h, make([]byte, paddingLen)...)
 }
 
 func skipUint8LengthPrefixed(s *cryptobyte.String) bool {

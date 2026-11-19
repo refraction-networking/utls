@@ -586,7 +586,7 @@ func (c *UConn) echTranscriptMsg(outer *clientHelloMsg, echCtx *echClientContext
 	// See https://github.com/refraction-networking/utls/blob/e430876b1d82fdf582efc57f3992d448e7ab3d8a/ech.go#L276-L283
 	encodedInner := echCtx.encodedInner
 	if encodedInner == nil {
-		encodedInner, err = encodeInnerClientHelloReorderOuterExts(echCtx.innerHello, int(echCtx.config.MaxNameLength), c.extensionsList())
+		encodedInner, err = encodeInnerClientHelloFromRaw(echCtx.innerHello, echCtx.innerOuterExts, int(echCtx.config.MaxNameLength))
 		if err != nil {
 			return err
 		}

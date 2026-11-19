@@ -216,7 +216,8 @@ type echClientContext struct {
 	hpkeContext     *hpke.Sender
 	encapsulatedKey []byte
 	//[uTLS] SECTION START
-	encodedInner []byte
+	encodedInner   []byte
+	innerOuterExts []uint16 // extensions compressed in encodedInner, in order, for a custom ClientHello
 	//[uTLS] SECTION END
 	innerHello      *clientHelloMsg
 	innerTranscript hash.Hash
