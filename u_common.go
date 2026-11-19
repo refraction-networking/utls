@@ -159,7 +159,7 @@ func (p *ClientHelloID) Str() string {
 }
 
 func (p *ClientHelloID) IsSet() bool {
-	return (p.Client == "") && (p.Version == "")
+	return p.Client != "" || p.Version != ""
 }
 
 const (
