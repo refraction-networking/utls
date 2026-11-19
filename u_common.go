@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"hash"
 	"log"
+	"slices"
 
 	"github.com/refraction-networking/utls/internal/helper"
 	"golang.org/x/crypto/cryptobyte"
@@ -572,7 +573,33 @@ func (chs *ClientHelloSpec) FromRaw(raw []byte, ctrlFlags ...bool) error {
 		}
 	}
 
+	// BoringSSL draws its GREASE ECH payload length afresh on every connection,
+	// while NSS derives one from the ClientHello and sends it every time, so a
+	// captured length is replayed as BoringSSL's draw only when the capture
+	// carries RFC 8701 GREASE values, which BoringSSL sends and NSS does not.
+	// The lengths alone cannot tell the two apart: Firefox's is 240 bytes, one
+	// of BoringSSL's four.
+	if chs.hasGREASE() {
+		for _, ext := range chs.Extensions {
+			if ech, ok := ext.(*GREASEEncryptedClientHelloExtension); ok {
+				ech.CandidatePayloadLens = slices.Clone(boringGREASEECHPayloadLens)
+			}
+		}
+	}
+
 	return nil
+}
+
+// hasGREASE reports whether the spec carries RFC 8701 GREASE values in its
+// cipher suites or extensions.
+func (chs *ClientHelloSpec) hasGREASE() bool {
+	if slices.ContainsFunc(chs.CipherSuites, isGREASEUint16) {
+		return true
+	}
+	return slices.ContainsFunc(chs.Extensions, func(ext TLSExtension) bool {
+		_, ok := ext.(*UtlsGREASEExtension)
+		return ok
+	})
 }
 
 // UnmarshalJSON unmarshals a ClientHello message in the form of JSON into a ClientHelloSpec.
