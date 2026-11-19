@@ -937,6 +937,11 @@ type Config struct {
 	// verification will not be performed before calling
 	// EncryptedClientHelloRejectionVerify.
 	//
+	// [uTLS] The ConnectionState passed to the callback carries the chain the
+	// server presented in PeerCertificates and the ECH configuration's
+	// public_name in ServerName; VerifiedChains is empty, since the callback
+	// replaces verification. crypto/tls passes no certificates (golang/go#75242).
+	//
 	// If EncryptedClientHelloRejectionVerify is nil and ECH is rejected, the
 	// roots in RootCAs will be used to verify the ECH providers public
 	// certificate. VerifyPeerCertificate and VerifyConnection are not called
