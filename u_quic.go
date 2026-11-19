@@ -73,6 +73,15 @@ func (q *UQUICConn) NextEvent() QUICEvent {
 		<-qs.signalc
 		<-qs.blockedc
 	}
+	if err := q.conn.handshakeErr; err != nil {
+		if qs.errorReturned {
+			return QUICEvent{Kind: QUICNoEvent}
+		}
+		qs.errorReturned = true
+		qs.events = nil
+		qs.nextEvent = 0
+		return QUICEvent{Kind: QUICErrorEvent, Err: q.conn.handshakeErr}
+	}
 	if qs.nextEvent >= len(qs.events) {
 		qs.events = qs.events[:0]
 		qs.nextEvent = 0
@@ -86,7 +95,7 @@ func (q *UQUICConn) NextEvent() QUICEvent {
 
 // Close closes the connection and stops any in-progress handshake.
 func (q *UQUICConn) Close() error {
-	if q.conn.quic.cancel == nil {
+	if q.conn.quic.ctx == nil {
 		return nil // never started
 	}
 	q.conn.quic.cancel()
