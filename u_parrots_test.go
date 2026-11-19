@@ -57,6 +57,7 @@ func newTestUConnWithIncrementingRand() *UConn {
 func fingerprintsWithHybridClassicalKeyShareReuse() []ClientHelloID {
 	return []ClientHelloID{
 		HelloFirefox_148,
+		HelloFirefox_158,
 	}
 }
 

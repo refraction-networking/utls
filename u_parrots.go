@@ -1667,6 +1667,131 @@ func utlsIdToSpec(id ClientHelloID) (ClientHelloSpec, error) {
 				},
 			},
 		}, nil
+	case HelloFirefox_158:
+		return ClientHelloSpec{
+			TLSVersMin: VersionTLS12,
+			TLSVersMax: VersionTLS13,
+			CipherSuites: []uint16{
+				TLS_AES_128_GCM_SHA256,
+				TLS_CHACHA20_POLY1305_SHA256,
+				TLS_AES_256_GCM_SHA384,
+				TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+				TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+				TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
+				TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
+				TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+				TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+				TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+				TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+				TLS_RSA_WITH_AES_128_GCM_SHA256,
+				TLS_RSA_WITH_AES_256_GCM_SHA384,
+				TLS_RSA_WITH_AES_128_CBC_SHA,
+				TLS_RSA_WITH_AES_256_CBC_SHA,
+			},
+			CompressionMethods: []uint8{
+				0x0, // no compression
+			},
+			Extensions: []TLSExtension{
+				&SNIExtension{},
+				&ExtendedMasterSecretExtension{},
+				&RenegotiationInfoExtension{
+					Renegotiation: RenegotiateOnceAsClient,
+				},
+				&SupportedCurvesExtension{
+					Curves: []CurveID{
+						X25519MLKEM768,
+						X25519,
+						CurveP256,
+						CurveP384,
+						CurveP521,
+					},
+				},
+				&SupportedPointsExtension{
+					SupportedPoints: []uint8{
+						0x0, // uncompressed
+					},
+				},
+				&SessionTicketExtension{},
+				&ALPNExtension{
+					AlpnProtocols: []string{
+						"h2",
+						"http/1.1",
+					},
+				},
+				&StatusRequestExtension{},
+				&FakeDelegatedCredentialsExtension{
+					SupportedSignatureAlgorithms: []SignatureScheme{
+						ECDSAWithP256AndSHA256,
+						ECDSAWithP384AndSHA384,
+						ECDSAWithP521AndSHA512,
+						ECDSAWithSHA1,
+					},
+				},
+				&SCTExtension{},
+				&KeyShareExtension{
+					KeyShares: append(
+						ReuseHybridAndClassicalKeyShares(
+							KeyShare{
+								Group: X25519MLKEM768,
+							},
+							KeyShare{
+								Group: X25519,
+							},
+						),
+						KeyShare{
+							Group: CurveP256,
+						},
+					),
+				},
+				&SupportedVersionsExtension{
+					Versions: []uint16{
+						VersionTLS13,
+						VersionTLS12,
+					},
+				},
+				&SignatureAlgorithmsExtension{
+					SupportedSignatureAlgorithms: []SignatureScheme{
+						ECDSAWithP256AndSHA256,
+						ECDSAWithP384AndSHA384,
+						ECDSAWithP521AndSHA512,
+						PSSWithSHA256,
+						PSSWithSHA384,
+						PSSWithSHA512,
+						PKCS1WithSHA256,
+						PKCS1WithSHA384,
+						PKCS1WithSHA512,
+						ECDSAWithSHA1,
+						PKCS1WithSHA1,
+					},
+				},
+				&PSKKeyExchangeModesExtension{
+					Modes: []uint8{
+						PskModeDHE,
+					},
+				},
+				&FakeRecordSizeLimitExtension{
+					Limit: 0x4001,
+				},
+				&UtlsCompressCertExtension{[]CertCompressionAlgo{
+					CertCompressionZlib,
+					CertCompressionBrotli,
+					CertCompressionZstd,
+				}},
+				&GREASEEncryptedClientHelloExtension{
+					CandidateCipherSuites: []HPKESymmetricCipherSuite{
+						{
+							KdfId:  dicttls.HKDF_SHA256,
+							AeadId: dicttls.AEAD_AES_128_GCM,
+						},
+						{
+							KdfId:  dicttls.HKDF_SHA256,
+							AeadId: dicttls.AEAD_CHACHA20_POLY1305,
+						},
+					},
+					CandidatePayloadLens: []uint16{223}, // +16: 239
+				},
+			},
+		}, nil
 	case HelloIOS_11_1:
 		return ClientHelloSpec{
 			TLSVersMax: VersionTLS12,
