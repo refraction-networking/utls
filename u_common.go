@@ -650,6 +650,10 @@ var (
 	// the Chrome Root Store trust anchor IDs. See testdata/chrome155_clienthello.md.
 	HelloChrome_155 = ClientHelloID{helloChrome, "155", nil, nil}
 
+	// Yandex Browser
+	HelloYandex_Auto  = HelloYandex_25_12
+	HelloYandex_25_12 = ClientHelloID{"Yandex", "25.12", nil, nil}
+
 	HelloIOS_Auto = HelloIOS_14
 	HelloIOS_11_1 = ClientHelloID{helloIOS, "111", nil, nil} // legacy "111" means 11.1
 	HelloIOS_12_1 = ClientHelloID{helloIOS, "12.1", nil, nil}
