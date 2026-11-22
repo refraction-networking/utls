@@ -59,13 +59,14 @@ func firefoxKeyShares() []KeyShare {
 // keyShareHandshake runs one TLS 1.3 handshake of a HelloCustom client built
 // from spec against this package's server, which accepts only serverGroups.
 // It returns the group the connection negotiated and the client UConn.
-func keyShareHandshake(t *testing.T, spec *ClientHelloSpec, serverGroups []CurveID) (CurveID, *UConn, error) {
+func keyShareHandshake(t *testing.T, spec *ClientHelloSpec, serverGroups []CurveID, omitKeys bool) (CurveID, *UConn, error) {
 	t.Helper()
 
 	serverConfig := testConfigServer.Clone()
 	serverConfig.CurvePreferences = serverGroups
 	serverConfig.MinVersion = VersionTLS13
 	clientConfig := &Config{
+		OmitKeyShareKeys:   omitKeys,
 		ServerName:         "example.golang",
 		InsecureSkipVerify: true,
 		MinVersion:         VersionTLS13,
@@ -151,12 +152,32 @@ func TestUTLSKeyShareServerSelectsAnyOfferedGroup(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			curve, _, err := keyShareHandshake(t, keyShareTestSpec(tt.shares, tt.groups), tt.server)
+			curve, _, err := keyShareHandshake(t, keyShareTestSpec(tt.shares, tt.groups), tt.server, false)
 			if err != nil {
 				t.Fatalf("handshake failed: %v", err)
 			}
 			if curve != tt.server[0] {
 				t.Fatalf("negotiated %v, want %v", curve, tt.server[0])
+			}
+		})
+	}
+}
+
+func TestUTLSOmitKeyShareKeys(t *testing.T) {
+	for _, omit := range []bool{false, true} {
+		t.Run(fmt.Sprintf("omit=%t", omit), func(t *testing.T) {
+			groups := []CurveID{X25519MLKEM768}
+			spec := keyShareTestSpec([]KeyShare{{Group: X25519MLKEM768}}, groups)
+			_, client, err := keyShareHandshake(t, spec, groups, omit)
+			if err != nil {
+				t.Fatal(err)
+			}
+			keys := client.HandshakeState.State13.KeyShareKeys
+			if omit && keys != nil {
+				t.Fatal("retained private key shares after the handshake")
+			}
+			if !omit && (keys == nil || keys.Mlkem == nil) {
+				t.Fatal("missing ML-KEM key in the default handshake state")
 			}
 		})
 	}
@@ -171,7 +192,7 @@ func TestUTLSKeyShareHelloRetryRequest(t *testing.T) {
 	groups := []CurveID{X25519, CurveP384, CurveP256}
 	spec := keyShareTestSpec(shares, groups)
 
-	curve, client, err := keyShareHandshake(t, spec, []CurveID{CurveP256})
+	curve, client, err := keyShareHandshake(t, spec, []CurveID{CurveP256}, false)
 	if err != nil {
 		t.Fatalf("handshake failed: %v", err)
 	}
@@ -197,7 +218,7 @@ func TestUTLSApplyPresetSpecReuse(t *testing.T) {
 
 	var sent [][]KeyShare
 	for i, server := range [][]CurveID{{X25519}, {X25519}, {CurveP256}, {X25519MLKEM768}} {
-		curve, client, err := keyShareHandshake(t, spec, server)
+		curve, client, err := keyShareHandshake(t, spec, server, false)
 		if err != nil {
 			t.Fatalf("handshake %d with the same spec failed: %v", i+1, err)
 		}
@@ -258,7 +279,7 @@ func TestUTLSKeyShareExplicitDataFailsClearly(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			spec := keyShareTestSpec(tt.shares, []CurveID{X25519MLKEM768, X25519, CurveP256})
-			_, _, err := keyShareHandshake(t, spec, []CurveID{tt.server})
+			_, _, err := keyShareHandshake(t, spec, []CurveID{tt.server}, false)
 			if err == nil {
 				t.Fatal("handshake succeeded without the private key for the selected share")
 			}

@@ -560,6 +560,9 @@ func (c *UConn) clientHandshake(ctx context.Context) (err error) {
 		hs13.ctx = ctx
 		// In TLS 1.3, session tickets are delivered after the handshake.
 		err = hs13.handshake()
+		if err == nil && c.config.OmitKeyShareKeys {
+			hs13.keyShareKeys = nil
+		}
 		if handshakeState := hs13.toPublic13(); handshakeState != nil {
 			c.HandshakeState = *handshakeState
 		}
