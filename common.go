@@ -753,6 +753,11 @@ type Config struct {
 	// This field is ignored when InsecureSkipVerify is true.
 	InsecureSkipTimeVerify bool // [uTLS]
 
+	// OmitKeyShareKeys leaves UConn.HandshakeState.State13.KeyShareKeys nil
+	// after a successful TLS 1.3 handshake. Set it for clients that do not
+	// need the ephemeral private keys for the lifetime of the connection.
+	OmitKeyShareKeys bool // [uTLS]
+
 	// OmitEmptyPsk determines whether utls will automatically conceal
 	// the psk extension when it is empty. When the psk extension is empty, the
 	// browser omits it from the client hello. Utls can mimic this behavior,
@@ -1098,6 +1103,7 @@ func (c *Config) Clone() *Config {
 		InsecureSkipVerify:                  c.InsecureSkipVerify,
 		InsecureSkipTimeVerify:              c.InsecureSkipTimeVerify,
 		InsecureServerNameToVerify:          c.InsecureServerNameToVerify,
+		OmitKeyShareKeys:                    c.OmitKeyShareKeys,
 		OmitEmptyPsk:                        c.OmitEmptyPsk,
 		AlwaysIncludePSK:                    c.AlwaysIncludePSK,
 		CipherSuites:                        c.CipherSuites,
