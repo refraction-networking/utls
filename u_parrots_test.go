@@ -219,9 +219,12 @@ func TestClientHelloSpecCloneDeepCopy(t *testing.T) {
 		t.Fatal("expected GREASEEncryptedClientHelloExtension to be deep copied")
 	}
 	clonedECH.EncapsulatedKey[0] = 88
-	clonedECH.payload[0] = 77
-	if originalECH.EncapsulatedKey[0] == 88 || originalECH.payload[0] == 77 {
+	if originalECH.EncapsulatedKey[0] == 88 {
 		t.Fatal("expected GREASE ECH extension buffers to be deep copied")
+	}
+	// The payload belongs to one ClientHello, so a clone draws a new one.
+	if len(clonedECH.payload) != 0 || len(originalECH.payload) != 2 {
+		t.Fatal("expected the GREASE ECH payload to be dropped from the clone only")
 	}
 
 	clonedPSK := cloned.Extensions[2].(*UtlsPreSharedKeyExtension)
