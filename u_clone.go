@@ -12,8 +12,13 @@ func (chs *ClientHelloSpec) clone() *ClientHelloSpec {
 		return nil
 	}
 
-	cloned := deepCloneValue(reflect.ValueOf(chs), make(map[deepCloneVisit]reflect.Value))
-	return cloned.Interface().(*ClientHelloSpec)
+	cloned := deepCloneValue(reflect.ValueOf(chs), make(map[deepCloneVisit]reflect.Value)).Interface().(*ClientHelloSpec)
+	for _, ext := range cloned.Extensions {
+		if g, ok := ext.(*GREASEEncryptedClientHelloExtension); ok {
+			g.resetForNewHello()
+		}
+	}
+	return cloned
 }
 
 type deepCloneVisit struct {
