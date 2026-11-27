@@ -637,6 +637,21 @@ type Config struct {
 	// Once a Certificate is returned it should not be modified.
 	GetCertificate func(*ClientHelloInfo) (*Certificate, error)
 
+	// SelectServerSignatureScheme, if not nil, selects the signature scheme
+	// used by the server with the selected certificate in TLS 1.2 and 1.3.
+	// The version argument is the negotiated TLS version. The callback may
+	// return a scheme absent from ClientHelloInfo.SignatureSchemes, but it
+	// must be supported by the certificate and the negotiated TLS version.
+	// An error rejects that certificate, and aborts the handshake if it is
+	// selected. The callback may be called more than once when selecting
+	// among multiple certificates.
+	//
+	// Selecting a scheme the client did not advertise violates the TLS
+	// specification (see RFC 8446, Section 4.2.3 for TLS 1.3) and should
+	// only be used when both endpoints are under the application's control.
+	// If nil, the default selection is used.
+	SelectServerSignatureScheme func(*ClientHelloInfo, *Certificate, uint16) (SignatureScheme, error) // [uTLS]
+
 	// GetClientCertificate, if not nil, is called when a server requests a
 	// certificate from a client. If set, the contents of Certificates will
 	// be ignored.
@@ -1084,6 +1099,7 @@ func (c *Config) Clone() *Config {
 		Certificates:                        c.Certificates,
 		NameToCertificate:                   c.NameToCertificate,
 		GetCertificate:                      c.GetCertificate,
+		SelectServerSignatureScheme:         c.SelectServerSignatureScheme,
 		GetClientCertificate:                c.GetClientCertificate,
 		GetConfigForClient:                  c.GetConfigForClient,
 		GetEncryptedClientHelloKeys:         c.GetEncryptedClientHelloKeys,
@@ -1523,10 +1539,10 @@ func (chi *ClientHelloInfo) SupportsCertificate(c *Certificate) error {
 		return nil
 	}
 
-	// If the client sent the signature_algorithms extension, ensure it supports
-	// schemes we can use with this certificate and TLS version.
+	// If the client sent the signature_algorithms extension, ensure we can
+	// use a signature scheme with this certificate and TLS version.
 	if len(chi.SignatureSchemes) > 0 {
-		if _, err := selectSignatureScheme(vers, c, chi.SignatureSchemes); err != nil {
+		if _, err := config.selectServerSignatureScheme(chi, c, vers); err != nil {
 			return supportsRSAFallback(err)
 		}
 	}

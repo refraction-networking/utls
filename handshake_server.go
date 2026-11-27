@@ -633,7 +633,7 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 	}
 
 	keyAgreement := hs.suite.ka(c.vers)
-	skx, err := keyAgreement.generateServerKeyExchange(c.config, hs.cert, hs.clientHello, hs.hello)
+	skx, err := keyAgreement.generateServerKeyExchange(c.config, hs.cert, hs.clientHello, hs.hello, clientHelloInfo(hs.ctx, c, hs.clientHello))
 	if err != nil {
 		c.sendAlert(alertHandshakeFailure)
 		return err

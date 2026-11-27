@@ -25,7 +25,7 @@ type keyAgreement interface {
 	// In the case that the key agreement protocol doesn't use a
 	// ServerKeyExchange message, generateServerKeyExchange can return nil,
 	// nil.
-	generateServerKeyExchange(*Config, *Certificate, *clientHelloMsg, *serverHelloMsg) (*serverKeyExchangeMsg, error)
+	generateServerKeyExchange(*Config, *Certificate, *clientHelloMsg, *serverHelloMsg, *ClientHelloInfo) (*serverKeyExchangeMsg, error)
 	processClientKeyExchange(*Config, *Certificate, *clientKeyExchangeMsg, uint16) ([]byte, error)
 
 	// On the client side, the next two methods are called in order.
@@ -43,7 +43,7 @@ var errServerKeyExchange = errors.New("tls: invalid ServerKeyExchange message")
 // encrypts the pre-master secret to the server's public key.
 type rsaKeyAgreement struct{}
 
-func (ka rsaKeyAgreement) generateServerKeyExchange(config *Config, cert *Certificate, clientHello *clientHelloMsg, hello *serverHelloMsg) (*serverKeyExchangeMsg, error) {
+func (ka rsaKeyAgreement) generateServerKeyExchange(config *Config, cert *Certificate, clientHello *clientHelloMsg, hello *serverHelloMsg, helloInfo *ClientHelloInfo) (*serverKeyExchangeMsg, error) {
 	return nil, nil
 }
 
@@ -155,7 +155,7 @@ type ecdheKeyAgreement struct {
 	key                *ecdh.PrivateKey
 }
 
-func (ka *ecdheKeyAgreement) generateServerKeyExchange(config *Config, cert *Certificate, clientHello *clientHelloMsg, hello *serverHelloMsg) (*serverKeyExchangeMsg, error) {
+func (ka *ecdheKeyAgreement) generateServerKeyExchange(config *Config, cert *Certificate, clientHello *clientHelloMsg, hello *serverHelloMsg, helloInfo *ClientHelloInfo) (*serverKeyExchangeMsg, error) {
 	for _, c := range clientHello.supportedCurves {
 		if config.supportsCurve(ka.version, c) {
 			ka.curveID = c
@@ -192,7 +192,7 @@ func (ka *ecdheKeyAgreement) generateServerKeyExchange(config *Config, cert *Cer
 
 	var sig []byte
 	if ka.version >= VersionTLS12 {
-		ka.signatureAlgorithm, err = selectSignatureScheme(ka.version, cert, clientHello.supportedSignatureAlgorithms)
+		ka.signatureAlgorithm, err = config.selectServerSignatureScheme(helloInfo, cert, ka.version)
 		if err != nil {
 			return nil, err
 		}
